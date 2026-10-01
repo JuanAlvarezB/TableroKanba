@@ -147,13 +147,21 @@ function backfillDates() {
 }
 
 // Fechas al entrar en un estado: se registra el momento actual y, si la tarea retrocede,
-// se borran las de los estados posteriores porque dejan de ser ciertas.
+// se borran las de los estados posteriores porque dejan de ser ciertas. Al volver a Pendiente
+// la fecha de creación pasa a ser la del cambio, pero se conserva la de En curso como
+// constancia de que la tarea ya estuvo en curso (ver wasInProgress).
 function datesForStatus(status) {
   const dates = { [STATUS_DATE_FIELDS[status]]: Date.now() };
   STATUSES.slice(STATUSES.indexOf(status) + 1).forEach((later) => {
     dates[STATUS_DATE_FIELDS[later]] = null;
   });
+  if (status === 'pending') delete dates.startedAt;
   return dates;
+}
+
+// Una tarea pendiente con fecha de En curso es una que se devolvió desde En curso.
+function wasInProgress(task) {
+  return task.status === 'pending' && task.startedAt !== null;
 }
 
 // Ordena por "order"; el id desempata tareas creadas a la vez en dos dispositivos.
@@ -734,6 +742,7 @@ function createCard(task) {
 
 const dateFormat = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const dateFormatWithYear = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const shortDateFormat = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short' });
 const fullDateFormat = new Intl.DateTimeFormat('es', { dateStyle: 'full', timeStyle: 'short' });
 
 // El año solo se muestra si no es el actual, para que la fecha ocupe poco en la tarjeta.
@@ -743,13 +752,16 @@ function formatDate(ms) {
   return format.format(date);
 }
 
-// Línea de tiempo con las fechas en que la tarea entró en cada estado.
+// Línea de tiempo con las fechas en que la tarea entró en cada estado, más la anotación
+// de las tareas que volvieron de En curso a Pendiente.
 function createHistory(task) {
   const list = document.createElement('ol');
   list.className = 'task-history';
   list.setAttribute('aria-label', 'Historial de estados');
 
-  STATUSES.forEach((status) => {
+  // Solo se muestran los estados alcanzados hasta la columna actual; la fecha de En curso de
+  // una tarea devuelta a Pendiente se muestra aparte, como anotación.
+  STATUSES.slice(0, STATUSES.indexOf(task.status) + 1).forEach((status) => {
     const ms = task[STATUS_DATE_FIELDS[status]];
     if (ms === null) return;
 
@@ -771,7 +783,17 @@ function createHistory(task) {
     item.append(label, time);
     list.append(item);
   });
-  return list;
+
+  if (!wasInProgress(task)) return list;
+
+  const note = document.createElement('p');
+  note.className = 'history-note';
+  note.title = `Estuvo en curso desde el ${fullDateFormat.format(task.startedAt)} y luego volvió a Pendiente`;
+  note.textContent = `↩ Ya estuvo en curso desde el ${shortDateFormat.format(task.startedAt)}`;
+
+  const fragment = document.createDocumentFragment();
+  fragment.append(list, note);
+  return fragment;
 }
 
 // Devuelve la tarjeta en modo edición: se crea la primera vez y después se reutiliza,

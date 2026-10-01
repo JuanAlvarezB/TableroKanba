@@ -524,6 +524,18 @@ h1 {
   font-weight: bold;
 }
 
+/* Anotación de una tarea que volvió de En curso a Pendiente */
+.history-note {
+  align-self: flex-start;
+  margin: -2px 0 0;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-hover);
+  font-weight: 600;
+}
+
 /* Fecha desde la que se cuenta la alerta */
 .history-step.is-overdue,
 .history-step.is-overdue time {
