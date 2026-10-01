@@ -65,6 +65,8 @@ button {
 }
 
 .container {
+  position: relative;
+  z-index: 1; /* por encima de la decoración de fondo */
   background: var(--bg-surface);
   width: 100%;
   max-width: 1100px;
@@ -394,7 +396,213 @@ h1 {
   font-style: italic;
 }
 
+/* Dedicatoria y fecha de creación del tablero */
+.site-footer {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-surface);
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.site-footer strong {
+  color: var(--text);
+}
+
+/* ---------- Decoración de fondo ---------- */
+
+/* Capa fija detrás del tablero; no recibe clics ni afecta al diseño */
+.decor {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.decor-defs {
+  position: absolute;
+}
+
+.decor svg:not(.decor-defs) {
+  position: absolute;
+  overflow: visible;
+}
+
+/* Girasoles: el contenedor .flower recorre el borde inferior de un lado a otro
+   (stroll) y .flower-sway lo balancea (sway). La flor y su mariposa visitante
+   van dentro, así la mariposa posada viaja y se mece con el girasol.
+   Cada girasol tiene su tamaño, velocidad y punto de partida, así se cruzan
+   entre sí en lugar de moverse en bloque. */
+.flower {
+  position: absolute;
+  left: 0;
+  bottom: -20px;
+  width: var(--w);
+  height: calc(var(--w) * 2);
+  animation: stroll var(--stroll-time) ease-in-out var(--stroll-delay) infinite alternate;
+}
+
+.flower-sway {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 100%;
+  animation: sway 6s ease-in-out var(--sway-delay) infinite;
+}
+
+.sunflower {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.flower.s1 { --w: 150px; --sway-delay: 0s; --stroll-time: 72s; --stroll-delay: 0s; --visit-delay: -2s; }
+.flower.s2 { --w: 105px; --sway-delay: -2s; --stroll-time: 90s; --stroll-delay: -45s; }
+.flower.s3 { --w: 140px; --sway-delay: -1s; --stroll-time: 81s; --stroll-delay: -81s; --visit-delay: -9s; }
+.flower.s4 { --w: 95px; --sway-delay: -3s; --stroll-time: 99s; --stroll-delay: -30s; --visit-delay: -15s; }
+
+/* Mariposa visitante: en reposo queda sobre el centro de la flor, que en el
+   dibujo está al 50% del ancho y al 25% del alto. La animación "visit" la trae
+   volando, la deja posada y luego la hace despegar. */
+.visitor {
+  --b: calc(var(--w) * 0.36);
+  position: absolute;
+  left: calc(50% - var(--b) / 2);
+  top: calc(25% - var(--b) * 0.55);
+  width: var(--b);
+  height: calc(var(--b) * 0.8);
+  color: #ffd60a;
+  filter: drop-shadow(0 1px 1.5px rgba(150, 100, 0, 0.3));
+  animation: visit 18s ease-in-out var(--visit-delay) infinite;
+}
+
+/* Dos copias superpuestas de la misma mariposa: una aletea rápido (en vuelo)
+   y otra abre y cierra las alas despacio (posada). "visit-phase" muestra
+   una u otra según el momento de la visita. */
+.visitor svg {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.visitor use {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.visitor-flying {
+  animation: visit-phase 18s linear var(--visit-delay) infinite;
+}
+
+.visitor-flying use {
+  animation: flap 0.35s ease-in-out infinite alternate;
+}
+
+.visitor-resting {
+  opacity: 0;
+  animation: visit-phase-rest 18s linear var(--visit-delay) infinite;
+}
+
+.visitor-resting use {
+  animation: rest-flap 1.4s ease-in-out infinite alternate;
+}
+
+/* Mariposas amarillas: cada una recibe su posición, tamaño, tono y desfase
+   desde variables CSS en el HTML, y vuela en un recorrido lento y errático */
+.butterfly {
+  left: min(var(--x), calc(100% - var(--size)));
+  top: var(--y);
+  width: var(--size);
+  height: calc(var(--size) * 0.8);
+  color: var(--tone);
+  filter: drop-shadow(0 1px 1.5px rgba(150, 100, 0, 0.3));
+  animation: flutter 14s ease-in-out var(--delay) infinite;
+}
+
+/* Cada tercera mariposa sigue otro recorrido para que el enjambre no se mueva al unísono */
+.butterfly:nth-of-type(3n) {
+  animation-name: flutter-alt;
+  animation-duration: 17s;
+}
+
+/* Aleteo: se estrecha horizontalmente como si cerrara las alas */
+.butterfly use {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: flap 0.35s ease-in-out var(--delay) infinite alternate;
+}
+
+.butterfly:nth-of-type(2n) use {
+  animation-duration: 0.42s;
+}
+
 /* ---------- Animaciones ---------- */
+
+@keyframes sway {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+
+/* Desplazamiento solo horizontal, de borde a borde de la pantalla.
+   Usa la propiedad "translate" para no pisar el "transform" del balanceo. */
+@keyframes stroll {
+  from { translate: 0 0; }
+  to { translate: calc(100vw - 100%) 0; }
+}
+
+@keyframes flutter {
+  0%, 100% { transform: translate(0, 0) rotate(-8deg); }
+  20% { transform: translate(26px, -18px) rotate(10deg); }
+  45% { transform: translate(8px, -44px) rotate(-4deg); }
+  70% { transform: translate(-24px, -20px) rotate(12deg); }
+  85% { transform: translate(-12px, 6px) rotate(-10deg); }
+}
+
+@keyframes flutter-alt {
+  0%, 100% { transform: translate(0, 0) rotate(6deg); }
+  25% { transform: translate(-30px, -26px) rotate(-12deg); }
+  50% { transform: translate(-6px, -52px) rotate(4deg); }
+  75% { transform: translate(22px, -24px) rotate(-6deg); }
+}
+
+/* Llegada, reposo (30%–70%) y despegue de la mariposa visitante.
+   Aparece y desaparece lejos de la flor para que el reinicio no se note. */
+@keyframes visit {
+  0% { transform: translate(-160px, -260px) rotate(-10deg); opacity: 0; }
+  6% { opacity: 1; }
+  12% { transform: translate(-90px, -170px) rotate(12deg); }
+  20% { transform: translate(-40px, -70px) rotate(-8deg); }
+  27% { transform: translate(-8px, -14px) rotate(6deg); }
+  30%, 70% { transform: translate(0, 0) rotate(0deg); }
+  74% { transform: translate(14px, -30px) rotate(10deg); }
+  84% { transform: translate(70px, -120px) rotate(-10deg); }
+  94% { opacity: 1; }
+  100% { transform: translate(170px, -270px) rotate(8deg); opacity: 0; }
+}
+
+/* La copia en vuelo se ve en 0–30% y 70–100%; la copia posada, en 30–70% */
+@keyframes visit-phase {
+  0%, 29% { opacity: 1; }
+  30%, 70% { opacity: 0; }
+  71%, 100% { opacity: 1; }
+}
+
+@keyframes visit-phase-rest {
+  0%, 29% { opacity: 0; }
+  30%, 70% { opacity: 1; }
+  71%, 100% { opacity: 0; }
+}
+
+@keyframes rest-flap {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0.55); }
+}
+
+@keyframes flap {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0.25); }
+}
 
 @keyframes slide-in {
   from {
@@ -433,6 +641,17 @@ h1 {
 
   .task-list {
     max-height: none;
+  }
+
+  /* En pantallas pequeñas la decoración es más discreta */
+  .decor {
+    opacity: 0.6;
+  }
+
+  .flower.s2,
+  .flower.s4,
+  .butterfly:nth-of-type(2n) {
+    display: none;
   }
 }
 

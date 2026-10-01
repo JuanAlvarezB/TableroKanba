@@ -5,7 +5,7 @@ const STATUSES = ['pending', 'in-progress', 'completed'];
 
 // Límite de trabajo en curso (WIP) por columna. Kanban limita lo que está
 // "en curso" para terminar tareas antes de empezar otras nuevas.
-const WIP_LIMITS = { 'in-progress': 3 };
+const WIP_LIMITS = { 'in-progress': 200 };
 
 const taskForm = document.getElementById('task-form');
 const taskInput = document.getElementById('task-input');
@@ -178,7 +178,7 @@ function render() {
 
     const counter = document.querySelector(`[data-count="${status}"]`);
     const limit = WIP_LIMITS[status];
-    counter.textContent = limit ? `${columnTasks.length}/${limit}` : columnTasks.length;
+    counter.textContent = limit ? `${columnTasks.length} · máx. ${limit}` : columnTasks.length;
     list.closest('.column').classList.toggle('full', isColumnFull(status));
   });
 
