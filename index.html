@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tablero Kanban</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Tablero Kanban</h1>
+
+    <form id="task-form">
+      <input type="text" id="task-input" placeholder="Escribe una nueva tarea..." autocomplete="off">
+      <button type="submit">Agregar</button>
+    </form>
+
+    <p id="board-notice" class="notice hidden" role="status"></p>
+
+    <div class="board">
+      <section class="column" data-status="pending">
+        <header class="column-header">
+          <h2>Pendiente</h2>
+          <span class="column-count" data-count="pending">0</span>
+        </header>
+        <ul class="task-list" data-status="pending"></ul>
+      </section>
+
+      <section class="column" data-status="in-progress">
+        <header class="column-header">
+          <h2>En curso</h2>
+          <span class="column-count" data-count="in-progress">0</span>
+        </header>
+        <ul class="task-list" data-status="in-progress"></ul>
+      </section>
+
+      <section class="column" data-status="completed">
+        <header class="column-header">
+          <h2>Completada</h2>
+          <span class="column-count" data-count="completed">0</span>
+        </header>
+        <ul class="task-list" data-status="completed"></ul>
+        <button id="clear-completed" class="column-action">Borrar completadas</button>
+      </section>
+    </div>
+
+    <p id="all-done-message" class="hidden">✅ ¡Todas las tareas fueron finalizadas!</p>
+
+    <div class="footer">
+      <span id="task-count">0 tareas pendientes</span>
+      <span class="hint">Arrastra las tarjetas o usa las flechas para moverlas</span>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

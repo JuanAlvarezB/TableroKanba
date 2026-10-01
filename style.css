@@ -1,0 +1,459 @@
+/* ---------- Variables de diseño ---------- */
+
+:root {
+  color-scheme: light; /* fuerza el tema claro aunque el sistema esté en modo oscuro */
+  --color-primary: #2575fc;
+  --color-primary-hover: #1a5bd1;
+  --color-primary-soft: #e3ecff;
+  --color-pending: #f39c12;
+  --color-progress: #2575fc;
+  --color-done: #2e7d32;
+  --color-danger: #c62828;
+  --color-danger-soft: #ffebee;
+  --color-success-soft: #e8f5e9;
+
+  /* Fondo blanco y limpio: el panel se separa con borde y sombra suave */
+  --bg-base: #ffffff;
+  --bg-surface: #fff;
+  --bg-column: #f1f4f8;
+  --border-surface: #e4e8ee;
+  --bg-card: #fff;
+  --text: #222;
+  --text-muted: #5f6368; /* contraste AA sobre blanco */
+  --border: #cfd4dc;
+
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --shadow-card-hover: 0 6px 16px rgba(0, 0, 0, 0.15);
+  --shadow-surface: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 16px rgba(16, 24, 40, 0.05);
+  --focus-ring: 0 0 0 3px rgba(37, 117, 252, 0.45);
+  --ease: 0.2s ease;
+}
+
+/* ---------- Base ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 40px 16px;
+  background: var(--bg-base);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  line-height: 1.4;
+}
+
+button {
+  font: inherit;
+}
+
+/* Anillo de foco visible solo al navegar con teclado */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.container {
+  background: var(--bg-surface);
+  width: 100%;
+  max-width: 1100px;
+  border: 1px solid var(--border-surface);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: var(--shadow-surface);
+}
+
+h1 {
+  text-align: center;
+  color: var(--color-primary);
+  margin-top: 0;
+}
+
+/* ---------- Formulario ---------- */
+
+#task-form {
+  display: flex;
+  gap: 8px;
+  max-width: 560px;
+  margin: 0 auto 16px;
+}
+
+#task-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 1rem;
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+
+#task-input::placeholder {
+  color: var(--text-muted);
+}
+
+#task-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
+}
+
+#task-form button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background var(--ease), transform var(--ease);
+}
+
+#task-form button:hover {
+  background: var(--color-primary-hover);
+}
+
+#task-form button:active {
+  transform: scale(0.97);
+}
+
+.notice {
+  text-align: center;
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+  border-radius: var(--radius);
+  padding: 10px;
+  margin: 0 0 16px;
+  animation: slide-in 0.25s ease, shake 0.4s ease 0.1s;
+}
+
+/* ---------- Tablero ---------- */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.column {
+  --accent: #9e9e9e;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-column);
+  border-radius: 10px;
+  padding: 12px;
+  border-top: 4px solid var(--accent);
+  min-height: 300px;
+  transition: background var(--ease), box-shadow var(--ease);
+}
+
+.column[data-status='pending'] {
+  --accent: var(--color-pending);
+}
+
+.column[data-status='in-progress'] {
+  --accent: var(--color-progress);
+}
+
+.column[data-status='completed'] {
+  --accent: var(--color-done);
+}
+
+/* Columna con el límite WIP alcanzado */
+.column.full {
+  box-shadow: inset 0 0 0 2px var(--color-danger-soft);
+}
+
+.column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.column-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.column-header h2::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.column-count {
+  background: var(--bg-card);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.85rem;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  transition: background var(--ease), color var(--ease);
+}
+
+.column.full .column-count {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.task-list {
+  list-style: none;
+  padding: 4px;
+  margin: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  border-radius: var(--radius);
+  border: 2px dashed transparent;
+  transition: background var(--ease), border-color var(--ease);
+}
+
+.task-list.drag-over {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+}
+
+.empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 24px 0;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+/* ---------- Tarjetas ---------- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--accent);
+  padding: 10px 12px;
+  box-shadow: var(--shadow-card);
+  cursor: grab;
+  user-select: none;
+  transition: box-shadow var(--ease), transform var(--ease), opacity var(--ease);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
+
+.card.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+  transform: rotate(2deg) scale(0.98);
+  box-shadow: none;
+}
+
+.card.completed .task-text {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.task-text {
+  overflow-wrap: anywhere;
+}
+
+.card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* Con ratón, las acciones aparecen al pasar por la tarjeta o al enfocarla con teclado */
+@media (hover: hover) and (pointer: fine) {
+  .card-actions {
+    opacity: 0;
+    transition: opacity var(--ease);
+  }
+
+  .card:hover .card-actions,
+  .card:focus-within .card-actions {
+    opacity: 1;
+  }
+}
+
+.move-btn,
+.delete-btn {
+  min-width: 32px;
+  min-height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background var(--ease), transform var(--ease);
+}
+
+.move-btn {
+  color: var(--color-primary);
+}
+
+.move-btn:hover:not(:disabled) {
+  background: var(--color-primary-soft);
+}
+
+.move-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.delete-btn:hover {
+  background: var(--color-danger-soft);
+}
+
+.move-btn:active:not(:disabled),
+.delete-btn:active {
+  transform: scale(0.9);
+}
+
+.column-action {
+  align-self: center;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background var(--ease), color var(--ease);
+}
+
+.column-action:hover:not(:disabled) {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.column-action:disabled {
+  color: var(--text-muted);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ---------- Mensajes y pie ---------- */
+
+#all-done-message {
+  text-align: center;
+  color: var(--color-done);
+  background: var(--color-success-soft);
+  border-radius: var(--radius);
+  padding: 10px;
+  font-weight: bold;
+  animation: slide-in 0.3s ease;
+}
+
+.hidden {
+  display: none;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.hint {
+  font-style: italic;
+}
+
+/* ---------- Animaciones ---------- */
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shake {
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+/* ---------- Responsive y accesibilidad ---------- */
+
+@media (max-width: 760px) {
+  body {
+    padding: 16px;
+  }
+
+  .container {
+    padding: 16px;
+  }
+
+  .board {
+    grid-template-columns: 1fr;
+  }
+
+  .column {
+    min-height: 0;
+  }
+
+  .task-list {
+    max-height: none;
+  }
+}
+
+/* Áreas táctiles más grandes en pantallas táctiles */
+@media (pointer: coarse) {
+  .move-btn,
+  .delete-btn {
+    min-width: 44px;
+    min-height: 40px;
+  }
+
+  .card:hover {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
