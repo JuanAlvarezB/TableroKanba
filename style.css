@@ -11,6 +11,8 @@
   --color-danger: #c62828;
   --color-danger-soft: #ffebee;
   --color-success-soft: #e8f5e9;
+  --color-warning: #8a5300; /* contraste AA sobre su fondo */
+  --color-warning-soft: #fff4e0;
 
   /* Fondo blanco y limpio: el panel se separa con borde y sombra suave */
   --bg-base: #ffffff;
@@ -306,6 +308,106 @@ h1 {
 
 .task-text {
   overflow-wrap: anywhere;
+  white-space: pre-wrap; /* respeta los saltos de línea escritos al editar */
+}
+
+/* Resaltado breve de una tarjeta recién editada aquí o cambiada en otro dispositivo */
+.card.flash {
+  animation: card-flash 1.6s ease-out both;
+}
+
+/* ---------- Edición de tarjetas ---------- */
+
+.card.editing,
+.card.editing:hover {
+  cursor: default;
+  user-select: auto;
+  transform: none;
+  box-shadow: 0 0 0 2px var(--color-primary-soft), var(--shadow-card-hover);
+  animation: slide-in 0.2s ease;
+}
+
+.edit-input {
+  display: block;
+  width: 100%;
+  min-height: 2.4em;
+  resize: none;
+  overflow: hidden;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  line-height: inherit;
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
+}
+
+/* Aviso de que otro dispositivo cambió la tarea durante la edición */
+.edit-note {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  font-size: 0.8rem;
+  animation: slide-in 0.25s ease;
+}
+
+.edit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.edit-hint {
+  margin-right: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.edit-cancel,
+.edit-save {
+  min-height: 30px;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background var(--ease), transform var(--ease);
+}
+
+.edit-cancel {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.edit-cancel:hover {
+  background: var(--bg-column);
+  color: var(--text);
+}
+
+.edit-save {
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: bold;
+}
+
+.edit-save:hover {
+  background: var(--color-primary-hover);
+}
+
+.edit-cancel:active,
+.edit-save:active {
+  transform: scale(0.96);
 }
 
 .card-actions {
@@ -328,6 +430,7 @@ h1 {
 }
 
 .move-btn,
+.edit-btn,
 .delete-btn {
   min-width: 32px;
   min-height: 28px;
@@ -344,7 +447,8 @@ h1 {
   color: var(--color-primary);
 }
 
-.move-btn:hover:not(:disabled) {
+.move-btn:hover:not(:disabled),
+.edit-btn:hover {
   background: var(--color-primary-soft);
 }
 
@@ -358,6 +462,7 @@ h1 {
 }
 
 .move-btn:active:not(:disabled),
+.edit-btn:active,
 .delete-btn:active {
   transform: scale(0.9);
 }
@@ -659,6 +764,17 @@ h1 {
   }
 }
 
+@keyframes card-flash {
+  0%, 35% {
+    background: var(--color-primary-soft);
+    box-shadow: 0 0 0 2px var(--color-primary), var(--shadow-card);
+  }
+  100% {
+    background: var(--bg-card);
+    box-shadow: var(--shadow-card);
+  }
+}
+
 @keyframes shake {
   25% { transform: translateX(-4px); }
   75% { transform: translateX(4px); }
@@ -702,9 +818,21 @@ h1 {
 /* Áreas táctiles más grandes en pantallas táctiles */
 @media (pointer: coarse) {
   .move-btn,
+  .edit-btn,
   .delete-btn {
     min-width: 44px;
     min-height: 40px;
+  }
+
+  .edit-cancel,
+  .edit-save {
+    min-height: 40px;
+    padding: 6px 16px;
+  }
+
+  /* Sin teclado físico los atajos no aplican */
+  .edit-hint {
+    display: none;
   }
 
   .card:hover {
