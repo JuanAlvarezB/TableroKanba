@@ -199,13 +199,18 @@ function updateTask(id, fields) {
 
 /* ---------- Edición de tareas ---------- */
 
+// Las tareas completadas quedan cerradas: su texto ya no se puede modificar.
+function isEditable(task) {
+  return task.status !== 'completed';
+}
+
 function startEdit(id) {
   if (editing) {
     if (editing.id === id) return;
     commitEdit();
   }
   const task = tasks.find((t) => t.id === id);
-  if (!task) return;
+  if (!task || !isEditable(task)) return;
 
   editing = { id, original: task.text };
   render();
@@ -224,7 +229,9 @@ function commitEdit(restoreFocus = false) {
   editing = null;
 
   const task = tasks.find((t) => t.id === id);
-  if (task && !text) {
+  if (task && !isEditable(task)) {
+    showNotice('Las tareas completadas no se pueden modificar.');
+  } else if (task && !text) {
     showNotice('Una tarea no puede quedar vacía: se mantuvo el texto anterior.');
   } else if (task && text !== task.text) {
     updateTask(id, { text });
@@ -438,8 +445,10 @@ function createCard(task) {
   const span = document.createElement('span');
   span.className = 'task-text';
   span.textContent = task.text;
-  span.title = 'Doble clic para editar';
-  span.addEventListener('dblclick', () => startEdit(task.id));
+  if (isEditable(task)) {
+    span.title = 'Doble clic para editar';
+    span.addEventListener('dblclick', () => startEdit(task.id));
+  }
 
   const actions = document.createElement('div');
   actions.className = 'card-actions';
@@ -474,7 +483,9 @@ function createCard(task) {
   deleteBtn.setAttribute('aria-label', 'Eliminar tarea');
   deleteBtn.addEventListener('click', () => deleteTask(task.id));
 
-  actions.append(backBtn, forwardBtn, editBtn, deleteBtn);
+  actions.append(backBtn, forwardBtn);
+  if (isEditable(task)) actions.append(editBtn);
+  actions.append(deleteBtn);
   li.append(span, actions);
   return li;
 }
@@ -574,6 +585,9 @@ function render() {
   if (editing && !tasks.some((t) => t.id === editing.id)) {
     editing = null;
     showNotice('La tarea que estabas editando se eliminó en otro dispositivo.');
+  } else if (editing && !isEditable(tasks.find((t) => t.id === editing.id))) {
+    editing = null;
+    showNotice('La tarea que estabas editando se marcó como completada en otro dispositivo; ya no se puede modificar.');
   }
 
   // Al vaciar las listas el editor sale del documento y pierde el foco; se guarda para devolverlo.
