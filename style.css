@@ -13,6 +13,7 @@
   --color-success-soft: #e8f5e9;
   --color-warning: #8a5300; /* contraste AA sobre su fondo */
   --color-warning-soft: #fff4e0;
+  --color-warning-border: #f5c26b;
 
   /* Fondo blanco y limpio: el panel se separa con borde y sombra suave */
   --bg-base: #ffffff;
@@ -165,6 +166,108 @@ h1 {
   animation: slide-in 0.25s ease;
 }
 
+/* Recordatorio de tareas detenidas: dura un minuto en pantalla o hasta que se cierra */
+.overdue-banner {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  animation: slide-in 0.25s ease;
+}
+
+.overdue-banner.hidden {
+  display: none;
+}
+
+/* Tiempo restante antes de que el recordatorio se cierre solo */
+.overdue-timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--color-warning-border);
+  transform-origin: left;
+  transform: scaleX(0);
+}
+
+.overdue-banner.counting .overdue-timer {
+  animation: reminder-countdown 60s linear;
+}
+
+.overdue-banner-icon {
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.overdue-banner-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.overdue-summary {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.overdue-summary li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.overdue-show {
+  padding: 2px 10px;
+  border: 1px solid var(--color-warning-border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--color-warning);
+  font-size: 0.8rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background var(--ease), transform var(--ease);
+}
+
+.overdue-show:hover {
+  background: var(--color-warning-border);
+}
+
+.overdue-show:active,
+.overdue-dismiss:active {
+  transform: scale(0.94);
+}
+
+.overdue-dismiss {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-warning);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--ease);
+}
+
+.overdue-dismiss:hover {
+  background: rgba(138, 83, 0, 0.1);
+}
+
 /* ---------- Tablero ---------- */
 
 .board {
@@ -225,6 +328,26 @@ h1 {
   height: 10px;
   border-radius: 50%;
   background: var(--accent);
+}
+
+.column-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Número de tareas detenidas en la columna */
+.column-alert {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  border: 1px solid var(--color-warning-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+  animation: slide-in 0.25s ease;
 }
 
 .column-count {
@@ -311,9 +434,106 @@ h1 {
   white-space: pre-wrap; /* respeta los saltos de línea escritos al editar */
 }
 
+/* Historial de estados: línea de tiempo con un punto del color de cada columna */
+.task-history {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--border-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tareas creadas antes de existir el historial */
+.task-history:empty {
+  display: none;
+}
+
+.history-step {
+  --step: var(--color-pending);
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding-left: 16px;
+}
+
+.history-step[data-status='in-progress'] {
+  --step: var(--color-progress);
+}
+
+.history-step[data-status='completed'] {
+  --step: var(--color-done);
+}
+
+.history-step::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: calc(50% - 4px);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--step);
+  box-shadow: 0 0 0 2px var(--bg-card);
+}
+
+/* Conector vertical entre un punto y el siguiente */
+.history-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 4.5px;
+  top: calc(50% + 4px);
+  bottom: calc(-50% + 2px);
+  width: 1px;
+  background: var(--border);
+}
+
+.history-label {
+  font-weight: 600;
+}
+
+.history-step time {
+  white-space: nowrap;
+}
+
+/* Tarea detenida más de 3 días: borde y fondo cálidos, sin perder el color de la columna */
+.card.overdue {
+  background: linear-gradient(var(--color-warning-soft), var(--bg-card) 60%);
+  box-shadow: inset 0 0 0 1px var(--color-warning-border), var(--shadow-card);
+}
+
+.card.overdue:hover {
+  box-shadow: inset 0 0 0 1px var(--color-warning-border), var(--shadow-card-hover);
+}
+
+.overdue-badge {
+  align-self: flex-start;
+  margin: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-warning-soft);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning);
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+/* Fecha desde la que se cuenta la alerta */
+.history-step.is-overdue,
+.history-step.is-overdue time {
+  color: var(--color-warning);
+  font-weight: bold;
+}
+
 /* Resaltado breve de una tarjeta recién editada aquí o cambiada en otro dispositivo */
 .card.flash {
-  animation: card-flash 1.6s ease-out both;
+  animation: card-flash 1.6s ease-out;
 }
 
 /* ---------- Edición de tarjetas ---------- */
@@ -762,6 +982,11 @@ h1 {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@keyframes reminder-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
 }
 
 @keyframes card-flash {

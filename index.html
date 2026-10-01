@@ -128,11 +128,27 @@
 
     <p id="board-notice" class="notice hidden" role="status"></p>
 
+    <!-- Recordatorio de tareas detenidas más de 3 días en Pendiente o En curso:
+         de lunes a viernes a las 10:00 y a las 15:00, durante 1 minuto -->
+    <div id="overdue-banner" class="overdue-banner hidden" role="status" aria-live="polite">
+      <span class="overdue-banner-icon" aria-hidden="true">⏰</span>
+      <div class="overdue-banner-body">
+        <strong id="overdue-title">Hay tareas que necesitan atención</strong>
+        <ul id="overdue-summary" class="overdue-summary"></ul>
+      </div>
+      <button id="overdue-dismiss" class="overdue-dismiss" type="button" aria-label="Cerrar aviso" title="Cerrar aviso">×</button>
+      <!-- Barra que se vacía durante el minuto que el aviso permanece en pantalla -->
+      <span class="overdue-timer" aria-hidden="true"></span>
+    </div>
+
     <div class="board">
       <section class="column" data-status="pending">
         <header class="column-header">
           <h2>Pendiente</h2>
-          <span class="column-count" data-count="pending">0</span>
+          <div class="column-meta">
+            <span class="column-alert hidden" data-alert="pending"></span>
+            <span class="column-count" data-count="pending">0</span>
+          </div>
         </header>
         <ul class="task-list" data-status="pending"></ul>
       </section>
@@ -140,7 +156,10 @@
       <section class="column" data-status="in-progress">
         <header class="column-header">
           <h2>En curso</h2>
-          <span class="column-count" data-count="in-progress">0</span>
+          <div class="column-meta">
+            <span class="column-alert hidden" data-alert="in-progress"></span>
+            <span class="column-count" data-count="in-progress">0</span>
+          </div>
         </header>
         <ul class="task-list" data-status="in-progress"></ul>
       </section>
@@ -148,7 +167,9 @@
       <section class="column" data-status="completed">
         <header class="column-header">
           <h2>Completada</h2>
-          <span class="column-count" data-count="completed">0</span>
+          <div class="column-meta">
+            <span class="column-count" data-count="completed">0</span>
+          </div>
         </header>
         <ul class="task-list" data-status="completed"></ul>
         <button id="clear-completed" class="column-action">Borrar completadas</button>

@@ -1,0 +1,33 @@
+rules_version = '2';
+
+// Reglas de seguridad de Firestore para el tablero Kanban.
+// Se publican desde la consola de Firebase (Firestore Database → Reglas) o con
+// `firebase deploy --only firestore:rules`; este archivo no se despliega con GitHub Pages.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Fecha del historial de estados: milisegundos desde 1970, o null si la tarea
+    // aún no ha pasado por ese estado. Los documentos antiguos pueden no tener el campo.
+    function isDate(data, field) {
+      return !(field in data) || data[field] == null || data[field] is number;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasOnly(['text', 'status', 'order', 'createdAt', 'startedAt', 'completedAt'])
+        && data.text is string
+        && data.text.size() > 0
+        && data.text.size() <= 500
+        && data.status in ['pending', 'in-progress', 'completed']
+        && data.order is number
+        && isDate(data, 'createdAt')
+        && isDate(data, 'startedAt')
+        && isDate(data, 'completedAt');
+    }
+
+    // El tablero inicia sesión de forma anónima, así que basta con estar autenticado.
+    match /tasks/{taskId} {
+      allow read, delete: if request.auth != null;
+      allow create, update: if request.auth != null && isValidTask(request.resource.data);
+    }
+  }
+}

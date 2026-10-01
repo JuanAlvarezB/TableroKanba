@@ -1,0 +1,16 @@
+// Firestore security rules for the tasks collection
+rules_version = '2';
+"service cloud.firestore" {
+  match /databases/{database}/documents {
+    match /tasks/{taskId} {
+      allow read, delete: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.resource.data.keys().hasOnly(['text', 'status', 'order'])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 500
+        && request.resource.data.status in ['pending', 'in-progress', 'completed']
+        && request.resource.data.order is number;
+    }
+  }
+}
