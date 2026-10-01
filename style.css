@@ -142,6 +142,27 @@ h1 {
   animation: slide-in 0.25s ease, shake 0.4s ease 0.1s;
 }
 
+/* Aviso flotante de tarea nueva, centrado en la parte superior de la pantalla */
+.toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  top: 16px;
+  z-index: 2; /* por encima del tablero */
+  width: fit-content;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--color-success-soft);
+  color: var(--color-done);
+  font-weight: bold;
+  text-align: center;
+  overflow-wrap: anywhere;
+  box-shadow: var(--shadow-card-hover);
+  animation: slide-in 0.25s ease;
+}
+
 /* ---------- Tablero ---------- */
 
 .board {
@@ -394,6 +415,29 @@ h1 {
 
 .hint {
   font-style: italic;
+}
+
+/* Estado de la sincronización entre dispositivos: punto de color + texto */
+.sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sync-status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.sync-status[data-state='online']::before {
+  background: var(--color-done);
+}
+
+.sync-status[data-state='offline']::before {
+  background: var(--color-danger);
 }
 
 /* Dedicatoria y fecha de creación del tablero */

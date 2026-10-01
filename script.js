@@ -1,4 +1,19 @@
 const STORAGE_KEY = 'tareas';
+// Marca que las tareas guardadas solo en este navegador ya se subieron a Firestore.
+const MIGRATED_KEY = 'tareas-migradas';
+
+// Proyecto de Firebase donde se guardan y sincronizan las tareas entre dispositivos.
+// Esta configuración es pública por diseño; los datos los protegen las reglas de Firestore.
+const firebaseConfig = {
+  apiKey: 'AIzaSyDU9ccKPhiLgn1T6QRf-qfpujcNPnVwEfQ',
+  authDomain: 'tablero-kanban-76c61.firebaseapp.com',
+  projectId: 'tablero-kanban-76c61',
+  storageBucket: 'tablero-kanban-76c61.firebasestorage.app',
+  messagingSenderId: '141842598240',
+  appId: '1:141842598240:web:9c9ab78a96e8fe55e6b605',
+};
+const FIREBASE_CDN = 'https://www.gstatic.com/firebasejs/12.19.0';
+const TASKS_COLLECTION = 'tasks';
 
 // Columnas del tablero, en el orden del flujo de trabajo.
 const STATUSES = ['pending', 'in-progress', 'completed'];
@@ -13,25 +28,63 @@ const taskCount = document.getElementById('task-count');
 const allDoneMessage = document.getElementById('all-done-message');
 const clearCompletedBtn = document.getElementById('clear-completed');
 const boardNotice = document.getElementById('board-notice');
+const toast = document.getElementById('toast');
+const syncStatus = document.getElementById('sync-status');
 const lists = document.querySelectorAll('.task-list');
 
 let tasks = loadTasks();
 let draggedId = null;
-let noticeTimeout = null;
+
+// Conexión con Firestore ({ db, fs }); null mientras se trabaja solo en este navegador.
+let remote = null;
+
+// Los avisos se ocultan solos tras este tiempo.
+const MESSAGE_DURATION = 3000;
+const messageTimeouts = new Map();
 
 function loadTasks() {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  const parsed = stored ? JSON.parse(stored) : [];
-  // Migra tareas guardadas con el formato anterior ({ completed: boolean }).
-  return parsed.map((t) => ({
-    id: t.id,
-    text: t.text,
-    status: STATUSES.includes(t.status) ? t.status : t.completed ? 'completed' : 'pending',
-  }));
+  // localStorage puede lanzar error (Safari con datos de sitio bloqueados) o
+  // contener datos corruptos; en ambos casos se empieza con el tablero vacío.
+  let parsed;
+  try {
+    parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  } catch {
+    parsed = [];
+  }
+  if (!Array.isArray(parsed)) parsed = [];
+
+  // Migra tareas guardadas con formatos anteriores ({ completed: boolean }, id numérico, sin orden).
+  return sortTasks(
+    parsed
+      .filter((t) => t && typeof t.text === 'string')
+      .map((t, index) => ({
+        id: String(t.id),
+        text: t.text,
+        status: STATUSES.includes(t.status) ? t.status : t.completed ? 'completed' : 'pending',
+        order: typeof t.order === 'number' ? t.order : index,
+      })),
+  );
+}
+
+// Ordena por "order"; el id desempata tareas creadas a la vez en dos dispositivos.
+function sortTasks(list) {
+  return list.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+}
+
+function createId() {
+  return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
+function nextOrder() {
+  return tasks.length ? tasks[tasks.length - 1].order + 1 : 0;
 }
 
 function saveTasks() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+  } catch {
+    showNotice('No se pudieron guardar los cambios en este navegador.');
+  }
 }
 
 function countByStatus(status) {
@@ -43,17 +96,32 @@ function isColumnFull(status) {
   return limit !== undefined && countByStatus(status) >= limit;
 }
 
+// Muestra un mensaje en el elemento indicado y lo oculta pasados MESSAGE_DURATION ms.
+function flashMessage(element, message) {
+  element.textContent = message;
+  element.classList.remove('hidden');
+  clearTimeout(messageTimeouts.get(element));
+  messageTimeouts.set(element, setTimeout(() => element.classList.add('hidden'), MESSAGE_DURATION));
+}
+
 function showNotice(message) {
-  boardNotice.textContent = message;
-  boardNotice.classList.remove('hidden');
-  clearTimeout(noticeTimeout);
-  noticeTimeout = setTimeout(() => boardNotice.classList.add('hidden'), 3000);
+  flashMessage(boardNotice, message);
+}
+
+function announceNewTasks(newTasks) {
+  const message = newTasks.length === 1
+    ? `Se agregó una nueva tarea: "${newTasks[0].text}"`
+    : `Se agregaron ${newTasks.length} tareas nuevas`;
+  flashMessage(toast, message);
 }
 
 function addTask(text) {
-  tasks.push({ id: Date.now(), text, status: 'pending' });
+  const task = { id: createId(), text, status: 'pending', order: nextOrder() };
+  tasks.push(task);
   saveTasks();
+  saveRemote(task);
   render();
+  announceNewTasks([task]);
 }
 
 // Mueve una tarea a otra columna; si se indica beforeId, la coloca antes de esa tarea.
@@ -69,14 +137,20 @@ function moveTask(id, status, beforeId = null) {
   tasks = tasks.filter((t) => t.id !== id);
   task.status = status;
 
+  // El nuevo orden queda entre la tarea anterior y beforeId, así solo cambia esta tarea.
   const beforeIndex = beforeId === null ? -1 : tasks.findIndex((t) => t.id === beforeId);
   if (beforeIndex === -1) {
+    task.order = nextOrder();
     tasks.push(task);
   } else {
+    const next = tasks[beforeIndex].order;
+    const prev = beforeIndex > 0 ? tasks[beforeIndex - 1].order : next - 1;
+    task.order = (prev + next) / 2;
     tasks.splice(beforeIndex, 0, task);
   }
 
   saveTasks();
+  saveRemote(task);
   render();
 }
 
@@ -90,13 +164,129 @@ function shiftTask(id, direction) {
 function deleteTask(id) {
   tasks = tasks.filter((t) => t.id !== id);
   saveTasks();
+  deleteRemote([id]);
   render();
 }
 
 function clearCompleted() {
+  const completedIds = tasks.filter((t) => t.status === 'completed').map((t) => t.id);
   tasks = tasks.filter((t) => t.status !== 'completed');
   saveTasks();
+  deleteRemote(completedIds);
   render();
+}
+
+/* ---------- Sincronización con Firestore ---------- */
+
+function setSyncStatus(state) {
+  const labels = {
+    connecting: 'Conectando…',
+    online: 'Sincronizado',
+    offline: 'Solo en este dispositivo',
+  };
+  syncStatus.dataset.state = state;
+  syncStatus.textContent = labels[state];
+}
+
+function handleSyncError(error) {
+  console.error('Error de sincronización con Firestore:', error);
+  if (syncStatus.dataset.state !== 'offline') {
+    showNotice('No se pudo conectar con el servidor: los cambios solo se guardan en este dispositivo.');
+  }
+  setSyncStatus('offline');
+}
+
+function saveRemote(task) {
+  if (!remote) return;
+  const { db, fs } = remote;
+  const { text, status, order } = task;
+  fs.setDoc(fs.doc(db, TASKS_COLLECTION, task.id), { text, status, order }).catch(handleSyncError);
+}
+
+function deleteRemote(ids) {
+  if (!remote || ids.length === 0) return;
+  const { db, fs } = remote;
+  const batch = fs.writeBatch(db);
+  ids.forEach((id) => batch.delete(fs.doc(db, TASKS_COLLECTION, id)));
+  batch.commit().catch(handleSyncError);
+}
+
+// Sube una sola vez las tareas que este navegador tenía guardadas antes de usar Firestore.
+function migrateLocalTasks() {
+  try {
+    if (localStorage.getItem(MIGRATED_KEY)) return;
+  } catch {
+    return;
+  }
+  if (tasks.length === 0) return;
+
+  const { db, fs } = remote;
+  const batch = fs.writeBatch(db);
+  tasks.forEach(({ id, text, status, order }) => batch.set(fs.doc(db, TASKS_COLLECTION, id), { text, status, order }));
+  batch
+    .commit()
+    .then(() => {
+      try {
+        localStorage.setItem(MIGRATED_KEY, '1');
+      } catch {
+        // Sin almacenamiento local no hay forma de recordar la migración; no pasa nada si se repite.
+      }
+    })
+    .catch(handleSyncError);
+}
+
+// Conecta con Firestore y escucha los cambios de cualquier dispositivo. Si Firebase no
+// carga (sin internet, bloqueado), el tablero sigue funcionando solo con localStorage.
+async function connectRemote() {
+  setSyncStatus('connecting');
+  try {
+    const [{ initializeApp }, auth, fs] = await Promise.all([
+      import(`${FIREBASE_CDN}/firebase-app.js`),
+      import(`${FIREBASE_CDN}/firebase-auth.js`),
+      import(`${FIREBASE_CDN}/firebase-firestore.js`),
+    ]);
+    const app = initializeApp(firebaseConfig);
+    await auth.signInAnonymously(auth.getAuth(app));
+    remote = { db: fs.getFirestore(app), fs };
+  } catch (error) {
+    handleSyncError(error);
+    return;
+  }
+
+  migrateLocalTasks();
+
+  let firstSnapshot = true;
+  const { db, fs } = remote;
+  fs.onSnapshot(
+    fs.collection(db, TASKS_COLLECTION),
+    { includeMetadataChanges: true },
+    (snapshot) => {
+      // Las tareas creadas en este navegador ya se anunciaron en addTask (llevan escrituras pendientes).
+      const incoming = snapshot
+        .docChanges()
+        .filter((change) => change.type === 'added' && !change.doc.metadata.hasPendingWrites)
+        .map((change) => taskFromDoc(change.doc));
+
+      tasks = sortTasks(snapshot.docs.map(taskFromDoc));
+      saveTasks();
+      render();
+      setSyncStatus(snapshot.metadata.fromCache ? 'offline' : 'online');
+
+      if (!firstSnapshot && incoming.length > 0) announceNewTasks(incoming);
+      firstSnapshot = false;
+    },
+    handleSyncError,
+  );
+}
+
+function taskFromDoc(doc) {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    text: String(data.text ?? ''),
+    status: STATUSES.includes(data.status) ? data.status : 'pending',
+    order: typeof data.order === 'number' ? data.order : 0,
+  };
 }
 
 function createCard(task) {
@@ -208,7 +398,7 @@ lists.forEach((list) => {
     if (draggedId === null) return;
 
     const afterCard = getCardAfterCursor(list, event.clientY);
-    const beforeId = afterCard ? Number(afterCard.dataset.id) : null;
+    const beforeId = afterCard ? afterCard.dataset.id : null;
     moveTask(draggedId, list.dataset.status, beforeId);
   });
 });
@@ -225,4 +415,16 @@ taskForm.addEventListener('submit', (event) => {
 
 clearCompletedBtn.addEventListener('click', clearCompleted);
 
+// Sin conexión a Firestore, sincroniza al menos las pestañas del mismo navegador.
+// (key es null cuando la otra pestaña vacía todo el localStorage.)
+window.addEventListener('storage', (event) => {
+  if (remote || (event.key !== null && event.key !== STORAGE_KEY)) return;
+  const knownIds = new Set(tasks.map((t) => t.id));
+  tasks = loadTasks();
+  render();
+  const newTasks = tasks.filter((t) => !knownIds.has(t.id));
+  if (newTasks.length > 0) announceNewTasks(newTasks);
+});
+
 render();
+connectRemote();
