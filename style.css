@@ -15,6 +15,21 @@
   --color-warning-soft: #fff4e0;
   --color-warning-border: #f5c26b;
 
+  /* Etiquetas de prioridad y vencimiento (texto con contraste AA sobre su fondo).
+     Se evita el ámbar, reservado para las alertas de tareas detenidas. */
+  --tag-urgent: #c62828;
+  --tag-urgent-soft: #ffebee;
+  --tag-urgent-border: #f4b4b4;
+  --tag-high: #6a1b9a;
+  --tag-high-soft: #f3e5f5;
+  --tag-high-border: #d7b3e3;
+  --tag-low: #5f6368;
+  --tag-low-soft: #eef0f3;
+  --tag-low-border: #d5d9df;
+  --tag-due-soon: #a8410a;
+  --tag-due-soon-soft: #fff0e6;
+  --tag-due-soon-border: #f7b48a;
+
   /* Fondo blanco y limpio: el panel se separa con borde y sombra suave */
   --bg-base: #ffffff;
   --bg-surface: #fff;
@@ -268,6 +283,39 @@ h1 {
   background: rgba(138, 83, 0, 0.1);
 }
 
+/* ---------- Filtro rápido ---------- */
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+
+.filter-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background var(--ease), color var(--ease), border-color var(--ease);
+}
+
+.filter-btn:hover {
+  background: var(--bg-column);
+  color: var(--text);
+}
+
+.filter-btn[aria-pressed='true'] {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+  color: var(--color-primary-hover);
+  font-weight: bold;
+}
+
 /* ---------- Tablero ---------- */
 
 .board {
@@ -334,6 +382,29 @@ h1 {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* Número de tareas urgentes y de vencidas o próximas a vencer en la columna */
+.column-tag {
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+  animation: slide-in 0.25s ease;
+}
+
+.column-tag.urgent {
+  background: var(--tag-urgent-soft);
+  color: var(--tag-urgent);
+  border: 1px solid var(--tag-urgent-border);
+}
+
+.column-tag.due {
+  background: var(--tag-due-soon-soft);
+  color: var(--tag-due-soon);
+  border: 1px solid var(--tag-due-soon-border);
 }
 
 /* Número de tareas detenidas en la columna */
@@ -543,6 +614,160 @@ h1 {
   font-weight: bold;
 }
 
+/* ---------- Etiquetas de prioridad y vencimiento ---------- */
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag {
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.tag-urgent {
+  background: var(--tag-urgent-soft);
+  border-color: var(--tag-urgent-border);
+  color: var(--tag-urgent);
+}
+
+.tag-high {
+  background: var(--tag-high-soft);
+  border-color: var(--tag-high-border);
+  color: var(--tag-high);
+}
+
+.tag-low,
+.tag-due-scheduled {
+  background: var(--tag-low-soft);
+  border-color: var(--tag-low-border);
+  color: var(--tag-low);
+}
+
+.tag-none {
+  background: var(--bg-card);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.tag-due-soon {
+  background: var(--tag-due-soon-soft);
+  border-color: var(--tag-due-soon-border);
+  color: var(--tag-due-soon);
+}
+
+/* Vencida: rojo con borde marcado */
+.tag-due-overdue {
+  background: var(--tag-urgent-soft);
+  border: 2px solid var(--tag-urgent);
+  color: var(--tag-urgent);
+}
+
+/* Tarjeta urgente: borde rojo suave */
+.card.priority-urgent {
+  box-shadow: inset 0 0 0 1px var(--tag-urgent-border), var(--shadow-card);
+}
+
+.card.priority-urgent:hover {
+  box-shadow: inset 0 0 0 1px var(--tag-urgent-border), var(--shadow-card-hover);
+}
+
+/* Tarjeta "Puede esperar": texto ligeramente atenuado */
+.card.priority-low .task-text {
+  color: var(--text-muted);
+}
+
+/* Menú de etiqueta y fecha límite */
+.label-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-surface);
+  border-radius: var(--radius-sm);
+  background: var(--bg-column);
+  cursor: default;
+  animation: slide-in 0.2s ease;
+}
+
+.label-menu-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: var(--text-muted);
+}
+
+.label-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.label-option {
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform var(--ease), box-shadow var(--ease);
+}
+
+.label-option:hover {
+  transform: translateY(-1px);
+}
+
+/* Etiqueta actual de la tarea */
+.label-option[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--bg-column), 0 0 0 4px currentColor;
+}
+
+.label-due {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.due-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.due-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
+}
+
+.due-clear {
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.due-clear:hover:not(:disabled) {
+  background: var(--color-primary-soft);
+}
+
+.due-clear:disabled {
+  color: var(--text-muted);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Resaltado breve de una tarjeta recién editada aquí o cambiada en otro dispositivo */
 .card.flash {
   animation: card-flash 1.6s ease-out;
@@ -662,6 +887,7 @@ h1 {
 }
 
 .move-btn,
+.label-btn,
 .edit-btn,
 .delete-btn {
   min-width: 32px;
@@ -680,6 +906,8 @@ h1 {
 }
 
 .move-btn:hover:not(:disabled),
+.label-btn:hover,
+.label-btn[aria-expanded='true'],
 .edit-btn:hover {
   background: var(--color-primary-soft);
 }
@@ -694,6 +922,7 @@ h1 {
 }
 
 .move-btn:active:not(:disabled),
+.label-btn:active,
 .edit-btn:active,
 .delete-btn:active {
   transform: scale(0.9);

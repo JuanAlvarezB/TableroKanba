@@ -43,6 +43,31 @@ const REMINDER_DURATION = 60000;
 // Último turno mostrado en este navegador, para no repetirlo al recargar o en otra pestaña.
 const REMINDER_KEY = 'ultimo-recordatorio';
 
+// Etiquetas de prioridad: opcionales, se ponen después de crear la tarea. El orden de este
+// objeto es el orden de la columna; las tareas sin etiqueta van al final.
+const PRIORITIES = {
+  urgent: { icon: '🔴', label: 'Urgente' },
+  high: { icon: '⬆', label: 'Prioritaria' },
+  low: { icon: '💤', label: 'Puede esperar' },
+};
+const PRIORITY_RANK = Object.fromEntries(Object.keys(PRIORITIES).map((key, index) => [key, index]));
+const NO_PRIORITY_RANK = Object.keys(PRIORITIES).length;
+
+// Fecha límite opcional ("2026-10-15", día local). Se marca "próxima a vencer" cuando faltan
+// DUE_SOON_BUSINESS_DAYS días hábiles o menos, y "vencida" cuando ya pasó.
+const DUE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DUE_SOON_BUSINESS_DAYS = 2;
+
+// Filtro rápido del tablero.
+const FILTERS = {
+  all: () => true,
+  urgent: (t) => t.priority === 'urgent',
+  high: (t) => t.priority === 'high',
+  low: (t) => t.priority === 'low',
+  none: (t) => t.priority === null,
+  due: (t) => ['soon', 'overdue'].includes(dueInfo(t)?.kind),
+};
+
 // Límite de trabajo en curso (WIP) por columna. Kanban limita lo que está
 // "en curso" para terminar tareas antes de empezar otras nuevas.
 const WIP_LIMITS = { 'in-progress': 200 };
@@ -60,6 +85,7 @@ const overdueBanner = document.getElementById('overdue-banner');
 const overdueSummary = document.getElementById('overdue-summary');
 const overdueDismissBtn = document.getElementById('overdue-dismiss');
 const overdueTitle = document.getElementById('overdue-title');
+const filterButtons = document.querySelectorAll('.filter-btn');
 
 let tasks = loadTasks();
 let draggedId = null;
@@ -67,6 +93,10 @@ let draggedId = null;
 // Tarea en edición: { id, original, element, textarea, note }; null si no se edita ninguna.
 // El editor se reutiliza entre renders para no perder lo escrito cuando llegan cambios remotos.
 let editing = null;
+
+// Tarea con el menú de etiquetas abierto; null si no hay ninguno.
+let labelMenuId = null;
+let activeFilter = 'all';
 
 // Tarjetas resaltadas tras un cambio (id → momento de inicio), para que el resaltado
 // no se reinicie aunque el tablero se vuelva a dibujar mientras dura la animación.
@@ -101,6 +131,7 @@ function loadTasks() {
         status: STATUSES.includes(t.status) ? t.status : t.completed ? 'completed' : 'pending',
         order: typeof t.order === 'number' ? t.order : index,
         ...readDates(t),
+        ...readLabels(t),
       })),
   );
 }
@@ -112,6 +143,14 @@ function readDates(source) {
     dates[field] = Number.isFinite(source[field]) ? source[field] : null;
   });
   return dates;
+}
+
+// Lee la prioridad y la fecha límite; si no hay o no son válidas quedan en null (sin etiqueta).
+function readLabels(source) {
+  return {
+    priority: Object.hasOwn(PRIORITIES, source.priority ?? '') ? source.priority : null,
+    dueDate: typeof source.dueDate === 'string' && DUE_DATE_PATTERN.test(source.dueDate) ? source.dueDate : null,
+  };
 }
 
 // Las tareas creadas antes de existir el historial reciben como fecha por defecto el momento
@@ -167,6 +206,16 @@ function wasInProgress(task) {
 // Ordena por "order"; el id desempata tareas creadas a la vez en dos dispositivos.
 function sortTasks(list) {
   return list.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+}
+
+// Orden dentro de una columna: por etiqueta y, dentro de cada etiqueta, por el orden manual.
+// sort es estable, así que basta con comparar la etiqueta si la lista ya viene por "order".
+function priorityRank(task) {
+  return task.priority === null ? NO_PRIORITY_RANK : PRIORITY_RANK[task.priority];
+}
+
+function sortByPriority(list) {
+  return list.sort((a, b) => priorityRank(a) - priorityRank(b));
 }
 
 function createId() {
@@ -231,7 +280,7 @@ function notifyRemoteChanges(previousTasks) {
   const previous = new Map(previousTasks.map((t) => [t.id, t]));
   const changed = tasks.filter((t) => {
     const before = previous.get(t.id);
-    return before && (before.text !== t.text || before.status !== t.status);
+    return before && ['text', 'status', 'priority', 'dueDate'].some((field) => before[field] !== t[field]);
   });
   highlight(changed.map((t) => t.id));
   const edited = changed.filter((t) => previous.get(t.id).text !== t.text);
@@ -239,7 +288,9 @@ function notifyRemoteChanges(previousTasks) {
 }
 
 function addTask(text) {
-  const task = { id: createId(), text, status: 'pending', order: nextOrder(), ...readDates({}), createdAt: Date.now() };
+  const task = {
+    id: createId(), text, status: 'pending', order: nextOrder(), ...readDates({}), ...readLabels({}), createdAt: Date.now(),
+  };
   tasks.push(task);
   saveTasks();
   saveRemote(task);
@@ -289,6 +340,88 @@ function updateTask(id, fields) {
   updateRemote(id, fields);
 }
 
+/* ---------- Etiquetas de prioridad y fecha límite ---------- */
+
+// Al cambiar la etiqueta, la tarea pasa al final de su nuevo grupo.
+function setPriority(id, priority) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task || task.priority === priority) return;
+  updateTask(id, { priority, order: nextOrder() });
+  sortTasks(tasks);
+  highlight([id]);
+  render();
+}
+
+function setDueDate(id, dueDate) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task || task.dueDate === dueDate) return;
+  updateTask(id, { dueDate });
+  render();
+}
+
+function parseDueDate(value) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+// Días hábiles (lunes a viernes) desde mañana hasta la fecha, ambos incluidos. Se deja de
+// contar al pasar el límite porque solo importa saber si se supera.
+function businessDaysUntil(date) {
+  const day = new Date();
+  day.setHours(0, 0, 0, 0);
+  let count = 0;
+  while (day < date && count <= DUE_SOON_BUSINESS_DAYS) {
+    day.setDate(day.getDate() + 1);
+    if (day.getDay() !== 0 && day.getDay() !== 6) count += 1;
+  }
+  return count;
+}
+
+// Estado del vencimiento ({ kind, text, title }) o null si no tiene fecha o ya se completó.
+// kind: "overdue" (vencida), "soon" (próxima a vencer) o "scheduled" (aún con margen).
+function dueInfo(task) {
+  if (task.dueDate === null || task.status === 'completed') return null;
+  const due = parseDueDate(task.dueDate);
+  const title = `Fecha límite: ${longDateFormat.format(due)}`;
+  const days = -calendarDaysSince(due.getTime());
+
+  if (days < 0) return { kind: 'overdue', text: `⛔ Venció hace ${plural(-days, 'día', 'días')}`, title };
+  if (days === 0) return { kind: 'soon', text: '⏳ Vence hoy', title };
+  if (businessDaysUntil(due) <= DUE_SOON_BUSINESS_DAYS) {
+    return { kind: 'soon', text: days === 1 ? '⏳ Vence mañana' : `⏳ Vence en ${days} días`, title };
+  }
+  return { kind: 'scheduled', text: `📅 Vence el ${shortDateFormat.format(due)}`, title };
+}
+
+function setFilter(filter) {
+  activeFilter = filter;
+  filterButtons.forEach((btn) => btn.setAttribute('aria-pressed', String(btn.dataset.filter === filter)));
+  render();
+}
+
+function toggleLabelMenu(id) {
+  if (editing) commitEdit();
+  labelMenuId = labelMenuId === id ? null : id;
+  render();
+  if (labelMenuId === null) return;
+  const menu = document.querySelector(`.card[data-id="${CSS.escape(id)}"] .label-menu`);
+  if (!menu) return;
+  menu.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  const current = menu.querySelector('[aria-pressed="true"]') || menu.querySelector('button');
+  if (current) current.focus({ preventScroll: true });
+}
+
+// restoreFocus devuelve el foco al botón de etiquetas (teclado).
+function closeLabelMenu(restoreFocus = false) {
+  if (labelMenuId === null) return;
+  const id = labelMenuId;
+  labelMenuId = null;
+  render();
+  if (!restoreFocus) return;
+  const button = document.querySelector(`.card[data-id="${CSS.escape(id)}"] .label-btn`);
+  if (button) button.focus({ preventScroll: true });
+}
+
 /* ---------- Alertas de tareas detenidas ---------- */
 
 // Días calendario entre la fecha y hoy (de medianoche a medianoche, en la hora local).
@@ -317,7 +450,7 @@ function plural(count, singular, pluralForm) {
 // Firma de las alertas actuales; si cambia (pasa un día, una tarea supera el límite)
 // hay que volver a dibujar el tablero.
 function overdueSignature() {
-  return tasks.map((t) => `${t.id}:${overdueDays(t)}`).join('|');
+  return tasks.map((t) => `${t.id}:${overdueDays(t)}:${dueInfo(t)?.text}`).join('|');
 }
 let lastOverdueSignature = '';
 
@@ -357,7 +490,7 @@ function checkReminder() {
   if (document.visibilityState !== 'visible') return;
   const slot = currentReminderSlot();
   if (!slot || readLastReminder() === slot.id) return;
-  if (!tasks.some((t) => overdueDays(t) !== null)) return;
+  if (attentionGroups().length === 0) return;
 
   markReminderShown(slot.id);
   showReminder(slot);
@@ -381,45 +514,77 @@ function hideReminder() {
   overdueBanner.classList.remove('counting');
 }
 
-// Lleva a las tareas detenidas de una columna y las resalta.
-function showOverdue(status) {
-  const ids = tasks.filter((t) => t.status === status && overdueDays(t) !== null).map((t) => t.id);
+// Grupos de tareas que el recordatorio menciona: detenidas por columna, urgentes, vencidas y
+// próximas a vencer. Solo se devuelven los que tienen alguna tarea.
+function attentionGroups() {
+  const open = tasks.filter((t) => t.status !== 'completed');
+  const idsOf = (list) => list.map((t) => t.id);
+  const groups = Object.entries(OVERDUE_COLUMNS).map(([status, { name, phrase }]) => {
+    const ids = idsOf(tasks.filter((t) => t.status === status && overdueDays(t) !== null));
+    return { ids, text: `${plural(ids.length, 'tarea lleva', 'tareas llevan')} más de ${OVERDUE_DAYS} días ${phrase}.`, label: `Ver tareas detenidas en ${name}` };
+  });
+  const urgent = idsOf(open.filter((t) => t.priority === 'urgent'));
+  const overdueDue = idsOf(open.filter((t) => dueInfo(t)?.kind === 'overdue'));
+  const soonDue = idsOf(open.filter((t) => dueInfo(t)?.kind === 'soon'));
+  groups.push(
+    { ids: urgent, text: `${plural(urgent.length, 'tarea urgente', 'tareas urgentes')} sin completar.`, label: 'Ver tareas urgentes' },
+    { ids: overdueDue, text: `${plural(overdueDue.length, 'tarea vencida', 'tareas vencidas')}.`, label: 'Ver tareas vencidas' },
+    { ids: soonDue, text: `${plural(soonDue.length, 'tarea vence', 'tareas vencen')} en ${DUE_SOON_BUSINESS_DAYS} días hábiles o menos.`, label: 'Ver tareas próximas a vencer' },
+  );
+  return groups.filter((g) => g.ids.length > 0);
+}
+
+// Lleva a las tareas indicadas y las resalta; si el filtro las oculta, se muestran todas.
+function showTasks(ids) {
   if (ids.length === 0) return;
   highlight(ids);
-  render();
+  const visible = tasks.filter((t) => ids.includes(t.id)).every(FILTERS[activeFilter]);
+  if (visible) render();
+  else setFilter('all');
   const card = document.querySelector(`.card[data-id="${CSS.escape(ids[0])}"]`);
   if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+// Muestra un contador en el encabezado de la columna, o lo oculta si es cero.
+function setColumnChip(selector, text, title, count) {
+  const chip = document.querySelector(selector);
+  if (!chip) return;
+  chip.textContent = text;
+  chip.title = title;
+  chip.classList.toggle('hidden', count === 0);
+}
+
 function renderOverdueAlerts() {
-  const overdue = tasks.filter((t) => overdueDays(t) !== null);
   lastOverdueSignature = overdueSignature();
 
+  Object.entries(OVERDUE_COLUMNS).forEach(([status, { phrase }]) => {
+    const columnTasks = tasks.filter((t) => t.status === status);
+    const overdue = columnTasks.filter((t) => overdueDays(t) !== null).length;
+    const urgent = columnTasks.filter((t) => t.priority === 'urgent').length;
+    const due = columnTasks.filter(FILTERS.due).length;
+    setColumnChip(`[data-alert="${status}"]`, `⏰ ${overdue}`, `${plural(overdue, 'tarea lleva', 'tareas llevan')} más de ${OVERDUE_DAYS} días ${phrase}`, overdue);
+    setColumnChip(`[data-urgent="${status}"]`, `🔴 ${urgent}`, plural(urgent, 'tarea urgente', 'tareas urgentes'), urgent);
+    setColumnChip(`[data-due="${status}"]`, `⏳ ${due}`, `${plural(due, 'tarea vencida o', 'tareas vencidas o')} próximas a vencer`, due);
+  });
+
+  const groups = attentionGroups();
   overdueSummary.innerHTML = '';
-  Object.entries(OVERDUE_COLUMNS).forEach(([status, { name, phrase }]) => {
-    const count = overdue.filter((t) => t.status === status).length;
-
-    const chip = document.querySelector(`[data-alert="${status}"]`);
-    chip.textContent = `⏰ ${count}`;
-    chip.title = `${plural(count, 'tarea lleva', 'tareas llevan')} más de ${OVERDUE_DAYS} días ${phrase}`;
-    chip.classList.toggle('hidden', count === 0);
-
-    if (count === 0) return;
+  groups.forEach(({ ids, text, label }) => {
     const item = document.createElement('li');
-    const text = document.createElement('span');
-    text.textContent = `${plural(count, 'tarea lleva', 'tareas llevan')} más de ${OVERDUE_DAYS} días ${phrase}.`;
+    const span = document.createElement('span');
+    span.textContent = text;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'overdue-show';
     button.textContent = 'Ver';
-    button.setAttribute('aria-label', `Ver tareas detenidas en ${name}`);
-    button.addEventListener('click', () => showOverdue(status));
-    item.append(text, button);
+    button.setAttribute('aria-label', label);
+    button.addEventListener('click', () => showTasks(ids));
+    item.append(span, button);
     overdueSummary.append(item);
   });
 
-  // Si mientras se muestra se resuelven todas las tareas detenidas, el aviso sobra.
-  if (overdue.length === 0) hideReminder();
+  // Si mientras se muestra se resuelve todo lo pendiente, el aviso sobra.
+  if (groups.length === 0) hideReminder();
   else checkReminder();
 }
 
@@ -437,6 +602,7 @@ function startEdit(id) {
   }
   const task = tasks.find((t) => t.id === id);
   if (!task || !isEditable(task)) return;
+  labelMenuId = null;
 
   editing = { id, original: task.text };
   render();
@@ -494,6 +660,7 @@ function shiftTask(id, direction) {
 
 function deleteTask(id) {
   if (editing && editing.id === id) editing = null;
+  if (labelMenuId === id) labelMenuId = null;
   tasks = tasks.filter((t) => t.id !== id);
   saveTasks();
   deleteRemote([id]);
@@ -538,7 +705,11 @@ function handleSyncError(error) {
 }
 
 // Campos de la tarea que se guardan en Firestore (todo menos el id, que es el del documento).
+// Las etiquetas vacías no se envían: una tarea nueva no las necesita.
 function remoteData({ id, ...data }) {
+  ['priority', 'dueDate'].forEach((field) => {
+    if (data[field] === null) delete data[field];
+  });
   return data;
 }
 
@@ -646,6 +817,7 @@ function taskFromDoc(doc) {
     status: STATUSES.includes(data.status) ? data.status : 'pending',
     order: typeof data.order === 'number' ? data.order : 0,
     ...readDates(data),
+    ...readLabels(data),
   };
 }
 
@@ -654,8 +826,11 @@ function createCard(task) {
 
   const li = document.createElement('li');
   li.className = `card ${task.status}`;
-  li.draggable = true;
+  // Con el menú de etiquetas abierto no se arrastra, para poder usar la fecha con el ratón.
+  li.draggable = labelMenuId !== task.id;
   li.dataset.id = task.id;
+  li.dataset.priority = task.priority ?? '';
+  if (task.priority) li.classList.add(`priority-${task.priority}`);
 
   // El resaltado continúa donde iba aunque la tarjeta se haya vuelto a crear.
   const highlightStart = highlights.get(task.id);
@@ -716,6 +891,14 @@ function createCard(task) {
   editBtn.setAttribute('aria-label', 'Editar tarea');
   editBtn.addEventListener('click', () => startEdit(task.id));
 
+  const labelBtn = document.createElement('button');
+  labelBtn.className = 'label-btn';
+  labelBtn.textContent = '🏷️';
+  labelBtn.title = 'Etiqueta y fecha límite';
+  labelBtn.setAttribute('aria-label', 'Etiqueta y fecha límite');
+  labelBtn.setAttribute('aria-expanded', String(labelMenuId === task.id));
+  labelBtn.addEventListener('click', () => toggleLabelMenu(task.id));
+
   const deleteBtn = document.createElement('button');
   deleteBtn.className = 'delete-btn';
   deleteBtn.textContent = '🗑️';
@@ -724,8 +907,12 @@ function createCard(task) {
   deleteBtn.addEventListener('click', () => deleteTask(task.id));
 
   actions.append(backBtn, forwardBtn);
-  if (isEditable(task)) actions.append(editBtn);
+  if (isEditable(task)) actions.append(labelBtn, editBtn);
   actions.append(deleteBtn);
+
+  const tags = createTags(task);
+  if (tags) li.append(tags);
+
   const days = overdueDays(task);
   if (days !== null) {
     li.classList.add('overdue');
@@ -737,12 +924,108 @@ function createCard(task) {
   }
 
   li.append(span, createHistory(task), actions);
+  if (labelMenuId === task.id) li.append(createLabelMenu(task));
   return li;
+}
+
+// Etiquetas de la tarjeta: prioridad y vencimiento (como máximo dos).
+function createTags(task) {
+  const due = dueInfo(task);
+  if (!task.priority && !due) return null;
+
+  const tags = document.createElement('div');
+  tags.className = 'card-tags';
+  if (task.priority) {
+    const { icon, label } = PRIORITIES[task.priority];
+    const tag = document.createElement('span');
+    tag.className = `tag tag-${task.priority}`;
+    tag.textContent = `${icon} ${label}`;
+    tags.append(tag);
+  }
+  if (due) {
+    const tag = document.createElement('span');
+    tag.className = `tag tag-due-${due.kind}`;
+    tag.textContent = due.text;
+    tag.title = due.title;
+    tags.append(tag);
+  }
+  return tags;
+}
+
+// Menú para poner, cambiar o quitar la etiqueta y la fecha límite de una tarea ya creada.
+// data-menu-key permite devolver el foco al mismo control después de redibujar.
+function createLabelMenu(task) {
+  const menu = document.createElement('div');
+  menu.className = 'label-menu';
+  menu.setAttribute('role', 'group');
+  menu.setAttribute('aria-label', 'Etiqueta y fecha límite');
+  menu.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeLabelMenu(true);
+    }
+  });
+
+  const title = document.createElement('p');
+  title.className = 'label-menu-title';
+  title.textContent = 'Prioridad';
+
+  const options = document.createElement('div');
+  options.className = 'label-options';
+  [...Object.keys(PRIORITIES), null].forEach((priority) => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = `label-option tag tag-${priority ?? 'none'}`;
+    option.dataset.menuKey = `priority-${priority ?? 'none'}`;
+    option.textContent = priority ? `${PRIORITIES[priority].icon} ${PRIORITIES[priority].label}` : 'Sin etiqueta';
+    option.setAttribute('aria-pressed', String(task.priority === priority));
+    option.addEventListener('click', () => {
+      setPriority(task.id, priority);
+      closeLabelMenu(true);
+    });
+    options.append(option);
+  });
+
+  const dueLabel = document.createElement('label');
+  dueLabel.className = 'label-menu-title';
+  dueLabel.textContent = 'Fecha límite (opcional)';
+  dueLabel.htmlFor = `due-${task.id}`;
+
+  const dueRow = document.createElement('div');
+  dueRow.className = 'label-due';
+
+  const dueInput = document.createElement('input');
+  dueInput.type = 'date';
+  dueInput.id = `due-${task.id}`;
+  dueInput.className = 'due-input';
+  dueInput.value = task.dueDate ?? '';
+  dueInput.dataset.menuKey = 'due';
+  dueInput.addEventListener('change', () => {
+    if (dueInput.value === '' || DUE_DATE_PATTERN.test(dueInput.value)) setDueDate(task.id, dueInput.value || null);
+  });
+
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'due-clear';
+  clearBtn.textContent = 'Quitar';
+  clearBtn.dataset.menuKey = 'due-clear';
+  clearBtn.disabled = task.dueDate === null;
+  clearBtn.addEventListener('click', () => {
+    setDueDate(task.id, null);
+    // El botón queda desactivado tras redibujar; el foco pasa al campo de fecha nuevo.
+    const input = document.getElementById(dueInput.id);
+    if (input) input.focus({ preventScroll: true });
+  });
+
+  dueRow.append(dueInput, clearBtn);
+  menu.append(title, options, dueLabel, dueRow);
+  return menu;
 }
 
 const dateFormat = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const dateFormatWithYear = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const shortDateFormat = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short' });
+const longDateFormat = new Intl.DateTimeFormat('es', { dateStyle: 'full' });
 const fullDateFormat = new Intl.DateTimeFormat('es', { dateStyle: 'full', timeStyle: 'short' });
 
 // El año solo se muestra si no es el actual, para que la fecha ocupe poco en la tarjeta.
@@ -802,6 +1085,7 @@ function getEditorCard(task) {
   if (!editing.element) editing.element = createEditor(task);
   const { element, textarea, note } = editing;
   element.className = `card editing ${task.status}`;
+  element.dataset.priority = task.priority ?? '';
 
   if (task.text !== editing.original) {
     if (textarea.value === editing.original) {
@@ -878,9 +1162,12 @@ function createEditor(task) {
   return li;
 }
 
-// Devuelve la tarjeta situada justo debajo del cursor, para insertar antes de ella.
-function getCardAfterCursor(list, y) {
-  const cards = [...list.querySelectorAll('.card:not(.dragging)')];
+// Devuelve la tarjeta del mismo grupo de etiqueta situada justo debajo del cursor, para
+// insertar antes de ella. Arrastrar no cambia la etiqueta: si se suelta en otro grupo, la
+// tarea queda al principio o al final del suyo.
+function getCardAfterCursor(list, y, priority) {
+  const cards = [...list.querySelectorAll('.card:not(.dragging)')]
+    .filter((card) => card.dataset.priority === (priority ?? ''));
   return cards.find((card) => {
     const box = card.getBoundingClientRect();
     return y < box.top + box.height / 2;
@@ -895,6 +1182,10 @@ function render() {
     editing = null;
     showNotice('La tarea que estabas editando se marcó como completada en otro dispositivo; ya no se puede modificar.');
   }
+  const menuTask = tasks.find((t) => t.id === labelMenuId);
+  if (labelMenuId !== null && (!menuTask || !isEditable(menuTask))) labelMenuId = null;
+  // Control del menú de etiquetas con el foco, para devolvérselo tras redibujar.
+  const menuFocusKey = document.activeElement?.closest?.('.label-menu') ? document.activeElement.dataset.menuKey : null;
 
   // Al vaciar las listas el editor sale del documento y pierde el foco; se guarda para devolverlo.
   const focused = editing && editing.element && editing.element.contains(document.activeElement)
@@ -909,13 +1200,14 @@ function render() {
     list.innerHTML = '';
 
     const columnTasks = tasks.filter((t) => t.status === status);
-    if (columnTasks.length === 0) {
+    const visibleTasks = sortByPriority(columnTasks.filter(FILTERS[activeFilter]));
+    if (visibleTasks.length === 0) {
       const empty = document.createElement('li');
       empty.className = 'empty';
-      empty.textContent = 'Sin tareas';
+      empty.textContent = columnTasks.length === 0 ? 'Sin tareas' : 'Sin tareas con este filtro';
       list.appendChild(empty);
     } else {
-      columnTasks.forEach((task) => list.appendChild(createCard(task)));
+      visibleTasks.forEach((task) => list.appendChild(createCard(task)));
     }
 
     const counter = document.querySelector(`[data-count="${status}"]`);
@@ -938,6 +1230,10 @@ function render() {
     if (focused) focused.focus({ preventScroll: true });
     if (selection) editing.textarea.setSelectionRange(...selection);
   }
+  if (menuFocusKey && labelMenuId !== null) {
+    const control = document.querySelector(`.label-menu [data-menu-key="${menuFocusKey}"]`);
+    if (control) control.focus({ preventScroll: true });
+  }
 }
 
 lists.forEach((list) => {
@@ -956,7 +1252,9 @@ lists.forEach((list) => {
     list.classList.remove('drag-over');
     if (draggedId === null) return;
 
-    const afterCard = getCardAfterCursor(list, event.clientY);
+    const dragged = tasks.find((t) => t.id === draggedId);
+    if (!dragged) return;
+    const afterCard = getCardAfterCursor(list, event.clientY, dragged.priority);
     const beforeId = afterCard ? afterCard.dataset.id : null;
     moveTask(draggedId, list.dataset.status, beforeId);
   });
@@ -974,6 +1272,12 @@ taskForm.addEventListener('submit', (event) => {
 
 clearCompletedBtn.addEventListener('click', clearCompleted);
 overdueDismissBtn.addEventListener('click', hideReminder);
+filterButtons.forEach((btn) => btn.addEventListener('click', () => setFilter(btn.dataset.filter)));
+
+// Un clic fuera del menú de etiquetas lo cierra.
+document.addEventListener('click', (event) => {
+  if (labelMenuId !== null && !event.target.closest('.label-menu, .label-btn')) closeLabelMenu();
+});
 
 // Revisa con la página abierta si alguna tarea superó el límite, si cambió el día o si
 // empezó un turno de recordatorio. No se redibuja mientras se arrastra una tarjeta.

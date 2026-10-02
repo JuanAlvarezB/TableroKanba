@@ -12,8 +12,19 @@ service cloud.firestore {
       return !(field in data) || data[field] == null || data[field] is number;
     }
 
+    // Etiqueta de prioridad opcional: null o ausente significa "sin etiqueta".
+    function isPriority(data) {
+      return !('priority' in data) || data.priority == null || data.priority in ['urgent', 'high', 'low'];
+    }
+
+    // Fecha límite opcional, como texto "AAAA-MM-DD".
+    function isDueDate(data) {
+      return !('dueDate' in data) || data.dueDate == null
+        || (data.dueDate is string && data.dueDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'));
+    }
+
     function isValidTask(data) {
-      return data.keys().hasOnly(['text', 'status', 'order', 'createdAt', 'startedAt', 'completedAt'])
+      return data.keys().hasOnly(['text', 'status', 'order', 'createdAt', 'startedAt', 'completedAt', 'priority', 'dueDate'])
         && data.text is string
         && data.text.size() > 0
         && data.text.size() <= 500
@@ -21,7 +32,9 @@ service cloud.firestore {
         && data.order is number
         && isDate(data, 'createdAt')
         && isDate(data, 'startedAt')
-        && isDate(data, 'completedAt');
+        && isDate(data, 'completedAt')
+        && isPriority(data)
+        && isDueDate(data);
     }
 
     // El tablero inicia sesión de forma anónima, así que basta con estar autenticado.
