@@ -1,17 +1,9 @@
-const STORAGE_KEY = 'tareas';
+// Claves de localStorage del ambiente actual (config.js): PDN y Desarrollo no comparten tareas.
+const STORAGE_KEY = APP_ENV.storageKey;
 // Marca que las tareas guardadas solo en este navegador ya se subieron a Firestore.
-const MIGRATED_KEY = 'tareas-migradas';
+const MIGRATED_KEY = APP_ENV.migratedKey;
 
-// Proyecto de Firebase donde se guardan y sincronizan las tareas entre dispositivos.
-// Esta configuración es pública por diseño; los datos los protegen las reglas de Firestore.
-const firebaseConfig = {
-  apiKey: 'AIzaSyDU9ccKPhiLgn1T6QRf-qfpujcNPnVwEfQ',
-  authDomain: 'tablero-kanban-76c61.firebaseapp.com',
-  projectId: 'tablero-kanban-76c61',
-  storageBucket: 'tablero-kanban-76c61.firebasestorage.app',
-  messagingSenderId: '141842598240',
-  appId: '1:141842598240:web:9c9ab78a96e8fe55e6b605',
-};
+// El proyecto de Firebase de cada ambiente está en config.js (APP_ENV.firebaseConfig).
 const FIREBASE_CDN = 'https://www.gstatic.com/firebasejs/12.19.0';
 const TASKS_COLLECTION = 'tasks';
 
@@ -771,7 +763,7 @@ async function connectRemote() {
       import(`${FIREBASE_CDN}/firebase-auth.js`),
       import(`${FIREBASE_CDN}/firebase-firestore.js`),
     ]);
-    const app = initializeApp(firebaseConfig);
+    const app = initializeApp(APP_ENV.firebaseConfig);
     await auth.signInAnonymously(auth.getAuth(app));
     remote = { db: fs.getFirestore(app), fs };
   } catch (error) {
@@ -1303,6 +1295,18 @@ window.addEventListener('storage', (event) => {
   if (newTasks.length > 0) announceNewTasks(newTasks);
 });
 
+// Fuera de PDN se marca la página como Desarrollo, para no confundir las pruebas con el
+// tablero real.
+function showEnvironmentBadge() {
+  if (APP_ENV.name !== 'dev') return;
+  document.title = `[DEV] ${document.title}`;
+  const badge = document.createElement('span');
+  badge.className = 'env-badge';
+  badge.textContent = 'DESARROLLO';
+  document.querySelector('h1').append(' ', badge);
+}
+
+showEnvironmentBadge();
 backfillDates();
 render();
 connectRemote();

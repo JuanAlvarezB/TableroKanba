@@ -27,15 +27,17 @@ jobs:
 
       - name: Preparar la carpeta del sitio
         # Solo se publican los archivos de la app, no la configuración del repositorio
-        # Cada despliegue añade el commit a las rutas de script.js y style.css
+        # Cada despliegue añade el commit a las rutas de config.js, script.js y style.css
         # (script.js?v=abc1234), así los navegadores como Safari no siguen usando
         # la versión anterior guardada en su caché.
         run: |
           mkdir _site
-          cp index.html script.js style.css _site/
+          cp index.html config.js script.js style.css _site/
           VERSION="${GITHUB_SHA::7}"
-          sed -i -e "s|src=\"script.js\"|src=\"script.js?v=${VERSION}\"|" \
+          sed -i -e "s|src=\"config.js\"|src=\"config.js?v=${VERSION}\"|" \
+                 -e "s|src=\"script.js\"|src=\"script.js?v=${VERSION}\"|" \
                  -e "s|href=\"style.css\"|href=\"style.css?v=${VERSION}\"|" _site/index.html
+          grep -q "config.js?v=${VERSION}" _site/index.html
           grep -q "script.js?v=${VERSION}" _site/index.html
           grep -q "style.css?v=${VERSION}" _site/index.html
 
