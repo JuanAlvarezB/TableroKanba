@@ -1,4 +1,31 @@
-.DS_Store
-_site/
+# Notas internas del proyecto (no se publican)
 PENDIENTES.txt
-firestore.rules
+
+# Sitio generado por el despliegue de GitHub Pages (deploy.yml)
+_site/
+
+# Respaldos de tareas con datos reales de PDN (ver GUIA_AMBIENTES.md, fase 0)
+respaldo-*.json
+
+# Firebase CLI: caché, registros y exportaciones del emulador
+.firebase/
+*-debug.log
+firebase-export-*/
+
+# Dependencias y registros de Node (firebase-tools, pruebas)
+node_modules/
+npm-debug.log*
+
+# Variables de entorno locales, por si se usan en el futuro
+.env
+.env.*
+
+# Sistema operativo (macOS)
+.DS_Store
+._*
+
+# Editores
+.vscode/
+.idea/
+*.swp
+GUIA_AMBIENTES.md
