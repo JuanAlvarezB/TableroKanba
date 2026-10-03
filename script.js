@@ -1295,6 +1295,18 @@ window.addEventListener('storage', (event) => {
   if (newTasks.length > 0) announceNewTasks(newTasks);
 });
 
+// Fuera de PDN se marca la página como Desarrollo, para no confundir las pruebas con el
+// tablero real.
+function showEnvironmentBadge() {
+  if (APP_ENV.name !== 'dev') return;
+  document.title = `[DEV] ${document.title}`;
+  const badge = document.createElement('span');
+  badge.className = 'env-badge';
+  badge.textContent = 'DESARROLLO';
+  document.querySelector('h1').append(' ', badge);
+}
+
+showEnvironmentBadge();
 backfillDates();
 render();
 connectRemote();
