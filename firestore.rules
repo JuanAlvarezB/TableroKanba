@@ -1,10 +1,29 @@
 rules_version = '2';
 
-// Reglas de seguridad de Firestore para el tablero Kanban.
+// Reglas de seguridad de Firestore de LUCAS (tablero de tareas).
+// Solo entran las personas de allowedUsers, y cada una solo lee y escribe sus propias tareas.
 // Se publican desde la consola de Firebase (Firestore Database → Reglas) o con
 // `firebase deploy --only firestore:rules`; este archivo no se despliega con GitHub Pages.
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Correo de la sesión en minúsculas: los IDs de allowedUsers se guardan así.
+    function normalizedEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    // Sesión con correo verificado y presente en la lista de autorizados. Los anónimos no
+    // tienen correo, así que quedan fuera.
+    function isAuthorized() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/allowedUsers/$(normalizedEmail()));
+    }
+
+    // Dueño de la tarea: ownerId (uid de quien la creó) debe ser el de quien lee o escribe.
+    function isOwner(data) {
+      return data.ownerId == request.auth.uid;
+    }
 
     // Fecha del historial de estados: milisegundos desde 1970, o null si la tarea
     // aún no ha pasado por ese estado. Los documentos antiguos pueden no tener el campo.
@@ -24,7 +43,8 @@ service cloud.firestore {
     }
 
     function isValidTask(data) {
-      return data.keys().hasOnly(['text', 'status', 'order', 'createdAt', 'startedAt', 'completedAt', 'priority', 'dueDate'])
+      return data.keys().hasOnly(['text', 'status', 'order', 'createdAt', 'startedAt', 'completedAt', 'priority', 'dueDate', 'ownerId'])
+        && data.ownerId is string
         && data.text is string
         && data.text.size() > 0
         && data.text.size() <= 500
@@ -37,10 +57,23 @@ service cloud.firestore {
         && isDueDate(data);
     }
 
-    // El tablero inicia sesión de forma anónima, así que basta con estar autenticado.
+    // Nadie ve ni toca tareas ajenas. Al actualizar se comprueba el dueño antes y después,
+    // para que nadie pueda reasignar una tarea a otro ownerId.
     match /tasks/{taskId} {
-      allow read, delete: if request.auth != null;
-      allow create, update: if request.auth != null && isValidTask(request.resource.data);
+      allow read: if isAuthorized() && isOwner(resource.data);
+      // Borrar una tarea que otro dispositivo ya borró no es un error (resource == null).
+      allow delete: if isAuthorized() && (resource == null || isOwner(resource.data));
+      allow create: if isAuthorized() && isValidTask(request.resource.data)
+        && isOwner(request.resource.data);
+      allow update: if isAuthorized() && isValidTask(request.resource.data)
+        && isOwner(resource.data) && isOwner(request.resource.data);
+    }
+
+    // Cada persona solo lee su propio documento (para saber si está autorizada y su nombre);
+    // nadie puede listar quién más lo está. Se administra desde la consola, no desde la app.
+    match /allowedUsers/{email} {
+      allow read: if request.auth != null && normalizedEmail() == email;
+      allow write: if false;
     }
   }
 }
