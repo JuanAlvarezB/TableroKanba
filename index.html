@@ -5,7 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Inicio · LUCAS</title>
   <link rel="icon" href="husky.svg" type="image/svg+xml">
+  <!-- Sustitutos libres de las fuentes de DESIGN.md: Manrope (Sofia Pro), Source Serif 4
+       (P22 Mackinac Pro) e IBM Plex Mono. Si no cargan, se usan las del sistema. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Manrope:wght@400;500;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;1,8..60,700&display=swap">
   <link rel="stylesheet" href="lucas.css">
+  <link rel="stylesheet" href="inicio.css">
 </head>
 <body class="lucas-home auth-pending">
   <!-- Visible solo hasta confirmar la sesión (auth.js); si no hay conexión muestra Reintentar -->
@@ -20,32 +26,85 @@
         <span class="brand-name">LUCAS</span>
       </a>
       <div class="topbar-end">
-        <span id="env-badge" class="env-badge" hidden>DESARROLLO</span>
+        <span id="env-badge" class="env-badge" hidden>Desarrollo</span>
         <div id="account"></div>
       </div>
     </header>
 
     <main class="home-main">
-      <h1>Hola, <span id="user-name"></span></h1>
-      <p class="home-intro">¿Qué quieres organizar hoy?</p>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Tu espacio en LUCAS</p>
+          <h1>Hola, <em id="user-name"></em></h1>
+          <p class="home-intro">¿Qué quieres organizar hoy?</p>
+        </div>
+        <!-- Dibujo de línea: lista con checks, estrella y planta -->
+        <svg class="hero-doodle" viewBox="0 0 220 160" aria-hidden="true">
+          <g fill="none" stroke="#231e21" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M60 22 C90 20 120 21 146 23 L148 140 C118 142 90 141 62 140 Z" fill="#fbfdfd"/>
+            <path d="M76 50 L84 58 L98 42" stroke="#1c5d5f" stroke-width="2.5"/>
+            <path d="M108 52 L134 52"/>
+            <path d="M76 82 L84 90 L98 74" stroke="#1c5d5f" stroke-width="2.5"/>
+            <path d="M108 84 L130 84"/>
+            <path d="M78 108 L94 108 L94 122 L78 122 Z"/>
+            <path d="M108 116 L128 116"/>
+            <path d="M170 140 C170 120 172 104 180 90"/>
+            <path d="M172 116 C160 110 154 100 156 90 C166 94 172 104 172 116 Z" fill="#65b8a2"/>
+            <path d="M176 104 C186 98 194 88 192 78 C182 82 176 92 176 104 Z" fill="#cae1e2"/>
+            <path d="M158 140 L190 140 L186 156 L162 156 Z" fill="#d6aec1"/>
+          </g>
+          <g fill="none" stroke-width="2" stroke-linecap="round">
+            <path d="M30 30 L34 42 L46 46 L34 50 L30 62 L26 50 L14 46 L26 42 Z" stroke="#d6aec1" fill="#f2e8e2"/>
+            <path d="M28 110 L28 128 M19 119 L37 119" stroke="#65b8a2"/>
+            <circle cx="190" cy="30" r="8" stroke="#65b8a2"/>
+          </g>
+        </svg>
+      </section>
 
       <!-- Solo se listan funciones reales; las nuevas se agregan como otra tarjeta -->
-      <section aria-labelledby="functions-heading">
-        <h2 id="functions-heading">Tus funciones</h2>
+      <section class="functions" aria-labelledby="functions-heading">
+        <div class="section-head">
+          <h2 id="functions-heading">Tus funciones</h2>
+        </div>
+
         <article class="function-card">
-          <svg class="function-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <rect x="5" y="7" width="11" height="34" rx="3" fill="currentColor" opacity=".24"/>
-            <rect x="19" y="7" width="11" height="34" rx="3" fill="currentColor" opacity=".55"/>
-            <rect x="33" y="7" width="10" height="34" rx="3" fill="currentColor"/>
-          </svg>
+          <!-- Miniatura del tablero: Pendiente, En curso y Completada -->
+          <div class="mockup" aria-hidden="true">
+            <div class="mockup-bar"><i></i><i></i><i></i></div>
+            <div class="mock-cols">
+              <div class="mock-col">
+                <span class="mock-title">Pendiente</span>
+                <div class="mock-task"><div class="mock-line"></div><div class="mock-line"></div><span class="chip urgent">Urgente</span></div>
+                <div class="mock-task"><div class="mock-line"></div><div class="mock-line"></div></div>
+              </div>
+              <div class="mock-col">
+                <span class="mock-title">En curso</span>
+                <div class="mock-task"><div class="mock-line"></div><div class="mock-line"></div><span class="chip high">Prioritaria</span></div>
+              </div>
+              <div class="mock-col">
+                <span class="mock-title">Completada</span>
+                <div class="mock-task"><div class="mock-line"></div><div class="mock-line"></div><span class="chip done">✓ Hecha</span></div>
+                <div class="mock-task"><div class="mock-line"></div><div class="mock-line"></div></div>
+              </div>
+            </div>
+          </div>
+
           <div class="function-copy">
+            <p class="eyebrow">Tablero</p>
             <h3>Tablero de tareas</h3>
             <p>Organiza y consulta tus tareas.</p>
+            <ul class="checklist">
+              <li>Tres columnas: pendiente, en curso y completada</li>
+              <li>Prioridades y fechas de vencimiento</li>
+              <li>Avisos de tareas detenidas y recordatorios</li>
+            </ul>
+            <a class="open-function" href="tablero.html">Abrir tablero <span aria-hidden="true">→</span></a>
           </div>
-          <a class="open-function" href="tablero.html">Abrir tablero <span aria-hidden="true">→</span></a>
         </article>
       </section>
     </main>
+
+    <footer class="footer">LUCAS · Organiza tu día a día</footer>
   </div>
 
   <script src="config.js"></script>
