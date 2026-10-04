@@ -26,20 +26,29 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Preparar la carpeta del sitio
-        # Solo se publican los archivos de la app, no la configuración del repositorio
-        # Cada despliegue añade el commit a las rutas de config.js, script.js y style.css
+        # Solo se publican los archivos de la app, no la configuración del repositorio:
+        # index.html (inicio de LUCAS), tablero.html (tablero de tareas), login.html y sus
+        # recursos. Cada despliegue añade el commit a las rutas .js y .css de cada página
         # (script.js?v=abc1234), así los navegadores como Safari no siguen usando
         # la versión anterior guardada en su caché.
         run: |
           mkdir _site
-          cp index.html config.js script.js style.css _site/
+          cp index.html tablero.html login.html \
+             config.js auth.js cuenta.js inicio.js script.js login.js \
+             lucas.css style.css login.css husky.svg _site/
           VERSION="${GITHUB_SHA::7}"
-          sed -i -e "s|src=\"config.js\"|src=\"config.js?v=${VERSION}\"|" \
-                 -e "s|src=\"script.js\"|src=\"script.js?v=${VERSION}\"|" \
-                 -e "s|href=\"style.css\"|href=\"style.css?v=${VERSION}\"|" _site/index.html
-          grep -q "config.js?v=${VERSION}" _site/index.html
-          grep -q "script.js?v=${VERSION}" _site/index.html
-          grep -q "style.css?v=${VERSION}" _site/index.html
+          sed -i -E "s#(src|href)=\"([a-z-]+\.(js|css))\"#\1=\"\2?v=${VERSION}\"#g" _site/*.html
+          # Ninguna página puede quedar con un .js o .css sin versión, y cada recurso que
+          # una página pide tiene que existir en el sitio (si no, daría 404 en PDN).
+          if grep -nE "(src|href)=\"[a-z-]+\.(js|css)\"" _site/*.html; then
+            echo "Hay recursos sin versión"; exit 1
+          fi
+          for ref in $(grep -ohE "(src|href)=\"[a-z-]+\.(js|css|svg|html)" _site/*.html | sed -E 's/.*"//' | sort -u); do
+            test -f "_site/${ref}" || { echo "Falta ${ref} en el sitio"; exit 1; }
+          done
+          grep -q "auth.js?v=${VERSION}" _site/index.html
+          grep -q "script.js?v=${VERSION}" _site/tablero.html
+          grep -q "login.js?v=${VERSION}" _site/login.html
 
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v6
