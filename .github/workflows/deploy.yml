@@ -35,7 +35,7 @@ jobs:
           mkdir _site
           cp index.html tablero.html login.html \
              config.js auth.js cuenta.js inicio.js script.js login.js \
-             lucas.css style.css login.css husky.svg _site/
+             lucas.css inicio.css style.css login.css husky.svg _site/
           VERSION="${GITHUB_SHA::7}"
           sed -i -E "s#(src|href)=\"([a-z-]+\.(js|css))\"#\1=\"\2?v=${VERSION}\"#g" _site/*.html
           # Ninguna página puede quedar con un .js o .css sin versión, y cada recurso que
