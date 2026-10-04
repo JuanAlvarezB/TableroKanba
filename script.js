@@ -1,10 +1,10 @@
-// Claves de localStorage del ambiente actual (config.js): PDN y Desarrollo no comparten tareas.
-const STORAGE_KEY = APP_ENV.storageKey;
+// Claves de localStorage de la persona (auth.js): llevan el ambiente y su uid, así nadie ve la
+// copia local de otra persona en el mismo navegador. Se asignan al confirmar la sesión.
+let storageKey = null;
 // Marca que las tareas guardadas solo en este navegador ya se subieron a Firestore.
-const MIGRATED_KEY = APP_ENV.migratedKey;
+let migratedKey = null;
 
-// El proyecto de Firebase de cada ambiente está en config.js (APP_ENV.firebaseConfig).
-const FIREBASE_CDN = 'https://www.gstatic.com/firebasejs/12.19.0';
+// Firebase se carga e inicializa en auth.js; cada tarea guarda en ownerId el uid de su dueño.
 const TASKS_COLLECTION = 'tasks';
 
 // Columnas del tablero, en el orden del flujo de trabajo.
@@ -79,7 +79,8 @@ const overdueDismissBtn = document.getElementById('overdue-dismiss');
 const overdueTitle = document.getElementById('overdue-title');
 const filterButtons = document.querySelectorAll('.filter-btn');
 
-let tasks = loadTasks();
+// Vacío hasta confirmar la sesión: antes no se muestra ninguna tarea (ver startBoard).
+let tasks = [];
 let draggedId = null;
 
 // Tarea en edición: { id, original, element, textarea, note }; null si no se edita ninguna.
@@ -95,7 +96,7 @@ let activeFilter = 'all';
 const HIGHLIGHT_DURATION = 1600;
 const highlights = new Map();
 
-// Conexión con Firestore ({ db, fs }); null mientras se trabaja solo en este navegador.
+// Conexión con Firestore ({ db, fs, uid }); null mientras se trabaja solo en este navegador.
 let remote = null;
 
 // Los avisos se ocultan solos tras este tiempo.
@@ -107,7 +108,7 @@ function loadTasks() {
   // contener datos corruptos; en ambos casos se empieza con el tablero vacío.
   let parsed;
   try {
-    parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    parsed = JSON.parse(localStorage.getItem(storageKey) || '[]');
   } catch {
     parsed = [];
   }
@@ -219,8 +220,9 @@ function nextOrder() {
 }
 
 function saveTasks() {
+  if (!storageKey) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    localStorage.setItem(storageKey, JSON.stringify(tasks));
   } catch {
     showNotice('No se pudieron guardar los cambios en este navegador.');
   }
@@ -696,13 +698,14 @@ function handleSyncError(error) {
   setSyncStatus('offline');
 }
 
-// Campos de la tarea que se guardan en Firestore (todo menos el id, que es el del documento).
+// Campos de la tarea que se guardan en Firestore (todo menos el id, que es el del documento),
+// más el dueño: las reglas exigen que ownerId sea el uid de quien la escribe.
 // Las etiquetas vacías no se envían: una tarea nueva no las necesita.
 function remoteData({ id, ...data }) {
   ['priority', 'dueDate'].forEach((field) => {
     if (data[field] === null) delete data[field];
   });
-  return data;
+  return { ...data, ownerId: remote.uid };
 }
 
 function saveRemote(task) {
@@ -729,10 +732,11 @@ function deleteRemote(ids) {
   batch.commit().catch(handleSyncError);
 }
 
-// Sube una sola vez las tareas que este navegador tenía guardadas antes de usar Firestore.
+// Sube una sola vez las tareas que esta persona tenía guardadas solo en este navegador,
+// a su nombre (remoteData agrega su ownerId).
 function migrateLocalTasks() {
   try {
-    if (localStorage.getItem(MIGRATED_KEY)) return;
+    if (localStorage.getItem(migratedKey)) return;
   } catch {
     return;
   }
@@ -745,7 +749,7 @@ function migrateLocalTasks() {
     .commit()
     .then(() => {
       try {
-        localStorage.setItem(MIGRATED_KEY, '1');
+        localStorage.setItem(migratedKey, '1');
       } catch {
         // Sin almacenamiento local no hay forma de recordar la migración; no pasa nada si se repite.
       }
@@ -753,32 +757,24 @@ function migrateLocalTasks() {
     .catch(handleSyncError);
 }
 
-// Conecta con Firestore y escucha los cambios de cualquier dispositivo. Si Firebase no
-// carga (sin internet, bloqueado), el tablero sigue funcionando solo con localStorage.
-async function connectRemote() {
-  setSyncStatus('connecting');
-  try {
-    const [{ initializeApp }, auth, fs] = await Promise.all([
-      import(`${FIREBASE_CDN}/firebase-app.js`),
-      import(`${FIREBASE_CDN}/firebase-auth.js`),
-      import(`${FIREBASE_CDN}/firebase-firestore.js`),
-    ]);
-    const app = initializeApp(APP_ENV.firebaseConfig);
-    await auth.signInAnonymously(auth.getAuth(app));
-    remote = { db: fs.getFirestore(app), fs };
-  } catch (error) {
-    handleSyncError(error);
-    return;
-  }
-
+// Conecta con Firestore y escucha los cambios de cualquier dispositivo, solo en las tareas de
+// la persona: las reglas exigen que la consulta esté limitada a su ownerId. Sin conexión,
+// Firestore sigue reintentando y el tablero funciona con la copia local mientras tanto.
+function connectRemote(session) {
+  setSyncStatus(session.offline ? 'offline' : 'connecting');
+  remote = { db: session.db, fs: session.fs, uid: session.uid };
   migrateLocalTasks();
 
   let firstSnapshot = true;
   const { db, fs } = remote;
-  fs.onSnapshot(
-    fs.collection(db, TASKS_COLLECTION),
+  const stopListening = fs.onSnapshot(
+    fs.query(fs.collection(db, TASKS_COLLECTION), fs.where('ownerId', '==', session.uid)),
     { includeMetadataChanges: true },
     (snapshot) => {
+      // Hasta recibir datos del servidor, la caché de Firestore está vacía o incompleta: si se
+      // aplicara, borraría del tablero la copia local. Mientras tanto manda la copia local.
+      if (firstSnapshot && snapshot.metadata.fromCache) return;
+
       // Las tareas creadas en este navegador ya se anunciaron en addTask (llevan escrituras pendientes).
       const incoming = snapshot
         .docChanges()
@@ -799,6 +795,13 @@ async function connectRemote() {
     },
     handleSyncError,
   );
+
+  // Al cerrar la sesión se deja de escuchar y de escribir antes de borrar la copia local.
+  LUCAS_AUTH.onSignOut(() => {
+    stopListening();
+    remote = null;
+    storageKey = null;
+  });
 }
 
 function taskFromDoc(doc) {
@@ -1285,7 +1288,7 @@ document.addEventListener('visibilitychange', () => {
 // Sin conexión a Firestore, sincroniza al menos las pestañas del mismo navegador.
 // (key es null cuando la otra pestaña vacía todo el localStorage.)
 window.addEventListener('storage', (event) => {
-  if (remote || (event.key !== null && event.key !== STORAGE_KEY)) return;
+  if (!storageKey || remote || (event.key !== null && event.key !== storageKey)) return;
   const previousTasks = tasks;
   const knownIds = new Set(tasks.map((t) => t.id));
   tasks = loadTasks();
@@ -1306,7 +1309,19 @@ function showEnvironmentBadge() {
   document.querySelector('h1').append(' ', badge);
 }
 
+// El tablero solo carga tareas después de confirmar la sesión (auth.js): sin sesión lleva al
+// login, y sin conexión ni autorización recordada muestra la pantalla de Reintentar.
+async function startBoard() {
+  const session = await LUCAS_AUTH.requireSession();
+  storageKey = session.storageKey;
+  migratedKey = session.migratedKey;
+  LUCAS_CUENTA.mount(session, document.getElementById('account'));
+
+  tasks = loadTasks();
+  backfillDates();
+  render();
+  connectRemote(session);
+}
+
 showEnvironmentBadge();
-backfillDates();
-render();
-connectRemote();
+startBoard();
