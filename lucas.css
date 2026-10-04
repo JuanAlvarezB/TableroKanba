@@ -1,0 +1,566 @@
+/* Estilos compartidos de las páginas autenticadas de LUCAS (inicio y tablero): pantalla de
+   carga, zona de usuario, diálogos, distintivo de ambiente y el inicio de LUCAS.
+   El login tiene los suyos (login.css). Las variables llevan el prefijo --lucas- para no
+   chocar con las del tablero (style.css). */
+
+:root {
+  --lucas-accent: #0b7d72; /* texto blanco encima con contraste AA */
+  --lucas-accent-hover: #086159;
+  --lucas-accent-soft: #f3faf9;
+  --lucas-ink: #172b2d;
+  --lucas-muted: #52696a;
+  --lucas-line: #d8e7e3;
+  --lucas-focus: #075e57;
+  --lucas-danger: #b3261e;
+  --lucas-danger-hover: #8c1d18;
+  --lucas-error-bg: #fdeceb;
+  --lucas-error-fg: #8a1f11;
+  --lucas-error-border: #f3c6c0;
+}
+
+/* ---------- Pantalla de carga: nada privado antes de confirmar la sesión ---------- */
+
+/* auth.js quita la clase auth-pending del body cuando la persona está autorizada. */
+.auth-pending .app-content {
+  display: none !important;
+}
+
+.auth-screen {
+  display: none;
+}
+
+.auth-pending .auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  color: var(--lucas-muted);
+  text-align: center;
+}
+
+.auth-screen p {
+  margin: 0;
+}
+
+.auth-retry {
+  min-height: 44px;
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  background: var(--lucas-accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-retry:hover {
+  background: var(--lucas-accent-hover);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Anillo de foco visible en todo lo propio de LUCAS (también dentro del tablero) */
+.auth-screen :focus-visible,
+.account :focus-visible,
+.lucas-dialog :focus-visible,
+.lucas-home :focus-visible,
+.board-nav :focus-visible {
+  outline: 3px solid var(--lucas-focus);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* Distintivo de ambiente: solo aparece fuera de PDN. */
+.env-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border: 1px solid #f5c26b;
+  border-radius: 999px;
+  background: #fff4e0;
+  color: #8a5300; /* contraste AA sobre su fondo */
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  vertical-align: middle;
+}
+
+.env-badge[hidden] {
+  display: none;
+}
+
+/* ---------- Zona de usuario ---------- */
+
+.account {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* El botón con el avatar solo se usa en celular (ver el @media de abajo). */
+.account-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+
+.account-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--lucas-accent);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-name {
+  max-width: 16em;
+  overflow: hidden;
+  color: var(--lucas-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-action {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--lucas-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--lucas-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.account-action:hover {
+  background: var(--lucas-accent-soft);
+}
+
+.account-action.logout {
+  color: var(--lucas-danger);
+}
+
+/* En celular solo se ve el avatar; al tocarlo se despliegan el nombre y las acciones. */
+@media (max-width: 599px) {
+  .account-toggle {
+    display: inline-flex;
+  }
+
+  .account-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    width: max-content;
+    min-width: 220px;
+    max-width: calc(100vw - 32px);
+    padding: 12px;
+    border: 1px solid var(--lucas-line);
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 10px 30px rgba(15, 60, 70, 0.16);
+  }
+
+  .account.open .account-panel {
+    display: flex;
+  }
+
+  .account-panel > .avatar {
+    display: none;
+  }
+
+  .account-name {
+    max-width: none;
+    padding: 4px 4px 8px;
+    color: var(--lucas-ink);
+    font-weight: 600;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* ---------- Diálogos (cerrar sesión, cambiar contraseña) ---------- */
+
+.lucas-dialog {
+  width: min(100% - 32px, 420px);
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: none;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--lucas-ink);
+  box-shadow: 0 20px 50px rgba(15, 40, 45, 0.25);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  line-height: 1.4;
+}
+
+.lucas-dialog::backdrop {
+  background: rgba(16, 36, 42, 0.45);
+}
+
+.dialog-body {
+  padding: 24px;
+}
+
+.dialog-title {
+  margin: 0 0 8px;
+  color: var(--lucas-ink);
+  font-size: 1.2rem;
+  text-align: left;
+}
+
+.dialog-text {
+  margin: 0;
+  color: var(--lucas-muted);
+}
+
+.dialog-form label {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.dialog-btn {
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid var(--lucas-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--lucas-ink);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dialog-btn:hover {
+  background: var(--lucas-accent-soft);
+}
+
+.dialog-btn.primary {
+  border-color: var(--lucas-accent);
+  background: var(--lucas-accent);
+  color: #fff;
+}
+
+.dialog-btn.primary:hover {
+  background: var(--lucas-accent-hover);
+}
+
+.dialog-btn.danger {
+  border-color: var(--lucas-danger);
+  background: var(--lucas-danger);
+  color: #fff;
+}
+
+.dialog-btn.danger:hover {
+  background: var(--lucas-danger-hover);
+}
+
+.dialog-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 84px 8px 12px;
+  border: 1px solid var(--lucas-line);
+  border-radius: 10px;
+  background: #fbfffe;
+  color: var(--lucas-ink);
+  font-family: inherit;
+  font-size: 16px; /* con menos, Safari del iPhone hace zoom al enfocar */
+}
+
+.toggle-password {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 76px;
+  height: 100%;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--lucas-accent);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.toggle-password:hover {
+  background: var(--lucas-accent-soft);
+}
+
+.form-error {
+  margin: 0 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--lucas-error-border);
+  border-radius: 10px;
+  background: var(--lucas-error-bg);
+  color: var(--lucas-error-fg);
+  font-size: 0.9rem;
+}
+
+.form-error[hidden] {
+  display: none;
+}
+
+/* Aviso breve tras una acción de cuenta */
+.lucas-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 30;
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: var(--lucas-ink);
+  color: #fff;
+  opacity: 0;
+  transform: translate(-50%, 16px);
+  pointer-events: none;
+}
+
+.lucas-toast.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lucas-toast {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+
+  .account-action,
+  .dialog-btn,
+  .toggle-password,
+  .auth-retry,
+  .open-function {
+    transition: background-color 0.15s ease;
+  }
+}
+
+/* ---------- Inicio de LUCAS (index.html, Opción A: lanzador de funciones) ---------- */
+
+.lucas-home {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: linear-gradient(145deg, #eaf6fb, #f1f8f6 55%, #e3f7f0);
+  color: var(--lucas-ink);
+  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+
+.lucas-home *,
+.lucas-home *::before,
+.lucas-home *::after {
+  box-sizing: border-box;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 68px;
+  padding: 0.75rem clamp(1rem, 4vw, 3rem);
+  border-bottom: 1px solid var(--lucas-line);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.topbar-end {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  aspect-ratio: 1;
+  border: 2px solid var(--lucas-accent);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.brand-mark img {
+  width: 34px;
+  height: 34px;
+}
+
+.brand-name {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.home-main {
+  width: min(100% - 2rem, 960px);
+  margin: clamp(2.5rem, 8vh, 5rem) auto;
+}
+
+.home-main h1 {
+  margin: 0;
+  font-size: 2rem;
+  overflow-wrap: anywhere;
+}
+
+.home-intro {
+  margin: 0.35rem 0 2.5rem;
+  color: var(--lucas-muted);
+}
+
+.home-main h2 {
+  margin: 0 0 0.85rem;
+  font-size: 1rem;
+}
+
+.function-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--lucas-line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(23, 43, 45, 0.07);
+}
+
+.function-icon {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  color: var(--lucas-accent);
+}
+
+.function-copy {
+  flex: 1;
+}
+
+.function-copy h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.function-copy p {
+  margin: 0.2rem 0 0;
+  color: var(--lucas-muted);
+}
+
+.open-function {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  background: var(--lucas-accent);
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.open-function:hover {
+  background: var(--lucas-accent-hover);
+}
+
+@media (max-width: 599px) {
+  .topbar-end {
+    gap: 0.5rem;
+  }
+
+  .home-main {
+    margin-top: 2rem;
+  }
+
+  .home-main h1 {
+    font-size: 1.65rem;
+  }
+
+  .home-intro {
+    margin-bottom: 2rem;
+  }
+
+  .function-card {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .function-copy {
+    min-width: calc(100% - 64px);
+  }
+
+  .open-function {
+    justify-content: center;
+    width: 100%;
+  }
+}
