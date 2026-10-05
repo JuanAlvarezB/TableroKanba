@@ -202,11 +202,54 @@ ListaTareasIA/
 - [x] ¿Se adopta **Vite y npm**? Sí.
 - [x] ¿**JavaScript con JSDoc** o pasar a **TypeScript**? JavaScript con JSDoc.
 
-## 8. Pendientes después de la reestructuración
+## 8. Balance de la reestructuración
 
-- [ ] **Publicar en PDN**: abrir el Pull Request de `feature/newLogin` hacia `main`, esperar `ci.yml` en verde, hacer merge y repasar `docs/VERIFICACION_MANUAL.md` en PDN.
-- [ ] **Partir `createBoardPage()`** en controladores más pequeños (edición, menú de etiquetas, arrastre, alertas): hoy es el nodo más conectado del grafo.
-- [ ] **Rediseño del tablero** con el sistema de `DESIGN.md` (ver fase 6) y, con él, `reset.css`/`base.css` comunes.
-- [ ] **Pruebas de `firestore.rules`** con el emulador de Firebase.
-- [ ] Funciones de `PENDIENTES.txt`: cierre por inactividad, roles, registro de quién cambia cada tarea.
+Rama `feature/newLogin`, commits `78ef3a2` a `5d565a7`. Las tareas que siguen abiertas están
+también en `docs/PENDIENTES.txt` (documento interno, no está en el repositorio), sección 7
+"ARQUITECTURA LIMPIA"; allí se marcó además lo que esta reestructuración resolvió de la
+sección 5 "RUTA CRÍTICA DE PRUEBAS (CI/CD)".
 
+### 8.1 Lo que se cumplió
+
+| Fase | Resultado | Cómo se verificó |
+|---|---|---|
+| 0 Preparación | Documentos en `docs/`, lista de verificación manual, etiqueta `pre-arquitectura` | — |
+| 1 Vite | Módulos ES, Firebase por npm (12.19.0), variables `VITE_FIREBASE_*`, deploy con `npm run build` | Login, inicio y tablero probados en Desarrollo |
+| 2 Calidad | ESLint, Prettier, Vitest y `ci.yml` en cada PR | `npm run lint`, `format:check`, `test`, `build` |
+| 3 Dominio | Entidad `Task`, reglas y casos de uso puros en `src/domain/` | 183 casos comparados con la lógica anterior, 0 diferencias |
+| 4 Datos | Repositorios para Firestore, Auth y localStorage en `src/data/` | Pruebas con Firestore y localStorage falsos |
+| 5 Presentación | Un punto de entrada por página, store sin DOM, componentes, guardia de sesión | Prueba manual completa del tablero, login y cuenta |
+| 6 Estilos | Tokens de `DESIGN.md` compartidos; `style.css` dividido por secciones | CSS compilado idéntico (tablero) y mismos valores (login, inicio) |
+| 7 Cierre | `reglas_antiguas.txt` borrado, README al día, regla de capas automatizada | `src/architecture.test.js` |
+
+Pruebas automáticas: de 0 a **146** (dominio, datos, store, autorización, textos y arquitectura).
+
+### 8.2 Lo que se mejoró respecto al plan inicial
+
+- **Regla de dependencias automatizada** (`src/architecture.test.js`): no estaba en el plan. Falla si una capa importa de otra no permitida, también en tipos JSDoc, o si el dominio usa el navegador. Al crearla encontró dos referencias de tipos que cruzaban capas.
+- **Casos de uso que reciben `now`**: vencimientos, tareas detenidas y recordatorios se prueban con fechas fijas (uno de los requisitos de la sección 5 de `PENDIENTES.txt`).
+- **El build se detiene si falta una variable de Firebase**, y `deploy.yml` comprueba que el bundle lleve el proyecto de PDN antes de publicar.
+- **Caché de Safari resuelta por Vite** (nombres con hash): sobran el `sed` y las comprobaciones de `?v=`.
+- **`npm run dev` en el puerto 8000**, para no chocar con Live Server (puerto 5500).
+- **Autorización como caso de uso** (`AuthorizeUser`) y **store del tablero sin DOM**: ambos se prueban en Node, sin navegador.
+- **Dos detalles corregidos** por el camino: el filtro "Próximas a vencer" habría recibido el índice como fecha, y un `-0` cuando una tarea vence hoy.
+- **`reglas_antiguas.txt` borrado**: permitía a cualquier usuario autenticado leer y borrar todas las tareas.
+
+### 8.3 Lo que quedó pendiente
+
+De la reestructuración:
+- [ ] **Publicar en PDN**: merge del Pull Request, `deploy.yml` en verde y `docs/VERIFICACION_MANUAL.md` en PDN.
+- [ ] **Partir `createBoardPage()`** en controladores más pequeños (edición, menú de etiquetas, arrastre, alertas): es el nodo más conectado del grafo (40 conexiones).
+- [ ] **Rediseño del tablero** con el sistema de `DESIGN.md` y, con él, `reset.css` y `base.css` comunes (ver fase 6).
+- [ ] **`@ts-check` con JSDoc** (opcional desde la fase 2).
+
+De la sección 5 de `PENDIENTES.txt` (pruebas y CI/CD):
+- [ ] **Pruebas de `firestore.rules`** con el Firebase Emulator Suite, incluida la prueba negativa de un usuario sin permisos.
+- [ ] **Pruebas end-to-end** de la ruta crítica con Playwright.
+- [ ] **Que `deploy.yml` no publique si fallan las pruebas**: hoy `ci.yml` las ejecuta en cada PR, pero el despliegue de `main` no las repite.
+
+Funcionalidades de `PENDIENTES.txt` que ya encajan en la nueva estructura:
+- [ ] **Cierre de sesión por inactividad** (sección 2): caso de uso `TrackInactivity` + componente de aviso.
+- [ ] **Roles y gestión de usuarios** (sección 2): entidad `User` con `role` y caso de uso `ManageUsers`.
+- [ ] **Registrar quién creó o movió cada tarea** (sección 2): `actorId` en la entidad `Task`.
+- [ ] **Registro de errores en PDN** (sección 6): un `ErrorReporter` en `src/data/` que use el store y la guardia de sesión.
