@@ -233,7 +233,13 @@
   background: #fff;
   color: var(--lucas-ink);
   box-shadow: 0 20px 50px rgba(15, 40, 45, 0.25);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Arial,
+    sans-serif;
   line-height: 1.4;
 }
 
@@ -387,7 +393,9 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .lucas-toast {
-    transition: opacity 0.2s ease, transform 0.2s ease;
+    transition:
+      opacity 0.2s ease,
+      transform 0.2s ease;
   }
 
   .account-action,

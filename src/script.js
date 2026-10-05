@@ -1,3 +1,8 @@
+// Tablero de tareas de LUCAS (tablero.html).
+import { APP_ENV } from './shared/config/firebase.config.js';
+import { LUCAS_AUTH } from './auth.js';
+import { LUCAS_CUENTA } from './cuenta.js';
+
 // Claves de localStorage de la persona (auth.js): llevan el ambiente y su uid, así nadie ve la
 // copia local de otra persona en el mismo navegador. Se asignan al confirmar la sesión.
 let storageKey = null;
@@ -242,7 +247,10 @@ function flashMessage(element, message) {
   element.textContent = message;
   element.classList.remove('hidden');
   clearTimeout(messageTimeouts.get(element));
-  messageTimeouts.set(element, setTimeout(() => element.classList.add('hidden'), MESSAGE_DURATION));
+  messageTimeouts.set(
+    element,
+    setTimeout(() => element.classList.add('hidden'), MESSAGE_DURATION),
+  );
 }
 
 function showNotice(message) {
@@ -250,16 +258,18 @@ function showNotice(message) {
 }
 
 function announceNewTasks(newTasks) {
-  const message = newTasks.length === 1
-    ? `Se agregó una nueva tarea: "${newTasks[0].text}"`
-    : `Se agregaron ${newTasks.length} tareas nuevas`;
+  const message =
+    newTasks.length === 1
+      ? `Se agregó una nueva tarea: "${newTasks[0].text}"`
+      : `Se agregaron ${newTasks.length} tareas nuevas`;
   flashMessage(toast, message);
 }
 
 function announceEditedTasks(editedTasks) {
-  const message = editedTasks.length === 1
-    ? `Se actualizó una tarea: "${editedTasks[0].text}"`
-    : `Se actualizaron ${editedTasks.length} tareas`;
+  const message =
+    editedTasks.length === 1
+      ? `Se actualizó una tarea: "${editedTasks[0].text}"`
+      : `Se actualizaron ${editedTasks.length} tareas`;
   flashMessage(toast, message);
 }
 
@@ -283,7 +293,13 @@ function notifyRemoteChanges(previousTasks) {
 
 function addTask(text) {
   const task = {
-    id: createId(), text, status: 'pending', order: nextOrder(), ...readDates({}), ...readLabels({}), createdAt: Date.now(),
+    id: createId(),
+    text,
+    status: 'pending',
+    order: nextOrder(),
+    ...readDates({}),
+    ...readLabels({}),
+    createdAt: Date.now(),
   };
   tasks.push(task);
   saveTasks();
@@ -298,7 +314,9 @@ function moveTask(id, status, beforeId = null) {
   if (!task) return;
 
   if (task.status !== status && isColumnFull(status)) {
-    showNotice(`Límite WIP alcanzado: termina una tarea "En curso" antes de empezar otra (máx. ${WIP_LIMITS[status]}).`);
+    showNotice(
+      `Límite WIP alcanzado: termina una tarea "En curso" antes de empezar otra (máx. ${WIP_LIMITS[status]}).`,
+    );
     return;
   }
 
@@ -515,15 +533,31 @@ function attentionGroups() {
   const idsOf = (list) => list.map((t) => t.id);
   const groups = Object.entries(OVERDUE_COLUMNS).map(([status, { name, phrase }]) => {
     const ids = idsOf(tasks.filter((t) => t.status === status && overdueDays(t) !== null));
-    return { ids, text: `${plural(ids.length, 'tarea lleva', 'tareas llevan')} más de ${OVERDUE_DAYS} días ${phrase}.`, label: `Ver tareas detenidas en ${name}` };
+    return {
+      ids,
+      text: `${plural(ids.length, 'tarea lleva', 'tareas llevan')} más de ${OVERDUE_DAYS} días ${phrase}.`,
+      label: `Ver tareas detenidas en ${name}`,
+    };
   });
   const urgent = idsOf(open.filter((t) => t.priority === 'urgent'));
   const overdueDue = idsOf(open.filter((t) => dueInfo(t)?.kind === 'overdue'));
   const soonDue = idsOf(open.filter((t) => dueInfo(t)?.kind === 'soon'));
   groups.push(
-    { ids: urgent, text: `${plural(urgent.length, 'tarea urgente', 'tareas urgentes')} sin completar.`, label: 'Ver tareas urgentes' },
-    { ids: overdueDue, text: `${plural(overdueDue.length, 'tarea vencida', 'tareas vencidas')}.`, label: 'Ver tareas vencidas' },
-    { ids: soonDue, text: `${plural(soonDue.length, 'tarea vence', 'tareas vencen')} en ${DUE_SOON_BUSINESS_DAYS} días hábiles o menos.`, label: 'Ver tareas próximas a vencer' },
+    {
+      ids: urgent,
+      text: `${plural(urgent.length, 'tarea urgente', 'tareas urgentes')} sin completar.`,
+      label: 'Ver tareas urgentes',
+    },
+    {
+      ids: overdueDue,
+      text: `${plural(overdueDue.length, 'tarea vencida', 'tareas vencidas')}.`,
+      label: 'Ver tareas vencidas',
+    },
+    {
+      ids: soonDue,
+      text: `${plural(soonDue.length, 'tarea vence', 'tareas vencen')} en ${DUE_SOON_BUSINESS_DAYS} días hábiles o menos.`,
+      label: 'Ver tareas próximas a vencer',
+    },
   );
   return groups.filter((g) => g.ids.length > 0);
 }
@@ -556,9 +590,24 @@ function renderOverdueAlerts() {
     const overdue = columnTasks.filter((t) => overdueDays(t) !== null).length;
     const urgent = columnTasks.filter((t) => t.priority === 'urgent').length;
     const due = columnTasks.filter(FILTERS.due).length;
-    setColumnChip(`[data-alert="${status}"]`, `⏰ ${overdue}`, `${plural(overdue, 'tarea lleva', 'tareas llevan')} más de ${OVERDUE_DAYS} días ${phrase}`, overdue);
-    setColumnChip(`[data-urgent="${status}"]`, `🔴 ${urgent}`, plural(urgent, 'tarea urgente', 'tareas urgentes'), urgent);
-    setColumnChip(`[data-due="${status}"]`, `⏳ ${due}`, `${plural(due, 'tarea vencida o', 'tareas vencidas o')} próximas a vencer`, due);
+    setColumnChip(
+      `[data-alert="${status}"]`,
+      `⏰ ${overdue}`,
+      `${plural(overdue, 'tarea lleva', 'tareas llevan')} más de ${OVERDUE_DAYS} días ${phrase}`,
+      overdue,
+    );
+    setColumnChip(
+      `[data-urgent="${status}"]`,
+      `🔴 ${urgent}`,
+      plural(urgent, 'tarea urgente', 'tareas urgentes'),
+      urgent,
+    );
+    setColumnChip(
+      `[data-due="${status}"]`,
+      `⏳ ${due}`,
+      `${plural(due, 'tarea vencida o', 'tareas vencidas o')} próximas a vencer`,
+      due,
+    );
   });
 
   const groups = attentionGroups();
@@ -1017,8 +1066,19 @@ function createLabelMenu(task) {
   return menu;
 }
 
-const dateFormat = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const dateFormatWithYear = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const dateFormat = new Intl.DateTimeFormat('es', {
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+const dateFormatWithYear = new Intl.DateTimeFormat('es', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
 const shortDateFormat = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short' });
 const longDateFormat = new Intl.DateTimeFormat('es', { dateStyle: 'full' });
 const fullDateFormat = new Intl.DateTimeFormat('es', { dateStyle: 'full', timeStyle: 'short' });
@@ -1161,8 +1221,9 @@ function createEditor(task) {
 // insertar antes de ella. Arrastrar no cambia la etiqueta: si se suelta en otro grupo, la
 // tarea queda al principio o al final del suyo.
 function getCardAfterCursor(list, y, priority) {
-  const cards = [...list.querySelectorAll('.card:not(.dragging)')]
-    .filter((card) => card.dataset.priority === (priority ?? ''));
+  const cards = [...list.querySelectorAll('.card:not(.dragging)')].filter(
+    (card) => card.dataset.priority === (priority ?? ''),
+  );
   return cards.find((card) => {
     const box = card.getBoundingClientRect();
     return y < box.top + box.height / 2;
@@ -1183,12 +1244,9 @@ function render() {
   const menuFocusKey = document.activeElement?.closest?.('.label-menu') ? document.activeElement.dataset.menuKey : null;
 
   // Al vaciar las listas el editor sale del documento y pierde el foco; se guarda para devolverlo.
-  const focused = editing && editing.element && editing.element.contains(document.activeElement)
-    ? document.activeElement
-    : null;
-  const selection = focused === editing?.textarea
-    ? [focused.selectionStart, focused.selectionEnd]
-    : null;
+  const focused =
+    editing && editing.element && editing.element.contains(document.activeElement) ? document.activeElement : null;
+  const selection = focused === editing?.textarea ? [focused.selectionStart, focused.selectionEnd] : null;
 
   lists.forEach((list) => {
     const status = list.dataset.status;

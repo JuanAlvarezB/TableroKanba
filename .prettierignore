@@ -1,0 +1,13 @@
+# Generados o de terceros
+dist/
+node_modules/
+package-lock.json
+graphify-out/
+
+# Documentos internos (se editan a mano)
+docs/
+
+# Se reescriben en las fases 5 y 6 de docs/PLAN_ARQUITECTURA.md; formatearlos antes solo
+# añadiría ruido al historial.
+*.html
+src/styles/style.css

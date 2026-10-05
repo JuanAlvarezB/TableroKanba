@@ -1,6 +1,8 @@
 // Zona de usuario de las páginas autenticadas de LUCAS (inicio y tablero): nombre, cambiar
 // contraseña y cerrar sesión, con sus diálogos. Cerrar sesión siempre pide confirmación.
-const LUCAS_CUENTA = (() => {
+import { LUCAS_AUTH } from './auth.js';
+
+export const LUCAS_CUENTA = (() => {
   const MIN_PASSWORD_LENGTH = 6;
   const TOAST_DURATION = 3000;
 
@@ -206,7 +208,8 @@ const LUCAS_CUENTA = (() => {
     function validate() {
       if (!current.input.value) return ['Escribe tu contraseña actual.', current.input];
       if (next.input.value.length < MIN_PASSWORD_LENGTH) return ['Usa al menos 6 caracteres.', next.input];
-      if (next.input.value === current.input.value) return ['La contraseña nueva debe ser distinta de la actual.', next.input];
+      if (next.input.value === current.input.value)
+        return ['La contraseña nueva debe ser distinta de la actual.', next.input];
       if (next.input.value !== repeat.input.value) return ['Las contraseñas nuevas no coinciden.', repeat.input];
       return null;
     }
@@ -286,7 +289,9 @@ const LUCAS_CUENTA = (() => {
     // Solo las cuentas con contraseña pueden cambiarla; las de solo Google no tienen una.
     if (session.hasPassword) {
       const openPasswordDialog = createPasswordDialog(session);
-      const passwordBtn = createButton('Cambiar contraseña', 'account-action', () => openPasswordDialog(opener(passwordBtn)));
+      const passwordBtn = createButton('Cambiar contraseña', 'account-action', () =>
+        openPasswordDialog(opener(passwordBtn)),
+      );
       panel.append(passwordBtn);
     }
 

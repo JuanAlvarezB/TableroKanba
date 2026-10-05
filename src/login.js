@@ -1,9 +1,16 @@
 // Pantalla de inicio de sesión de LUCAS: Google (ventana emergente), correo y contraseña,
 // recuperar contraseña y verificar el correo. Con una sesión autorizada lleva al inicio.
+import { APP_ENV } from './shared/config/firebase.config.js';
+import { LUCAS_AUTH } from './auth.js';
+
 const RESEND_COOLDOWN = 60; // segundos entre envíos de correos de Firebase
 
 // Errores de Firebase con la dirección de regreso (Dominios autorizados): se reintenta sin ella.
-const CONTINUE_URL_ERRORS = ['auth/unauthorized-continue-uri', 'auth/invalid-continue-uri', 'auth/missing-continue-uri'];
+const CONTINUE_URL_ERRORS = [
+  'auth/unauthorized-continue-uri',
+  'auth/invalid-continue-uri',
+  'auth/missing-continue-uri',
+];
 
 const loginStatus = document.getElementById('login-status');
 const views = {
@@ -161,7 +168,7 @@ signinForm.addEventListener('submit', async (event) => {
 
 // La ventana de Google se abre directamente en el clic (Firebase ya está cargado): si se
 // esperara algo antes, el navegador la bloquearía. Se usa ventana emergente, no redirección,
-// porque el sitio no está en Firebase Hosting (ver PLAN_LOGIN.md, sección 3.4).
+// porque el sitio no está en Firebase Hosting (ver docs/PLAN_LOGIN.md, sección 3.4).
 googleBtn.addEventListener('click', async () => {
   if (!fb) return;
   showError(signinError, '');
@@ -256,7 +263,11 @@ verifyCheck.addEventListener('click', async () => {
   await continueWith(user);
   verifyCheck.disabled = false;
   if (!views.verify.hidden && !user.emailVerified) {
-    showError(verifyError, 'Tu correo aún no aparece verificado. Abre el enlace del correo y vuelve a intentarlo.', verifyCheck);
+    showError(
+      verifyError,
+      'Tu correo aún no aparece verificado. Abre el enlace del correo y vuelve a intentarlo.',
+      verifyCheck,
+    );
   }
 });
 
@@ -283,7 +294,10 @@ async function startLogin() {
   } catch (error) {
     console.error('No se pudo cargar Firebase:', error);
     showView('signin');
-    showError(signinError, 'Sin conexión: no se pudo cargar el inicio de sesión. Revisa tu internet y recarga la página.');
+    showError(
+      signinError,
+      'Sin conexión: no se pudo cargar el inicio de sesión. Revisa tu internet y recarga la página.',
+    );
     return;
   }
 

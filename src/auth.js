@@ -1,8 +1,9 @@
 // Sesión compartida de LUCAS: carga Firebase una sola vez, confirma quién inició sesión y si
-// está autorizado (colección allowedUsers) y cierra la sesión. Es un script clásico con un
-// global, igual que config.js, para que deploy.yml versione todas las rutas desde los HTML.
-const LUCAS_AUTH = (() => {
-  const FIREBASE_CDN = 'https://www.gstatic.com/firebasejs/12.19.0';
+// está autorizado (colección allowedUsers) y cierra la sesión.
+// La comparten las páginas autenticadas y el login.
+import { APP_ENV } from './shared/config/firebase.config.js';
+
+export const LUCAS_AUTH = (() => {
   const LOGIN_PAGE = 'login.html';
   const HOME_PAGE = 'index.html';
   const ALLOWED_USERS = 'allowedUsers';
@@ -34,7 +35,8 @@ const LUCAS_AUTH = (() => {
     'auth/cancelled-popup-request': '',
     'auth/user-cancelled': '',
     'auth/popup-blocked': 'El navegador bloqueó la ventana de Google. Permite ventanas emergentes para este sitio.',
-    'auth/account-exists-with-different-credential': 'Ese correo ya entra con otro método. Inicia sesión con correo y contraseña.',
+    'auth/account-exists-with-different-credential':
+      'Ese correo ya entra con otro método. Inicia sesión con correo y contraseña.',
     'auth/unauthorized-domain': 'Este sitio no está autorizado para iniciar sesión con Google. Avisa al administrador.',
     'auth/operation-not-allowed': 'Este método de acceso no está habilitado. Avisa al administrador.',
     'auth/weak-password': 'Usa al menos 6 caracteres.',
@@ -51,19 +53,17 @@ const LUCAS_AUTH = (() => {
     return 'No se pudo completar la operación. Inténtalo de nuevo.';
   }
 
-  // Carga los SDK desde el CDN e inicializa la app del ambiente (config.js) una sola vez.
+  // Carga los SDK (paquete firebase de npm, en un archivo aparte) e inicializa la app del ambiente (config.js) una sola vez.
   function loadFirebase() {
     if (!firebase) {
-      firebase = Promise.all([
-        import(`${FIREBASE_CDN}/firebase-app.js`),
-        import(`${FIREBASE_CDN}/firebase-auth.js`),
-        import(`${FIREBASE_CDN}/firebase-firestore.js`),
-      ]).then(([appSdk, authSdk, fs]) => {
-        const app = appSdk.initializeApp(APP_ENV.firebaseConfig);
-        const auth = authSdk.getAuth(app);
-        auth.languageCode = 'es';
-        return { app, auth, authSdk, db: fs.getFirestore(app), fs };
-      });
+      firebase = Promise.all([import('firebase/app'), import('firebase/auth'), import('firebase/firestore')]).then(
+        ([appSdk, authSdk, fs]) => {
+          const app = appSdk.initializeApp(APP_ENV.firebaseConfig);
+          const auth = authSdk.getAuth(app);
+          auth.languageCode = 'es';
+          return { app, auth, authSdk, db: fs.getFirestore(app), fs };
+        },
+      );
       // Si no cargó (sin internet, bloqueado), el siguiente intento vuelve a pedirlo.
       firebase.catch(() => {
         firebase = null;
