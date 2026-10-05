@@ -7,7 +7,5 @@ graphify-out/
 # Documentos internos (se editan a mano)
 docs/
 
-# Se reescriben en las fases 5 y 6 de docs/PLAN_ARQUITECTURA.md; formatearlos antes solo
-# añadiría ruido al historial.
+# Los HTML conservan su formato a mano (Prettier los reescribiría casi por completo).
 *.html
-src/styles/style.css

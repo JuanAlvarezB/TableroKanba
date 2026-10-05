@@ -1,0 +1,14 @@
+/* Tablero (tablero.html): una hoja por sección, en el orden en que se aplican. */
+@import './board/variables.css';
+@import './board/base.css';
+@import './board/topbar.css';
+@import './board/form.css';
+@import './board/notices.css';
+@import './board/filters.css';
+@import './board/columns.css';
+@import './board/cards.css';
+@import './board/tags.css';
+@import './board/editor.css';
+@import './board/footer.css';
+@import './board/decoration.css';
+@import './board/responsive.css';

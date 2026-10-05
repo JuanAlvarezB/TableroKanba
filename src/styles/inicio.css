@@ -4,35 +4,10 @@
    .lucas-home para no cambiar el tablero, que comparte lucas.css. */
 
 .lucas-home {
-  /* Paleta de DESIGN.md */
-  --color-deep-teal: #1c5d5f; /* texto blanco encima con contraste AA (~7.5:1) */
-  --color-forest-floor: #156152;
-  --color-pine-shadow: #0e4749;
-  --color-sage: #65b8a2;
-  --color-dusty-rose: #d6aec1;
-  --color-mint-mist: #a2cbcd;
-  --color-sea-foam: #cae1e2;
-  --color-paper-white: #f2f8f7;
-  --color-card-mint: #e4f0f1;
-  --color-blush-sand: #f2e8e2;
-  --color-charcoal-navy: #283338;
+  /* Tokens compartidos en variables.css; estos solo los usa el inicio. */
   --color-illustration-ink: #231e21;
-
-  /* Derivados para estados que DESIGN.md no cubre */
-  --color-muted: #4d5f63;
-  --color-error: #8a2f45;
   --color-error-hover: #6f2337;
-  --color-field: #fbfdfd;
-
-  --font-sans: 'Manrope', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-
-  --radius-cards: 12px;
-  --radius-buttons: 48px;
   --radius-nav: 88px;
-  --radius-pills: 1000px;
-  --page-max-width: 1200px;
 
   margin: 0;
   min-height: 100vh;

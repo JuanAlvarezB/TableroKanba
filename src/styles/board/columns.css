@@ -1,0 +1,156 @@
+/* ---------- Tablero ---------- */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.column {
+  --accent: #9e9e9e;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-column);
+  border-radius: 10px;
+  padding: 12px;
+  border-top: 4px solid var(--accent);
+  min-height: 300px;
+  transition:
+    background var(--ease),
+    box-shadow var(--ease);
+}
+
+.column[data-status='pending'] {
+  --accent: var(--color-pending);
+}
+
+.column[data-status='in-progress'] {
+  --accent: var(--color-progress);
+}
+
+.column[data-status='completed'] {
+  --accent: var(--color-done);
+}
+
+/* Columna con el límite WIP alcanzado */
+.column.full {
+  box-shadow: inset 0 0 0 2px var(--color-danger-soft);
+}
+
+.column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.column-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.column-header h2::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.column-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Número de tareas urgentes y de vencidas o próximas a vencer en la columna */
+.column-tag {
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+  animation: slide-in 0.25s ease;
+}
+
+.column-tag.urgent {
+  background: var(--tag-urgent-soft);
+  color: var(--tag-urgent);
+  border: 1px solid var(--tag-urgent-border);
+}
+
+.column-tag.due {
+  background: var(--tag-due-soon-soft);
+  color: var(--tag-due-soon);
+  border: 1px solid var(--tag-due-soon-border);
+}
+
+/* Número de tareas detenidas en la columna */
+.column-alert {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  border: 1px solid var(--color-warning-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+  animation: slide-in 0.25s ease;
+}
+
+.column-count {
+  background: var(--bg-card);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.85rem;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background var(--ease),
+    color var(--ease);
+}
+
+.column.full .column-count {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.task-list {
+  list-style: none;
+  padding: 4px;
+  margin: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  border-radius: var(--radius);
+  border: 2px dashed transparent;
+  transition:
+    background var(--ease),
+    border-color var(--ease);
+}
+
+.task-list.drag-over {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+}
+
+.empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 24px 0;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+}

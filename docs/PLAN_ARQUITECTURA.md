@@ -1,6 +1,6 @@
 # Plan de reestructuración de LUCAS: arquitectura limpia
 
-Estado: **en ejecución**. Fases 0 a 5 hechas (pendiente verificar en PDN); fases 6 y 7 sin empezar.
+Estado: **en ejecución**. Fases 0 a 6 hechas (pendiente verificar en PDN); fase 7 sin empezar.
 Fecha: 4 de octubre de 2026.
 
 Fuentes de contexto:
@@ -139,9 +139,14 @@ Cambios respecto al diseño inicial:
 
 ### Fase 6: Estilos
 
-- [ ] Sacar los colores, tipografías y espacios de `DESIGN.md` y de los 4 CSS a `styles/variables.css` como tokens.
-- [ ] Crear `styles/reset.css` y un `styles/base.css` común. Hoy `lucas.css` cumple a medias ese papel.
-- [ ] Repartir `style.css` entre los componentes de la fase 5 y borrar las reglas duplicadas entre `login.css`, `inicio.css` y `lucas.css`.
+- [x] Los 21 tokens de `DESIGN.md` que login e inicio repetían pasan a `styles/variables.css` (una sola vez). Cada página conserva solo sus tokens propios.
+- [x] `style.css` (1.362 líneas) se reparte en `styles/board/` por secciones (variables, base, barra, formulario, avisos, filtros, columnas, tarjetas, etiquetas, editor, pie, decoración, responsive), unidas por `styles/board.css` con `@import` en el mismo orden.
+- [x] Verificado compilando antes y después: el CSS del tablero sale **idéntico byte a byte**; en login e inicio las reglas no cambian y los tokens tienen exactamente los mismos valores.
+
+No hecho, a propósito (cambiaría el aspecto, no solo la organización):
+- [ ] `reset.css` y `base.css` comunes: el tablero, el login y el inicio tienen bases distintas (el inicio va acotado a `.lucas-home` para no afectar al tablero). Unificarlas mueve reglas en la cascada.
+- [ ] Unificar el tablero con el sistema de `DESIGN.md`: hoy el tablero conserva su estilo original (azul, `system-ui`). Es un rediseño, no una reestructuración; conviene decidirlo como una funcionalidad aparte (ya hay propuestas en `docs/PROPUESTAS_REDISENO_LUCAS.md`).
+- [ ] Llevar cada sección de CSS junto a su componente (`components/TaskCard.css`…): con Vite, el orden de la cascada pasaría a depender del orden de los `import` de JavaScript.
 
 ### Fase 7: Cierre
 

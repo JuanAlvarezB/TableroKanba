@@ -1,0 +1,193 @@
+/* Resaltado breve de una tarjeta recién editada aquí o cambiada en otro dispositivo */
+.card.flash {
+  animation: card-flash 1.6s ease-out;
+}
+
+/* ---------- Edición de tarjetas ---------- */
+
+.card.editing,
+.card.editing:hover {
+  cursor: default;
+  user-select: auto;
+  transform: none;
+  box-shadow:
+    0 0 0 2px var(--color-primary-soft),
+    var(--shadow-card-hover);
+  animation: slide-in 0.2s ease;
+}
+
+.edit-input {
+  display: block;
+  width: 100%;
+  min-height: 2.4em;
+  resize: none;
+  overflow: hidden;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  line-height: inherit;
+  transition:
+    border-color var(--ease),
+    box-shadow var(--ease);
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
+}
+
+/* Aviso de que otro dispositivo cambió la tarea durante la edición */
+.edit-note {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  font-size: 0.8rem;
+  animation: slide-in 0.25s ease;
+}
+
+.edit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.edit-hint {
+  margin-right: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.edit-cancel,
+.edit-save {
+  min-height: 30px;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    background var(--ease),
+    transform var(--ease);
+}
+
+.edit-cancel {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.edit-cancel:hover {
+  background: var(--bg-column);
+  color: var(--text);
+}
+
+.edit-save {
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: bold;
+}
+
+.edit-save:hover {
+  background: var(--color-primary-hover);
+}
+
+.edit-cancel:active,
+.edit-save:active {
+  transform: scale(0.96);
+}
+
+.card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* Con ratón, las acciones aparecen al pasar por la tarjeta o al enfocarla con teclado */
+@media (hover: hover) and (pointer: fine) {
+  .card-actions {
+    opacity: 0;
+    transition: opacity var(--ease);
+  }
+
+  .card:hover .card-actions,
+  .card:focus-within .card-actions {
+    opacity: 1;
+  }
+}
+
+.move-btn,
+.label-btn,
+.edit-btn,
+.delete-btn {
+  min-width: 32px;
+  min-height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition:
+    background var(--ease),
+    transform var(--ease);
+}
+
+.move-btn {
+  color: var(--color-primary);
+}
+
+.move-btn:hover:not(:disabled),
+.label-btn:hover,
+.label-btn[aria-expanded='true'],
+.edit-btn:hover {
+  background: var(--color-primary-soft);
+}
+
+.move-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.delete-btn:hover {
+  background: var(--color-danger-soft);
+}
+
+.move-btn:active:not(:disabled),
+.label-btn:active,
+.edit-btn:active,
+.delete-btn:active {
+  transform: scale(0.9);
+}
+
+.column-action {
+  align-self: center;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition:
+    background var(--ease),
+    color var(--ease);
+}
+
+.column-action:hover:not(:disabled) {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.column-action:disabled {
+  color: var(--text-muted);
+  opacity: 0.6;
+  cursor: not-allowed;
+}

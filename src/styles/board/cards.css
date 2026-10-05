@@ -1,0 +1,153 @@
+/* ---------- Tarjetas ---------- */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--accent);
+  padding: 10px 12px;
+  box-shadow: var(--shadow-card);
+  cursor: grab;
+  user-select: none;
+  transition:
+    box-shadow var(--ease),
+    transform var(--ease),
+    opacity var(--ease);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
+
+.card.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+  transform: rotate(2deg) scale(0.98);
+  box-shadow: none;
+}
+
+.card.completed .task-text {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.task-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap; /* respeta los saltos de línea escritos al editar */
+}
+
+/* Historial de estados: línea de tiempo con un punto del color de cada columna */
+.task-history {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0 0;
+  border-top: 1px solid var(--border-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tareas creadas antes de existir el historial */
+.task-history:empty {
+  display: none;
+}
+
+.history-step {
+  --step: var(--color-pending);
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding-left: 16px;
+}
+
+.history-step[data-status='in-progress'] {
+  --step: var(--color-progress);
+}
+
+.history-step[data-status='completed'] {
+  --step: var(--color-done);
+}
+
+.history-step::before {
+  content: '';
+  position: absolute;
+  left: 1px;
+  top: calc(50% - 4px);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--step);
+  box-shadow: 0 0 0 2px var(--bg-card);
+}
+
+/* Conector vertical entre un punto y el siguiente */
+.history-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 4.5px;
+  top: calc(50% + 4px);
+  bottom: calc(-50% + 2px);
+  width: 1px;
+  background: var(--border);
+}
+
+.history-label {
+  font-weight: 600;
+}
+
+.history-step time {
+  white-space: nowrap;
+}
+
+/* Tarea detenida más de 3 días: borde y fondo cálidos, sin perder el color de la columna */
+.card.overdue {
+  background: linear-gradient(var(--color-warning-soft), var(--bg-card) 60%);
+  box-shadow:
+    inset 0 0 0 1px var(--color-warning-border),
+    var(--shadow-card);
+}
+
+.card.overdue:hover {
+  box-shadow:
+    inset 0 0 0 1px var(--color-warning-border),
+    var(--shadow-card-hover);
+}
+
+.overdue-badge {
+  align-self: flex-start;
+  margin: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-warning-soft);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning);
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+/* Anotación de una tarea que volvió de En curso a Pendiente */
+.history-note {
+  align-self: flex-start;
+  margin: -2px 0 0;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-hover);
+  font-weight: 600;
+}
+
+/* Fecha desde la que se cuenta la alerta */
+.history-step.is-overdue,
+.history-step.is-overdue time {
+  color: var(--color-warning);
+  font-weight: bold;
+}

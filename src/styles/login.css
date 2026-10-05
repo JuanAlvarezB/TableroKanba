@@ -3,33 +3,8 @@
    Se escribe para celular primero y se amplía en los @media de tableta y escritorio. */
 
 :root {
-  /* Paleta de DESIGN.md */
-  --color-deep-teal: #1c5d5f; /* texto blanco encima con contraste AA (~7.5:1) */
-  --color-forest-floor: #156152;
-  --color-pine-shadow: #0e4749;
-  --color-sage: #65b8a2;
+  /* Tokens compartidos en variables.css; este solo lo usa el login. */
   --color-ink-navy: #16325a;
-  --color-dusty-rose: #d6aec1;
-  --color-mint-mist: #a2cbcd;
-  --color-sea-foam: #cae1e2;
-  --color-paper-white: #f2f8f7;
-  --color-card-mint: #e4f0f1;
-  --color-blush-sand: #f2e8e2;
-  --color-charcoal-navy: #283338;
-
-  /* Derivados para estados que DESIGN.md no cubre */
-  --color-muted: #4d5f63; /* AA sobre el lienzo y sobre la tarjeta menta */
-  --color-error: #8a2f45;
-  --color-field: #fbfdfd;
-
-  --font-sans: 'Manrope', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-
-  --radius-cards: 12px;
-  --radius-buttons: 48px;
-  --radius-pills: 1000px;
-  --page-max-width: 1200px;
 }
 
 *,
