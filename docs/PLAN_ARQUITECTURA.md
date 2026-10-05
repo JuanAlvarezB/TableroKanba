@@ -1,6 +1,6 @@
 # Plan de reestructuración de LUCAS: arquitectura limpia
 
-Estado: **terminado**. Fases 0 a 7 hechas; falta publicar en PDN y verificarlo (ver la sección 8).
+Estado: **terminado y publicado en PDN** el 4 de octubre de 2026 (PR #5, merge `9607362`, etiqueta `pdn-arquitectura`).
 Fecha: 4 de octubre de 2026.
 
 Fuentes de contexto:
@@ -204,7 +204,8 @@ ListaTareasIA/
 
 ## 8. Balance de la reestructuración
 
-Rama `feature/newLogin`, commits `78ef3a2` a `5d565a7`. Las tareas que siguen abiertas están
+Rama `feature/newLogin` (commits `78ef3a2` a `927cf65`), fusionada en `main` con el PR #5 (`9607362`)
+y etiquetada como `pdn-arquitectura`. Las tareas que siguen abiertas están
 también en `docs/PENDIENTES.txt` (documento interno, no está en el repositorio), sección 7
 "ARQUITECTURA LIMPIA"; allí se marcó además lo que esta reestructuración resolvió de la
 sección 5 "RUTA CRÍTICA DE PRUEBAS (CI/CD)".
@@ -238,7 +239,8 @@ Pruebas automáticas: de 0 a **146** (dominio, datos, store, autorización, text
 ### 8.3 Lo que quedó pendiente
 
 De la reestructuración:
-- [ ] **Publicar en PDN**: merge del Pull Request, `deploy.yml` en verde y `docs/VERIFICACION_MANUAL.md` en PDN.
+- [x] **Publicar en PDN**: PR #5 fusionado, `deploy.yml` en verde y PDN verificado: la sesión iniciada se conservó, las 21 tareas reales aparecen (14 / 1 / 6) con "Sincronizado" y sin el distintivo DESARROLLO.
+- [ ] **Hacer obligatorio el check `revisar`** (`ci.yml`) en el ruleset "Proteger main", para que no se pueda hacer merge con pruebas fallidas.
 - [ ] **Partir `createBoardPage()`** en controladores más pequeños (edición, menú de etiquetas, arrastre, alertas): es el nodo más conectado del grafo (40 conexiones).
 - [ ] **Rediseño del tablero** con el sistema de `DESIGN.md` y, con él, `reset.css` y `base.css` comunes (ver fase 6).
 - [ ] **`@ts-check` con JSDoc** (opcional desde la fase 2).
