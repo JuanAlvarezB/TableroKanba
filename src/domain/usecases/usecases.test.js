@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { addTask } from './AddTask.js';
+import { checkReminder } from './CheckReminder.js';
 import { clearCompleted, deleteTask } from './DeleteTasks.js';
+import { migrateLocalTasks } from './MigrateLocalTasks.js';
 import { adjacentStatus, moveTask } from './MoveTask.js';
 import { setDueDate } from './SetDueDate.js';
 import { setPriority } from './SetPriority.js';
@@ -91,5 +93,49 @@ describe('borrar', () => {
     const result = clearCompleted(tasks);
     expect(result.removedIds).toEqual(['d']);
     expect(result.tasks.map((t) => t.id)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('migrateLocalTasks', () => {
+  const fakeCache = (migrated) => ({ migrated, isMigrated: () => migrated, markMigrated: vi.fn() });
+
+  it('sube las tareas locales una sola vez y lo marca', async () => {
+    const cache = fakeCache(false);
+    const repository = { saveAll: vi.fn().mockResolvedValue() };
+    expect(await migrateLocalTasks({ tasks: board(), cache, repository })).toBe(true);
+    expect(repository.saveAll).toHaveBeenCalledWith(board());
+    expect(cache.markMigrated).toHaveBeenCalled();
+  });
+
+  it('no sube nada si ya se migró o no hay tareas', async () => {
+    const repository = { saveAll: vi.fn() };
+    expect(await migrateLocalTasks({ tasks: board(), cache: fakeCache(true), repository })).toBe(false);
+    expect(await migrateLocalTasks({ tasks: [], cache: fakeCache(false), repository })).toBe(false);
+    expect(repository.saveAll).not.toHaveBeenCalled();
+  });
+
+  it('si falla la subida no lo marca como migrado', async () => {
+    const cache = fakeCache(false);
+    const repository = { saveAll: vi.fn().mockRejectedValue(new Error('sin red')) };
+    await expect(migrateLocalTasks({ tasks: board(), cache, repository })).rejects.toThrow('sin red');
+    expect(cache.markMigrated).not.toHaveBeenCalled();
+  });
+});
+
+describe('checkReminder', () => {
+  // Miércoles 7 de octubre de 2026, 10:30.
+  const now = new Date(2026, 9, 7, 10, 30);
+  const urgent = [task('u', { priority: 'urgent', createdAt: now.getTime() })];
+
+  it('muestra el turno si hay tareas que necesitan atención y no se ha mostrado', () => {
+    expect(checkReminder(urgent, { lastShownId: null, now })).toEqual({ id: '2026-10-7@10', label: 'de la mañana' });
+  });
+
+  it('no lo repite en el mismo turno', () => {
+    expect(checkReminder(urgent, { lastShownId: '2026-10-7@10', now })).toBeNull();
+  });
+
+  it('no lo muestra si no hay nada que atender', () => {
+    expect(checkReminder([task('a', { createdAt: now.getTime() })], { lastShownId: null, now })).toBeNull();
   });
 });

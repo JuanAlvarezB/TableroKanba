@@ -1,12 +1,22 @@
-// Sesión compartida de LUCAS: carga Firebase una sola vez, confirma quién inició sesión y si
-// está autorizado (colección allowedUsers) y cierra la sesión.
-// La comparten las páginas autenticadas y el login.
+// Sesión compartida de LUCAS: confirma quién inició sesión y si está autorizado (colección
+// allowedUsers) y cierra la sesión. La comparten las páginas autenticadas y el login.
+import { createAllowedUsersRepository } from './data/repositories/AllowedUsersRepository.js';
+import { createFirebaseAuthRepository } from './data/repositories/FirebaseAuthRepository.js';
+import {
+  readStorage,
+  removeStorage,
+  takeSessionValue,
+  writeSessionValue,
+  writeStorage,
+} from './data/datasources/browserStorage.js';
+import { loadFirebase } from './data/datasources/firebase.init.js';
+import { displayName, hasPasswordProvider } from './domain/entities/Session.js';
 import { APP_ENV } from './shared/config/firebase.config.js';
+import { DENIED_MESSAGE } from './shared/constants/messages.js';
 
 export const LUCAS_AUTH = (() => {
   const LOGIN_PAGE = 'login.html';
   const HOME_PAGE = 'index.html';
-  const ALLOWED_USERS = 'allowedUsers';
 
   // Aviso que login.html muestra al llegar (por ejemplo, "cuenta sin acceso").
   const LOGIN_MESSAGE_KEY = 'lucas-mensaje-login';
@@ -15,92 +25,32 @@ export const LUCAS_AUTH = (() => {
   // al tablero de nadie; se borran en cuanto alguien inicia sesión en este navegador.
   const LEGACY_KEYS = [APP_ENV.storageKey, APP_ENV.migratedKey];
 
-  const WRONG_CREDENTIALS = 'Correo o contraseña incorrectos.';
-  const DENIED_MESSAGE = 'Tu cuenta no tiene acceso a LUCAS. Pídeselo al administrador.';
-
-  // Códigos de Firebase → texto en español. Los vacíos no muestran nada (la persona cerró la
-  // ventana de Google a propósito). Los de credenciales comparten mensaje para no revelar
-  // qué correos existen.
-  const ERROR_MESSAGES = {
-    'auth/invalid-credential': WRONG_CREDENTIALS,
-    'auth/wrong-password': WRONG_CREDENTIALS,
-    'auth/user-not-found': WRONG_CREDENTIALS,
-    'auth/invalid-email': 'Escribe un correo válido.',
-    'auth/missing-email': 'Escribe tu correo.',
-    'auth/missing-password': 'Escribe tu contraseña.',
-    'auth/too-many-requests': 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.',
-    'auth/user-disabled': 'Esta cuenta está desactivada. Habla con el administrador.',
-    'auth/network-request-failed': 'Sin conexión. Revisa tu internet.',
-    'auth/popup-closed-by-user': '',
-    'auth/cancelled-popup-request': '',
-    'auth/user-cancelled': '',
-    'auth/popup-blocked': 'El navegador bloqueó la ventana de Google. Permite ventanas emergentes para este sitio.',
-    'auth/account-exists-with-different-credential':
-      'Ese correo ya entra con otro método. Inicia sesión con correo y contraseña.',
-    'auth/unauthorized-domain': 'Este sitio no está autorizado para iniciar sesión con Google. Avisa al administrador.',
-    'auth/operation-not-allowed': 'Este método de acceso no está habilitado. Avisa al administrador.',
-    'auth/weak-password': 'Usa al menos 6 caracteres.',
-  };
-
-  let firebase = null;
+  let services = null;
   let leaving = false;
   const cleanups = [];
 
-  function errorMessage(error) {
-    const code = error?.code ?? '';
-    if (Object.hasOwn(ERROR_MESSAGES, code)) return ERROR_MESSAGES[code];
-    console.error('Error de Firebase:', error);
-    return 'No se pudo completar la operación. Inténtalo de nuevo.';
-  }
-
-  // Carga los SDK (paquete firebase de npm, en un archivo aparte) e inicializa la app del ambiente (config.js) una sola vez.
-  function loadFirebase() {
-    if (!firebase) {
-      firebase = Promise.all([import('firebase/app'), import('firebase/auth'), import('firebase/firestore')]).then(
-        ([appSdk, authSdk, fs]) => {
-          const app = appSdk.initializeApp(APP_ENV.firebaseConfig);
-          const auth = authSdk.getAuth(app);
-          auth.languageCode = 'es';
-          return { app, auth, authSdk, db: fs.getFirestore(app), fs };
-        },
-      );
-      // Si no cargó (sin internet, bloqueado), el siguiente intento vuelve a pedirlo.
-      firebase.catch(() => {
-        firebase = null;
+  // Firebase y los repositorios de autenticación, creados una sola vez. Si Firebase no cargó
+  // (sin internet, bloqueado), el siguiente intento vuelve a pedirlo.
+  function loadServices() {
+    if (!services) {
+      services = loadFirebase().then((firebase) => ({
+        firebase,
+        auth: createFirebaseAuthRepository(firebase),
+        allowedUsers: createAllowedUsersRepository(firebase),
+      }));
+      services.catch(() => {
+        services = null;
       });
     }
-    return firebase;
+    return services;
+  }
+
+  // Repositorio de autenticación para el login (inicia sesión, recupera la contraseña…).
+  async function loadAuth() {
+    return (await loadServices()).auth;
   }
 
   /* ---------- Almacenamiento local ---------- */
-
-  // localStorage puede lanzar error (Safari con datos de sitio bloqueados); sin él, LUCAS
-  // funciona igual, solo que sin copia local ni modo sin conexión.
-  function readStorage(key) {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  }
-
-  function writeStorage(key, value) {
-    try {
-      localStorage.setItem(key, value);
-    } catch {
-      // Sin almacenamiento no hay marca para el modo sin conexión; no pasa nada más.
-    }
-  }
-
-  function removeStorage(keys) {
-    keys.forEach((key) => {
-      try {
-        localStorage.removeItem(key);
-      } catch {
-        // Nada que borrar si el navegador no permite usar localStorage.
-      }
-    });
-  }
 
   // Claves propias de cada persona: así dos personas en el mismo navegador nunca ven la copia
   // local de la otra, ni por un instante.
@@ -130,58 +80,39 @@ export const LUCAS_AUTH = (() => {
 
   // Comprueba si la persona está en allowedUsers y tiene el correo verificado.
   // Devuelve { status: 'ok' | 'denied' | 'unverified' | 'offline', name, offline }.
-  async function authorize(fb, user) {
+  async function authorize(user) {
     const email = (user.email ?? '').toLowerCase();
     if (user.isAnonymous || !email) return { status: 'denied' };
 
-    let snapshot;
+    const { allowedUsers } = await loadServices();
+    let allowed;
     try {
-      snapshot = await fb.fs.getDoc(fb.fs.doc(fb.db, ALLOWED_USERS, email));
+      allowed = await allowedUsers.find(email);
     } catch (error) {
-      if (error.code === 'permission-denied') return { status: 'denied' };
+      if (error.reason === 'permission-denied') return { status: 'denied' };
       // Sin red: vale la última autorización confirmada de esta persona en este navegador.
       const remembered = readRemembered(user.uid);
       if (remembered) return { status: 'ok', name: remembered.name, offline: true };
-      console.error('No se pudo comprobar la autorización:', error);
+      console.error('No se pudo comprobar la autorización:', error.cause ?? error);
       return { status: 'offline' };
     }
 
-    if (!snapshot.exists()) {
+    if (!allowed) {
       clearUserData(user.uid);
       return { status: 'denied' };
     }
     if (!user.emailVerified) return { status: 'unverified' };
 
-    const name = typeof snapshot.data().name === 'string' ? snapshot.data().name.trim() : '';
-    writeStorage(storageKeys(user.uid).authorized, JSON.stringify({ name }));
+    writeStorage(storageKeys(user.uid).authorized, JSON.stringify({ name: allowed.name }));
     removeStorage(LEGACY_KEYS);
-    return { status: 'ok', name };
-  }
-
-  // Nombre visible: el de allowedUsers; si falta, el de Google; si falta, el correo sin dominio.
-  function displayName(user, name) {
-    return name || user.displayName || user.email.split('@')[0];
+    return { status: 'ok', name: allowed.name };
   }
 
   /* ---------- Navegación ---------- */
 
-  function setLoginMessage(code) {
-    try {
-      sessionStorage.setItem(LOGIN_MESSAGE_KEY, code);
-    } catch {
-      // Sin sessionStorage el login se muestra sin el aviso.
-    }
-  }
-
   // Devuelve el aviso pendiente para el login (y lo borra), o null.
   function takeLoginMessage() {
-    try {
-      const code = sessionStorage.getItem(LOGIN_MESSAGE_KEY);
-      sessionStorage.removeItem(LOGIN_MESSAGE_KEY);
-      return code === 'denied' ? DENIED_MESSAGE : null;
-    } catch {
-      return null;
-    }
+    return takeSessionValue(LOGIN_MESSAGE_KEY) === 'denied' ? DENIED_MESSAGE : null;
   }
 
   // Con replace, el botón "atrás" no vuelve a una página protegida.
@@ -196,10 +127,10 @@ export const LUCAS_AUTH = (() => {
   }
 
   // Cierra la sesión de una cuenta que no puede entrar, sin dejar datos suyos en el navegador.
-  async function rejectUser(fb, user) {
+  async function rejectUser(user) {
     clearUserData(user.uid);
     try {
-      await fb.authSdk.signOut(fb.auth);
+      await (await loadServices()).auth.signOut();
     } catch (error) {
       console.error('No se pudo cerrar la sesión:', error);
     }
@@ -245,8 +176,8 @@ export const LUCAS_AUTH = (() => {
   }
 
   // Si la sesión se cierra en otra pestaña (o cambia de persona), esta también sale.
-  function watchSession(fb, uid) {
-    fb.authSdk.onAuthStateChanged(fb.auth, (user) => {
+  function watchSession(auth, uid) {
+    auth.onChange((user) => {
       if (leaving || user?.uid === uid) return;
       runCleanups();
       clearUserData(uid);
@@ -254,31 +185,34 @@ export const LUCAS_AUTH = (() => {
     });
   }
 
-  // Protege una página: devuelve la sesión si la persona está autorizada. Si no, la lleva al
-  // login o muestra la pantalla sin conexión, y la promesa no se resuelve.
+  /**
+   * Protege una página: devuelve la sesión si la persona está autorizada. Si no, la lleva al
+   * login o muestra la pantalla sin conexión, y la promesa no se resuelve.
+   * @returns {Promise<import('./domain/entities/Session.js').Session>}
+   */
   async function requireSession() {
-    let fb;
+    let firebase;
+    let auth;
     try {
-      fb = await loadFirebase();
+      ({ firebase, auth } = await loadServices());
     } catch (error) {
       console.error('No se pudo cargar Firebase:', error);
       showOfflineScreen();
       return halt();
     }
 
-    await fb.auth.authStateReady();
-    const user = fb.auth.currentUser;
+    const user = await auth.restore();
     // Las sesiones anónimas del tablero anterior cuentan como "sin sesión".
     if (!user || user.isAnonymous) {
-      if (user) await rejectUser(fb, user);
+      if (user) await rejectUser(user);
       goToLogin();
       return halt();
     }
 
-    const result = await authorize(fb, user);
+    const result = await authorize(user);
     if (result.status === 'denied') {
-      await rejectUser(fb, user);
-      setLoginMessage('denied');
+      await rejectUser(user);
+      writeSessionValue(LOGIN_MESSAGE_KEY, 'denied');
       goToLogin();
       return halt();
     }
@@ -293,20 +227,26 @@ export const LUCAS_AUTH = (() => {
     }
 
     const keys = storageKeys(user.uid);
-    watchSession(fb, user.uid);
+    watchSession(auth, user.uid);
     document.body.classList.remove('auth-pending');
     return {
-      ...fb,
+      firebase,
       user,
       uid: user.uid,
       email: user.email,
       name: displayName(user, result.name),
       photoURL: user.photoURL,
-      hasPassword: user.providerData.some((provider) => provider.providerId === 'password'),
+      hasPassword: hasPasswordProvider(user),
       offline: Boolean(result.offline),
       storageKey: keys.tasks,
       migratedKey: keys.migrated,
     };
+  }
+
+  // Cambia la contraseña de la persona con sesión (cuenta.js).
+  async function changePassword(session, current, next) {
+    const { auth } = await loadServices();
+    await auth.changePassword(session.user, current, next);
   }
 
   // Cierra la sesión después de que la persona lo confirma en el diálogo.
@@ -314,7 +254,7 @@ export const LUCAS_AUTH = (() => {
     leaving = true;
     runCleanups();
     try {
-      await session.authSdk.signOut(session.auth);
+      await (await loadServices()).auth.signOut();
     } catch (error) {
       console.error('No se pudo cerrar la sesión en Firebase:', error);
     }
@@ -324,15 +264,14 @@ export const LUCAS_AUTH = (() => {
 
   return {
     HOME_PAGE,
-    loadFirebase,
+    loadAuth,
     authorize,
     rejectUser,
     requireSession,
     onSignOut,
     signOut,
-    errorMessage,
+    changePassword,
     takeLoginMessage,
     loginUrl,
-    DENIED_MESSAGE,
   };
 })();

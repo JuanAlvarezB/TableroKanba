@@ -1,6 +1,6 @@
 # Plan de reestructuración de LUCAS: arquitectura limpia
 
-Estado: **en ejecución**. Fases 0 a 3 hechas (pendiente verificar en PDN); fases 4 a 7 sin empezar.
+Estado: **en ejecución**. Fases 0 a 4 hechas (pendiente verificar en PDN); fases 5 a 7 sin empezar.
 Fecha: 4 de octubre de 2026.
 
 Fuentes de contexto:
@@ -109,12 +109,18 @@ src/data/
     └── AllowedUsersRepository.js    # colección allowedUsers
 ```
 
-- [ ] Implementar los repositorios según los contratos de la fase 3.
-- [ ] Crear la entidad `Session` y el contrato `AuthRepository` (pasan desde la fase 3).
-- [ ] Casos de uso con almacenamiento: `CheckReminder` y `MigrateLocalTasks` (pasan desde la fase 3).
-- [ ] Los casos de uso de la fase 3 reciben el `TaskRepository` y se encargan de guardar.
-- [ ] `handleSyncError` pasa a ser un error del repositorio, y la interfaz decide qué mensaje mostrar.
-- [ ] `ERROR_MESSAGES` de Firebase se traduce a errores del dominio, y los textos en español van en `shared/constants/messages.js`.
+- [x] Fuentes de datos: `firebase.init.js` (carga Firebase una vez) y `browserStorage.js` (localStorage y sessionStorage sin lanzar errores).
+- [x] Repositorios: `FirestoreTaskRepository`, `LocalTaskCache`, `ReminderStore`, `FirebaseAuthRepository` y `AllowedUsersRepository`. Fuera de `src/data/` nadie usa ya el SDK de Firebase ni el almacenamiento del navegador.
+- [x] Entidad `Session` y contratos `AuthRepository` y `AllowedUsersRepository`.
+- [x] Casos de uso `MigrateLocalTasks` (recibe la copia local y el repositorio) y `CheckReminder`.
+- [x] `handleSyncError` recibe un `RepositoryError` (`permission-denied`, `not-found`, `unavailable`) y decide el mensaje.
+- [x] `ERROR_MESSAGES` pasa a `shared/constants/messages.js`.
+- [x] Pruebas de los repositorios con un Firestore y un localStorage falsos (72 pruebas en total).
+
+Cambios respecto al diseño inicial:
+- Los casos de uso de la fase 3 siguen siendo puros (deciden qué cambia). La orquestación decidir → guardar → dibujar va al store de la fase 5; meterla ahora en los casos de uso habría que rehacerla allí. Solo `MigrateLocalTasks` recibe repositorios, porque coordinar la copia local con Firestore es justo su trabajo.
+- Los errores de autenticación conservan su código de Firebase (`auth/…`): es el vocabulario que `messages.js` traduce y que la interfaz usa para decidir qué campo resaltar.
+- Mientras no existan los puntos de entrada de la fase 5, la sesión lleva la conexión con Firebase (`session.firebase`) para que cada página cree sus repositorios.
 
 ### Fase 5: Presentación y estado
 

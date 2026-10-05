@@ -1,6 +1,7 @@
 // Zona de usuario de las páginas autenticadas de LUCAS (inicio y tablero): nombre, cambiar
 // contraseña y cerrar sesión, con sus diálogos. Cerrar sesión siempre pide confirmación.
 import { LUCAS_AUTH } from './auth.js';
+import { errorMessage } from './shared/constants/messages.js';
 
 export const LUCAS_CUENTA = (() => {
   const MIN_PASSWORD_LENGTH = 6;
@@ -225,18 +226,14 @@ export const LUCAS_CUENTA = (() => {
       error.hidden = true;
       save.disabled = true;
       save.textContent = 'Guardando…';
-      const { authSdk, user } = session;
       try {
-        // Firebase exige un inicio de sesión reciente para cambiar la contraseña: se
-        // reautentica siempre con la actual, así nunca aparece auth/requires-recent-login.
-        const credential = authSdk.EmailAuthProvider.credential(user.email, current.input.value);
-        await authSdk.reauthenticateWithCredential(user, credential);
-        await authSdk.updatePassword(user, next.input.value);
+        // Se reautentica siempre con la contraseña actual (ver FirebaseAuthRepository).
+        await LUCAS_AUTH.changePassword(session, current.input.value, next.input.value);
       } catch (failure) {
         save.disabled = false;
         save.textContent = 'Guardar';
         const wrongCurrent = ['auth/invalid-credential', 'auth/wrong-password'].includes(failure.code);
-        const message = wrongCurrent ? 'La contraseña actual no es correcta.' : LUCAS_AUTH.errorMessage(failure);
+        const message = wrongCurrent ? 'La contraseña actual no es correcta.' : errorMessage(failure);
         showError(message || 'No se pudo cambiar la contraseña.', wrongCurrent ? current.input : next.input);
         return;
       }
