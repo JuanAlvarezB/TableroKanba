@@ -57,9 +57,9 @@ cp .env.example .env.local   # y rellena los valores (Firebase → Configuració
 Después:
 
 ```bash
-npm run dev       # servidor de desarrollo en http://localhost:5500, recarga al guardar
+npm run dev       # servidor de desarrollo en http://localhost:8000, recarga al guardar
 npm run build     # genera el sitio en dist/
-npm run preview   # sirve dist/ en http://localhost:8000, igual que en PDN
+npm run preview   # sirve dist/ en http://localhost:5500, igual que en PDN
 npm test          # pruebas (Vitest)
 npm run lint      # errores comunes (ESLint)
 npm run format    # formatea el código (Prettier)
@@ -67,7 +67,8 @@ npm run format    # formatea el código (Prettier)
 
 Usa siempre `localhost` (no `127.0.0.1` ni `file://`): la clave de API de Desarrollo solo
 acepta `localhost:5500` y `localhost:8000`, y el inicio de sesión necesita un dominio
-autorizado. Cierra Live Server de VS Code antes de `npm run dev`: también usa el puerto 5500.
+autorizado. No uses Live Server de VS Code para LUCAS: sirve los archivos sin procesar y la
+página se queda en "Cargando…".
 
 ## Usuarios autorizados
 

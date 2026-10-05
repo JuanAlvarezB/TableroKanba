@@ -1,6 +1,6 @@
 # Plan de reestructuración de LUCAS: arquitectura limpia
 
-Estado: **en ejecución**. Fases 0 a 2 hechas (pendiente verificar en PDN); fases 3 a 7 sin empezar.
+Estado: **en ejecución**. Fases 0 a 3 hechas (pendiente verificar en PDN); fases 4 a 7 sin empezar.
 Fecha: 4 de octubre de 2026.
 
 Fuentes de contexto:
@@ -82,11 +82,18 @@ src/domain/
     └── MigrateLocalTasks.js
 ```
 
-- [ ] Extraer las reglas puras a `domain/rules/` con sus pruebas.
-- [ ] Crear las entidades `Task` y `Session`.
-- [ ] Definir los contratos en `domain/repositories/`.
+- [x] Extraer las reglas puras a `domain/rules/` con sus pruebas (`dates`, `dueDates`, `stalledTasks`, `priority`, `board`, `reminders`).
+- [x] Crear la entidad `Task` (forma, estados, lectura desde localStorage y Firestore, fechas por estado).
+- [x] Definir el contrato `TaskRepository` en `domain/repositories/`.
   - Esta carpeta no aparece en `arquitecturaLimpia.md` y se propone añadirla. Ahí van los contratos; `data/` los implementa. Así el dominio no depende de Firebase.
-- [ ] Crear los casos de uso. Reciben el repositorio por parámetro (inyección de dependencias), lo que permite probarlos con un repositorio falso en memoria.
+- [x] Crear los casos de uso `AddTask`, `MoveTask`, `SetPriority`, `SetDueDate` y `DeleteTasks` (borrar una y limpiar completadas).
+- [x] Conectar `script.js` al dominio y comprobar que el resultado es idéntico al original (183 casos comparados, 0 diferencias).
+
+Cambios respecto al diseño inicial:
+- Las reglas y los casos de uso reciben `now` como parámetro, para probarlos con fechas fijas.
+- Los textos (emojis, nombres de columnas y prioridades, fechas formateadas) se quedan en la interfaz; el dominio devuelve datos (`dueStatus` → `{ kind, days, due }`, `attentionIds` → ids por grupo).
+- Por ahora los casos de uso son funciones puras que devuelven **qué cambia**; `script.js` guarda y dibuja. En la fase 4 recibirán el repositorio.
+- Pasan a la fase 4, porque dependen del almacenamiento o de la sesión: la entidad `Session`, el contrato `AuthRepository`, `CheckReminder` y `MigrateLocalTasks`. `GetOverdueSummary` quedó como la regla `attentionIds`.
 
 ### Fase 4: Capa de datos
 
@@ -103,6 +110,9 @@ src/data/
 ```
 
 - [ ] Implementar los repositorios según los contratos de la fase 3.
+- [ ] Crear la entidad `Session` y el contrato `AuthRepository` (pasan desde la fase 3).
+- [ ] Casos de uso con almacenamiento: `CheckReminder` y `MigrateLocalTasks` (pasan desde la fase 3).
+- [ ] Los casos de uso de la fase 3 reciben el `TaskRepository` y se encargan de guardar.
 - [ ] `handleSyncError` pasa a ser un error del repositorio, y la interfaz decide qué mensaje mostrar.
 - [ ] `ERROR_MESSAGES` de Firebase se traduce a errores del dominio, y los textos en español van en `shared/constants/messages.js`.
 

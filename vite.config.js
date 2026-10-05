@@ -18,9 +18,10 @@ export default defineConfig(({ command, mode }) => {
   return {
     // Rutas relativas: el sitio funciona en https://juanalvarezb.github.io/TableroKanba/ y en local.
     base: './',
-    // La clave de API de Desarrollo solo acepta localhost:5500 y localhost:8000 (ver README).
-    server: { port: 5500, strictPort: true },
-    preview: { port: 8000, strictPort: true },
+    // La clave de API de Desarrollo solo acepta localhost:8000 y localhost:5500 (ver README).
+    // npm run dev usa el 8000 para no chocar con Live Server de VS Code, que usa el 5500.
+    server: { port: 8000, strictPort: true },
+    preview: { port: 5500, strictPort: true },
     build: {
       // El SDK de Firestore (~560 kB) es un solo bloque y se carga aparte, solo cuando hace falta.
       chunkSizeWarningLimit: 600,

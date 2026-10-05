@@ -2,6 +2,26 @@
 import { APP_ENV } from './shared/config/firebase.config.js';
 import { LUCAS_AUTH } from './auth.js';
 import { LUCAS_CUENTA } from './cuenta.js';
+import {
+  DUE_DATE_PATTERN,
+  STATUSES,
+  STATUS_DATE_FIELDS,
+  isStoredTask,
+  missingDates,
+  taskFromData,
+  taskFromStorage,
+  wasInProgress,
+} from './domain/entities/Task.js';
+import { FILTERS, WIP_LIMITS, countByStatus, isColumnFull, sortTasks } from './domain/rules/board.js';
+import { DUE_SOON_BUSINESS_DAYS, dueStatus } from './domain/rules/dueDates.js';
+import { sortByPriority } from './domain/rules/priority.js';
+import { attentionIds, currentReminderSlot } from './domain/rules/reminders.js';
+import { STALLED_DAYS, stalledDays } from './domain/rules/stalledTasks.js';
+import { addTask as addTaskCase } from './domain/usecases/AddTask.js';
+import { clearCompleted as clearCompletedCase, deleteTask as deleteTaskCase } from './domain/usecases/DeleteTasks.js';
+import { adjacentStatus, moveTask as moveTaskCase } from './domain/usecases/MoveTask.js';
+import { setDueDate as setDueDateCase } from './domain/usecases/SetDueDate.js';
+import { setPriority as setPriorityCase } from './domain/usecases/SetPriority.js';
 
 // Claves de localStorage de la persona (auth.js): llevan el ambiente y su uid, así nadie ve la
 // copia local de otra persona en el mismo navegador. Se asignan al confirmar la sesión.
@@ -12,62 +32,28 @@ let migratedKey = null;
 // Firebase se carga e inicializa en auth.js; cada tarea guarda en ownerId el uid de su dueño.
 const TASKS_COLLECTION = 'tasks';
 
-// Columnas del tablero, en el orden del flujo de trabajo.
-const STATUSES = ['pending', 'in-progress', 'completed'];
-
-// Historial de fechas: cada estado guarda cuándo entró la tarea en él (milisegundos
-// desde 1970, o null si aún no ha pasado por ese estado).
-const STATUS_DATE_FIELDS = { pending: 'createdAt', 'in-progress': 'startedAt', completed: 'completedAt' };
 const STATUS_LABELS = { pending: 'Creada', 'in-progress': 'En curso', completed: 'Completada' };
 
-// Alertas de tareas detenidas: más de OVERDUE_DAYS días calendario en Pendiente (desde que se
-// creó) o En curso (desde que empezó). Las completadas no generan alertas.
-const OVERDUE_DAYS = 3;
+// Textos de las alertas de tareas detenidas (la regla está en domain/rules/stalledTasks.js).
 // "phrase" completa frases como "Lleva 4 días en Pendiente".
 const OVERDUE_COLUMNS = {
   pending: { name: 'Pendiente', phrase: 'en Pendiente' },
   'in-progress': { name: 'En curso', phrase: 'en curso' },
 };
 
-// El aviso resumen es un recordatorio: sale de lunes a viernes una vez en la mañana (desde
-// las 10:00) y otra en la tarde (desde las 15:00), y se cierra solo al minuto. Las etiquetas
-// de las tarjetas y columnas siguen visibles todo el tiempo.
-const REMINDER_SLOTS = [
-  { hour: 10, label: 'de la mañana' },
-  { hour: 15, label: 'de la tarde' },
-];
+// El aviso resumen es un recordatorio (turnos en domain/rules/reminders.js) que se cierra solo
+// al minuto. Las etiquetas de las tarjetas y columnas siguen visibles todo el tiempo.
 const REMINDER_DURATION = 60000;
 // Último turno mostrado en este navegador, para no repetirlo al recargar o en otra pestaña.
 const REMINDER_KEY = 'ultimo-recordatorio';
 
 // Etiquetas de prioridad: opcionales, se ponen después de crear la tarea. El orden de este
-// objeto es el orden de la columna; las tareas sin etiqueta van al final.
+// objeto es el de PRIORITY_LEVELS (domain/entities/Task.js).
 const PRIORITIES = {
   urgent: { icon: '🔴', label: 'Urgente' },
   high: { icon: '⬆', label: 'Prioritaria' },
   low: { icon: '💤', label: 'Puede esperar' },
 };
-const PRIORITY_RANK = Object.fromEntries(Object.keys(PRIORITIES).map((key, index) => [key, index]));
-const NO_PRIORITY_RANK = Object.keys(PRIORITIES).length;
-
-// Fecha límite opcional ("2026-10-15", día local). Se marca "próxima a vencer" cuando faltan
-// DUE_SOON_BUSINESS_DAYS días hábiles o menos, y "vencida" cuando ya pasó.
-const DUE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const DUE_SOON_BUSINESS_DAYS = 2;
-
-// Filtro rápido del tablero.
-const FILTERS = {
-  all: () => true,
-  urgent: (t) => t.priority === 'urgent',
-  high: (t) => t.priority === 'high',
-  low: (t) => t.priority === 'low',
-  none: (t) => t.priority === null,
-  due: (t) => ['soon', 'overdue'].includes(dueInfo(t)?.kind),
-};
-
-// Límite de trabajo en curso (WIP) por columna. Kanban limita lo que está
-// "en curso" para terminar tareas antes de empezar otras nuevas.
-const WIP_LIMITS = { 'in-progress': 200 };
 
 const taskForm = document.getElementById('task-form');
 const taskInput = document.getElementById('task-input');
@@ -119,47 +105,8 @@ function loadTasks() {
   }
   if (!Array.isArray(parsed)) parsed = [];
 
-  // Migra tareas guardadas con formatos anteriores ({ completed: boolean }, id numérico, sin orden).
-  return sortTasks(
-    parsed
-      .filter((t) => t && typeof t.text === 'string')
-      .map((t, index) => ({
-        id: String(t.id),
-        text: t.text,
-        status: STATUSES.includes(t.status) ? t.status : t.completed ? 'completed' : 'pending',
-        order: typeof t.order === 'number' ? t.order : index,
-        ...readDates(t),
-        ...readLabels(t),
-      })),
-  );
-}
-
-// Lee las fechas guardadas; las que falten quedan en null (backfillDates las completa).
-function readDates(source) {
-  const dates = {};
-  Object.values(STATUS_DATE_FIELDS).forEach((field) => {
-    dates[field] = Number.isFinite(source[field]) ? source[field] : null;
-  });
-  return dates;
-}
-
-// Lee la prioridad y la fecha límite; si no hay o no son válidas quedan en null (sin etiqueta).
-function readLabels(source) {
-  return {
-    priority: Object.hasOwn(PRIORITIES, source.priority ?? '') ? source.priority : null,
-    dueDate: typeof source.dueDate === 'string' && DUE_DATE_PATTERN.test(source.dueDate) ? source.dueDate : null,
-  };
-}
-
-// Las tareas creadas antes de existir el historial reciben como fecha por defecto el momento
-// en que se detectan: la de creación y la del estado en el que están ahora.
-function missingDates(task) {
-  const now = Date.now();
-  const fields = {};
-  if (task.createdAt === null) fields.createdAt = now;
-  const currentField = STATUS_DATE_FIELDS[task.status];
-  if (task[currentField] === null) fields[currentField] = now;
-  return fields;
+  // Migra tareas guardadas con formatos anteriores (ver taskFromStorage).
+  return sortTasks(parsed.filter(isStoredTask).map(taskFromStorage));
 }
 
 // Completa las fechas que falten y las sincroniza; solo se escriben los campos ausentes,
@@ -183,45 +130,8 @@ function backfillDates() {
   saveTasks();
 }
 
-// Fechas al entrar en un estado: se registra el momento actual y, si la tarea retrocede,
-// se borran las de los estados posteriores porque dejan de ser ciertas. Al volver a Pendiente
-// la fecha de creación pasa a ser la del cambio, pero se conserva la de En curso como
-// constancia de que la tarea ya estuvo en curso (ver wasInProgress).
-function datesForStatus(status) {
-  const dates = { [STATUS_DATE_FIELDS[status]]: Date.now() };
-  STATUSES.slice(STATUSES.indexOf(status) + 1).forEach((later) => {
-    dates[STATUS_DATE_FIELDS[later]] = null;
-  });
-  if (status === 'pending') delete dates.startedAt;
-  return dates;
-}
-
-// Una tarea pendiente con fecha de En curso es una que se devolvió desde En curso.
-function wasInProgress(task) {
-  return task.status === 'pending' && task.startedAt !== null;
-}
-
-// Ordena por "order"; el id desempata tareas creadas a la vez en dos dispositivos.
-function sortTasks(list) {
-  return list.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
-}
-
-// Orden dentro de una columna: por etiqueta y, dentro de cada etiqueta, por el orden manual.
-// sort es estable, así que basta con comparar la etiqueta si la lista ya viene por "order".
-function priorityRank(task) {
-  return task.priority === null ? NO_PRIORITY_RANK : PRIORITY_RANK[task.priority];
-}
-
-function sortByPriority(list) {
-  return list.sort((a, b) => priorityRank(a) - priorityRank(b));
-}
-
 function createId() {
   return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
-}
-
-function nextOrder() {
-  return tasks.length ? tasks[tasks.length - 1].order + 1 : 0;
 }
 
 function saveTasks() {
@@ -231,15 +141,6 @@ function saveTasks() {
   } catch {
     showNotice('No se pudieron guardar los cambios en este navegador.');
   }
-}
-
-function countByStatus(status) {
-  return tasks.filter((t) => t.status === status).length;
-}
-
-function isColumnFull(status) {
-  const limit = WIP_LIMITS[status];
-  return limit !== undefined && countByStatus(status) >= limit;
 }
 
 // Muestra un mensaje en el elemento indicado y lo oculta pasados MESSAGE_DURATION ms.
@@ -292,54 +193,26 @@ function notifyRemoteChanges(previousTasks) {
 }
 
 function addTask(text) {
-  const task = {
-    id: createId(),
-    text,
-    status: 'pending',
-    order: nextOrder(),
-    ...readDates({}),
-    ...readLabels({}),
-    createdAt: Date.now(),
-  };
-  tasks.push(task);
+  const result = addTaskCase(tasks, { id: createId(), text });
+  tasks = result.tasks;
   saveTasks();
-  saveRemote(task);
+  saveRemote(result.task);
   render();
-  announceNewTasks([task]);
+  announceNewTasks([result.task]);
 }
 
 // Mueve una tarea a otra columna; si se indica beforeId, la coloca antes de esa tarea.
 function moveTask(id, status, beforeId = null) {
-  const task = tasks.find((t) => t.id === id);
-  if (!task) return;
-
-  if (task.status !== status && isColumnFull(status)) {
-    showNotice(
-      `Límite WIP alcanzado: termina una tarea "En curso" antes de empezar otra (máx. ${WIP_LIMITS[status]}).`,
-    );
+  const result = moveTaskCase(tasks, { id, status, beforeId });
+  if (!result.ok) {
+    if (result.reason === 'wip-limit') {
+      showNotice(`Límite WIP alcanzado: termina una tarea "En curso" antes de empezar otra (máx. ${result.limit}).`);
+    }
     return;
   }
-
-  // Reordenar dentro de la misma columna no cambia el historial de fechas.
-  const dates = task.status === status ? {} : datesForStatus(status);
-  tasks = tasks.filter((t) => t.id !== id);
-  task.status = status;
-  Object.assign(task, dates);
-
-  // El nuevo orden queda entre la tarea anterior y beforeId, así solo cambia esta tarea.
-  const beforeIndex = beforeId === null ? -1 : tasks.findIndex((t) => t.id === beforeId);
-  if (beforeIndex === -1) {
-    task.order = nextOrder();
-    tasks.push(task);
-  } else {
-    const next = tasks[beforeIndex].order;
-    const prev = beforeIndex > 0 ? tasks[beforeIndex - 1].order : next - 1;
-    task.order = (prev + next) / 2;
-    tasks.splice(beforeIndex, 0, task);
-  }
-
+  tasks = result.tasks;
   saveTasks();
-  updateRemote(task.id, { status: task.status, order: task.order, ...dates });
+  updateRemote(id, result.changes);
   render();
 }
 
@@ -356,53 +229,35 @@ function updateTask(id, fields) {
 
 // Al cambiar la etiqueta, la tarea pasa al final de su nuevo grupo.
 function setPriority(id, priority) {
-  const task = tasks.find((t) => t.id === id);
-  if (!task || task.priority === priority) return;
-  updateTask(id, { priority, order: nextOrder() });
+  const changes = setPriorityCase(tasks, { id, priority });
+  if (!changes) return;
+  updateTask(id, changes);
   sortTasks(tasks);
   highlight([id]);
   render();
 }
 
 function setDueDate(id, dueDate) {
-  const task = tasks.find((t) => t.id === id);
-  if (!task || task.dueDate === dueDate) return;
-  updateTask(id, { dueDate });
+  const changes = setDueDateCase(tasks, { id, dueDate });
+  if (!changes) return;
+  updateTask(id, changes);
   render();
 }
 
-function parseDueDate(value) {
-  const [year, month, day] = value.split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
-
-// Días hábiles (lunes a viernes) desde mañana hasta la fecha, ambos incluidos. Se deja de
-// contar al pasar el límite porque solo importa saber si se supera.
-function businessDaysUntil(date) {
-  const day = new Date();
-  day.setHours(0, 0, 0, 0);
-  let count = 0;
-  while (day < date && count <= DUE_SOON_BUSINESS_DAYS) {
-    day.setDate(day.getDate() + 1);
-    if (day.getDay() !== 0 && day.getDay() !== 6) count += 1;
-  }
-  return count;
-}
-
-// Estado del vencimiento ({ kind, text, title }) o null si no tiene fecha o ya se completó.
-// kind: "overdue" (vencida), "soon" (próxima a vencer) o "scheduled" (aún con margen).
+// Vencimiento con sus textos ({ kind, text, title }), o null si no tiene fecha o ya se completó.
+// La regla está en domain/rules/dueDates.js.
 function dueInfo(task) {
-  if (task.dueDate === null || task.status === 'completed') return null;
-  const due = parseDueDate(task.dueDate);
+  const status = dueStatus(task);
+  if (!status) return null;
+  const { kind, days, due } = status;
   const title = `Fecha límite: ${longDateFormat.format(due)}`;
-  const days = -calendarDaysSince(due.getTime());
 
-  if (days < 0) return { kind: 'overdue', text: `⛔ Venció hace ${plural(-days, 'día', 'días')}`, title };
-  if (days === 0) return { kind: 'soon', text: '⏳ Vence hoy', title };
-  if (businessDaysUntil(due) <= DUE_SOON_BUSINESS_DAYS) {
-    return { kind: 'soon', text: days === 1 ? '⏳ Vence mañana' : `⏳ Vence en ${days} días`, title };
+  if (kind === 'overdue') return { kind, text: `⛔ Venció hace ${plural(-days, 'día', 'días')}`, title };
+  if (kind === 'soon') {
+    const text = days === 0 ? '⏳ Vence hoy' : days === 1 ? '⏳ Vence mañana' : `⏳ Vence en ${days} días`;
+    return { kind, text, title };
   }
-  return { kind: 'scheduled', text: `📅 Vence el ${shortDateFormat.format(due)}`, title };
+  return { kind, text: `📅 Vence el ${shortDateFormat.format(due)}`, title };
 }
 
 function setFilter(filter) {
@@ -436,25 +291,6 @@ function closeLabelMenu(restoreFocus = false) {
 
 /* ---------- Alertas de tareas detenidas ---------- */
 
-// Días calendario entre la fecha y hoy (de medianoche a medianoche, en la hora local).
-function calendarDaysSince(ms) {
-  const start = new Date(ms);
-  start.setHours(0, 0, 0, 0);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  // Se redondea porque los cambios de horario hacen que un día dure 23 o 25 horas.
-  return Math.round((today - start) / 86400000);
-}
-
-// Días que la tarea lleva detenida en su columna, o null si no supera el límite.
-function overdueDays(task) {
-  if (!OVERDUE_COLUMNS[task.status]) return null;
-  const since = task[STATUS_DATE_FIELDS[task.status]];
-  if (since === null) return null;
-  const days = calendarDaysSince(since);
-  return days > OVERDUE_DAYS ? days : null;
-}
-
 function plural(count, singular, pluralForm) {
   return `${count} ${count === 1 ? singular : pluralForm}`;
 }
@@ -462,19 +298,9 @@ function plural(count, singular, pluralForm) {
 // Firma de las alertas actuales; si cambia (pasa un día, una tarea supera el límite)
 // hay que volver a dibujar el tablero.
 function overdueSignature() {
-  return tasks.map((t) => `${t.id}:${overdueDays(t)}:${dueInfo(t)?.text}`).join('|');
+  return tasks.map((t) => `${t.id}:${stalledDays(t)}:${dueInfo(t)?.text}`).join('|');
 }
 let lastOverdueSignature = '';
-
-// Turno de recordatorio vigente ({ id: "2026-10-5@10", label }), o null en fin de semana
-// o antes de las 10:00. Si la página se abre más tarde, el turno sigue pendiente.
-function currentReminderSlot(now = new Date()) {
-  const day = now.getDay();
-  if (day === 0 || day === 6) return null;
-  const slot = [...REMINDER_SLOTS].reverse().find((s) => now.getHours() >= s.hour);
-  if (!slot) return null;
-  return { id: `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}@${slot.hour}`, label: slot.label };
-}
 
 // Copia en memoria por si el navegador no permite usar localStorage.
 let lastReminderShown = null;
@@ -526,22 +352,16 @@ function hideReminder() {
   overdueBanner.classList.remove('counting');
 }
 
-// Grupos de tareas que el recordatorio menciona: detenidas por columna, urgentes, vencidas y
-// próximas a vencer. Solo se devuelven los que tienen alguna tarea.
+// Grupos de tareas que el recordatorio menciona, con sus textos: detenidas por columna,
+// urgentes, vencidas y próximas a vencer (la selección está en domain/rules/reminders.js).
+// Solo se devuelven los que tienen alguna tarea.
 function attentionGroups() {
-  const open = tasks.filter((t) => t.status !== 'completed');
-  const idsOf = (list) => list.map((t) => t.id);
-  const groups = Object.entries(OVERDUE_COLUMNS).map(([status, { name, phrase }]) => {
-    const ids = idsOf(tasks.filter((t) => t.status === status && overdueDays(t) !== null));
-    return {
-      ids,
-      text: `${plural(ids.length, 'tarea lleva', 'tareas llevan')} más de ${OVERDUE_DAYS} días ${phrase}.`,
-      label: `Ver tareas detenidas en ${name}`,
-    };
-  });
-  const urgent = idsOf(open.filter((t) => t.priority === 'urgent'));
-  const overdueDue = idsOf(open.filter((t) => dueInfo(t)?.kind === 'overdue'));
-  const soonDue = idsOf(open.filter((t) => dueInfo(t)?.kind === 'soon'));
+  const { stalled, urgent, overdueDue, soonDue } = attentionIds(tasks);
+  const groups = Object.entries(OVERDUE_COLUMNS).map(([status, { name, phrase }]) => ({
+    ids: stalled[status],
+    text: `${plural(stalled[status].length, 'tarea lleva', 'tareas llevan')} más de ${STALLED_DAYS} días ${phrase}.`,
+    label: `Ver tareas detenidas en ${name}`,
+  }));
   groups.push(
     {
       ids: urgent,
@@ -587,13 +407,13 @@ function renderOverdueAlerts() {
 
   Object.entries(OVERDUE_COLUMNS).forEach(([status, { phrase }]) => {
     const columnTasks = tasks.filter((t) => t.status === status);
-    const overdue = columnTasks.filter((t) => overdueDays(t) !== null).length;
+    const overdue = columnTasks.filter((t) => stalledDays(t) !== null).length;
     const urgent = columnTasks.filter((t) => t.priority === 'urgent').length;
     const due = columnTasks.filter(FILTERS.due).length;
     setColumnChip(
       `[data-alert="${status}"]`,
       `⏰ ${overdue}`,
-      `${plural(overdue, 'tarea lleva', 'tareas llevan')} más de ${OVERDUE_DAYS} días ${phrase}`,
+      `${plural(overdue, 'tarea lleva', 'tareas llevan')} más de ${STALLED_DAYS} días ${phrase}`,
       overdue,
     );
     setColumnChip(
@@ -697,25 +517,26 @@ function autoResize(textarea) {
 function shiftTask(id, direction) {
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
-  const nextStatus = STATUSES[STATUSES.indexOf(task.status) + direction];
+  const nextStatus = adjacentStatus(task, direction);
   if (nextStatus) moveTask(id, nextStatus);
 }
 
 function deleteTask(id) {
   if (editing && editing.id === id) editing = null;
   if (labelMenuId === id) labelMenuId = null;
-  tasks = tasks.filter((t) => t.id !== id);
+  const result = deleteTaskCase(tasks, { id });
+  tasks = result.tasks;
   saveTasks();
-  deleteRemote([id]);
+  deleteRemote(result.removedIds);
   render();
 }
 
 function clearCompleted() {
-  const completedIds = tasks.filter((t) => t.status === 'completed').map((t) => t.id);
-  if (editing && completedIds.includes(editing.id)) editing = null;
-  tasks = tasks.filter((t) => t.status !== 'completed');
+  const result = clearCompletedCase(tasks);
+  if (editing && result.removedIds.includes(editing.id)) editing = null;
+  tasks = result.tasks;
   saveTasks();
-  deleteRemote(completedIds);
+  deleteRemote(result.removedIds);
   render();
 }
 
@@ -854,15 +675,7 @@ function connectRemote(session) {
 }
 
 function taskFromDoc(doc) {
-  const data = doc.data();
-  return {
-    id: doc.id,
-    text: String(data.text ?? ''),
-    status: STATUSES.includes(data.status) ? data.status : 'pending',
-    order: typeof data.order === 'number' ? data.order : 0,
-    ...readDates(data),
-    ...readLabels(data),
-  };
+  return taskFromData(doc.id, doc.data());
 }
 
 function createCard(task) {
@@ -957,13 +770,13 @@ function createCard(task) {
   const tags = createTags(task);
   if (tags) li.append(tags);
 
-  const days = overdueDays(task);
+  const days = stalledDays(task);
   if (days !== null) {
     li.classList.add('overdue');
     const badge = document.createElement('p');
     badge.className = 'overdue-badge';
     badge.textContent = `⏰ Lleva ${days} días ${OVERDUE_COLUMNS[task.status].phrase}`;
-    badge.title = `Supera el límite de ${OVERDUE_DAYS} días calendario`;
+    badge.title = `Supera el límite de ${STALLED_DAYS} días calendario`;
     li.append(badge);
   }
 
@@ -1107,7 +920,7 @@ function createHistory(task) {
     item.className = 'history-step';
     item.dataset.status = status;
     // Marca la fecha desde la que se cuenta la alerta de la tarea.
-    if (status === task.status && overdueDays(task) !== null) item.classList.add('is-overdue');
+    if (status === task.status && stalledDays(task) !== null) item.classList.add('is-overdue');
 
     const label = document.createElement('span');
     label.className = 'history-label';
@@ -1266,13 +1079,13 @@ function render() {
     const counter = document.querySelector(`[data-count="${status}"]`);
     const limit = WIP_LIMITS[status];
     counter.textContent = limit ? `${columnTasks.length} · máx. ${limit}` : columnTasks.length;
-    list.closest('.column').classList.toggle('full', isColumnFull(status));
+    list.closest('.column').classList.toggle('full', isColumnFull(tasks, status));
   });
 
   const openCount = tasks.filter((t) => t.status !== 'completed').length;
   taskCount.textContent = `${openCount} tarea${openCount === 1 ? '' : 's'} sin completar`;
 
-  clearCompletedBtn.disabled = countByStatus('completed') === 0;
+  clearCompletedBtn.disabled = countByStatus(tasks, 'completed') === 0;
   renderOverdueAlerts();
 
   const allCompleted = tasks.length > 0 && openCount === 0;
