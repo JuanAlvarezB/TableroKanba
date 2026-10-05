@@ -5,6 +5,7 @@ import { readStorage, removeStorage, writeStorage } from '../datasources/browser
 
 /**
  * @param {import('../../shared/config/firebase.config.js').AppEnvironment} env
+ * @returns {import('../../domain/repositories/AuthRepository.js').SessionStore}
  */
 export function createSessionStore(env) {
   function keysFor(uid) {

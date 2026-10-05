@@ -21,6 +21,13 @@
  * @typedef {object} AllowedUsersRepository
  * @property {(email: string) => Promise<{ name: string } | null>} find Persona autorizada, o null si no lo está.
  *   Lanza RepositoryError ('permission-denied' o 'unavailable') si no se pudo comprobar.
+ *
+ * @typedef {object} SessionStore Lo que el navegador recuerda de cada persona (data/repositories/SessionStore.js).
+ * @property {(uid: string) => { tasks: string, migrated: string, authorized: string }} keysFor Claves de localStorage.
+ * @property {(uid: string) => { name: string } | null} remembered Última autorización confirmada.
+ * @property {(uid: string, name: string) => void} remember
+ * @property {(uid: string) => void} forget Borra todo lo de esa persona en este navegador.
+ * @property {() => void} clearLegacy Borra las copias del tablero anónimo anterior.
  */
 
 export {};

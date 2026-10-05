@@ -14,7 +14,8 @@ const env = import.meta.env;
  * @property {'pdn' | 'dev'} name
  * @property {string} storageKey Prefijo de las claves de localStorage de las tareas.
  * @property {string} migratedKey Prefijo de la marca de tareas locales ya subidas.
- * @property {import('firebase/app').FirebaseOptions} firebaseConfig
+ * @property {{ apiKey: string, authDomain: string, projectId: string, storageBucket: string,
+ *   messagingSenderId: string, appId: string }} firebaseConfig Opciones de initializeApp.
  */
 
 /** @type {{ pdn: AppEnvironment, dev: AppEnvironment }} */

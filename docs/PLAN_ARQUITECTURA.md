@@ -1,6 +1,6 @@
 # Plan de reestructuración de LUCAS: arquitectura limpia
 
-Estado: **en ejecución**. Fases 0 a 6 hechas (pendiente verificar en PDN); fase 7 sin empezar.
+Estado: **terminado**. Fases 0 a 7 hechas; falta publicar en PDN y verificarlo (ver la sección 8).
 Fecha: 4 de octubre de 2026.
 
 Fuentes de contexto:
@@ -150,9 +150,10 @@ No hecho, a propósito (cambiaría el aspecto, no solo la organización):
 
 ### Fase 7: Cierre
 
-- [ ] Borrar los archivos antiguos de la raíz (`script.js`, `auth.js`, etc.) y `reglas_antiguas.txt` si ya no aporta.
-- [ ] Actualizar `README.md` con la nueva estructura, `npm run dev/build/test` y los ambientes.
-- [ ] Ejecutar `graphify update .` y comprobar que el grafo refleja comunidades por capa y que ningún nodo concentra tantas conexiones como `render()`.
+- [x] Borrar los archivos antiguos de la raíz: ya no queda ningún `.js` ni `.css` suelto; `reglas_antiguas.txt` se borró (reglas obsoletas e inseguras, sustituidas por `firestore.rules`; sigue en el historial de git).
+- [x] `README.md` actualizado: estructura por capas, `npm run dev/build/test/lint/format`, ambientes y variables de Firebase.
+- [x] Regla de dependencias automatizada: `src/architecture.test.js` falla si una capa importa de otra no permitida (también en tipos JSDoc) o si el dominio usa el navegador. Al crearla encontró y se corrigieron dos referencias de tipos que cruzaban capas.
+- [x] `graphify update .`: ninguna dependencia va en sentido contrario. `render()` bajó de 25 a 19 conexiones, pero `createBoardPage()` concentra 40 porque agrupa todas las funciones de la vista del tablero (ver pendientes).
 
 ---
 
@@ -200,3 +201,12 @@ ListaTareasIA/
 
 - [x] ¿Se adopta **Vite y npm**? Sí.
 - [x] ¿**JavaScript con JSDoc** o pasar a **TypeScript**? JavaScript con JSDoc.
+
+## 8. Pendientes después de la reestructuración
+
+- [ ] **Publicar en PDN**: abrir el Pull Request de `feature/newLogin` hacia `main`, esperar `ci.yml` en verde, hacer merge y repasar `docs/VERIFICACION_MANUAL.md` en PDN.
+- [ ] **Partir `createBoardPage()`** en controladores más pequeños (edición, menú de etiquetas, arrastre, alertas): hoy es el nodo más conectado del grafo.
+- [ ] **Rediseño del tablero** con el sistema de `DESIGN.md` (ver fase 6) y, con él, `reset.css`/`base.css` comunes.
+- [ ] **Pruebas de `firestore.rules`** con el emulador de Firebase.
+- [ ] Funciones de `PENDIENTES.txt`: cierre por inactividad, roles, registro de quién cambia cada tarea.
+

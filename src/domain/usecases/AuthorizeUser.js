@@ -9,7 +9,7 @@
  * @param {import('../entities/Session.js').AuthUser} user
  * @param {object} deps
  * @param {import('../repositories/AuthRepository.js').AllowedUsersRepository} deps.allowedUsers
- * @param {ReturnType<typeof import('../../data/repositories/SessionStore.js').createSessionStore>} deps.sessionStore
+ * @param {import('../repositories/AuthRepository.js').SessionStore} deps.sessionStore
  * @returns {Promise<Authorization>}
  */
 export async function authorizeUser(user, { allowedUsers, sessionStore }) {
