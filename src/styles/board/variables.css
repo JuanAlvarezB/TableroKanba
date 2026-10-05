@@ -1,0 +1,51 @@
+/* ---------- Variables de diseño ---------- */
+
+:root {
+  color-scheme: light; /* fuerza el tema claro aunque el sistema esté en modo oscuro */
+  --color-primary: #2575fc;
+  --color-primary-hover: #1a5bd1;
+  --color-primary-soft: #e3ecff;
+  --color-pending: #f39c12;
+  --color-progress: #2575fc;
+  --color-done: #2e7d32;
+  --color-danger: #c62828;
+  --color-danger-soft: #ffebee;
+  --color-success-soft: #e8f5e9;
+  --color-warning: #8a5300; /* contraste AA sobre su fondo */
+  --color-warning-soft: #fff4e0;
+  --color-warning-border: #f5c26b;
+
+  /* Etiquetas de prioridad y vencimiento (texto con contraste AA sobre su fondo).
+     Se evita el ámbar, reservado para las alertas de tareas detenidas. */
+  --tag-urgent: #c62828;
+  --tag-urgent-soft: #ffebee;
+  --tag-urgent-border: #f4b4b4;
+  --tag-high: #6a1b9a;
+  --tag-high-soft: #f3e5f5;
+  --tag-high-border: #d7b3e3;
+  --tag-low: #5f6368;
+  --tag-low-soft: #eef0f3;
+  --tag-low-border: #d5d9df;
+  --tag-due-soon: #a8410a;
+  --tag-due-soon-soft: #fff0e6;
+  --tag-due-soon-border: #f7b48a;
+
+  /* Fondo blanco y limpio: el panel se separa con borde y sombra suave */
+  --bg-base: #ffffff;
+  --bg-surface: #fff;
+  --bg-column: #f1f4f8;
+  --border-surface: #e4e8ee;
+  --bg-card: #fff;
+  --text: #222;
+  --text-muted: #5f6368; /* contraste AA sobre blanco */
+  --border: #cfd4dc;
+
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --shadow-card-hover: 0 6px 16px rgba(0, 0, 0, 0.15);
+  --shadow-surface: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 16px rgba(16, 24, 40, 0.05);
+  --focus-ring: 0 0 0 3px rgba(37, 117, 252, 0.45);
+  --ease: 0.2s ease;
+}

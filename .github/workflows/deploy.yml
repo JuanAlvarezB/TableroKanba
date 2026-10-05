@@ -25,30 +25,48 @@ jobs:
       - name: Descargar el código
         uses: actions/checkout@v7
 
-      - name: Preparar la carpeta del sitio
-        # Solo se publican los archivos de la app, no la configuración del repositorio:
-        # index.html (inicio de LUCAS), tablero.html (tablero de tareas), login.html y sus
-        # recursos. Cada despliegue añade el commit a las rutas .js y .css de cada página
-        # (script.js?v=abc1234), así los navegadores como Safari no siguen usando
-        # la versión anterior guardada en su caché.
+      - name: Instalar Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Construir el sitio
+        # vite build genera dist/ con index.html (inicio de LUCAS), tablero.html y login.html.
+        # Los .js y .css llevan un hash de su contenido en el nombre (script-abc123.js), así
+        # los navegadores como Safari nunca siguen usando una versión anterior de su caché.
+        # La configuración de Firebase sale de las variables del repositorio (Settings →
+        # Secrets and variables → Actions → Variables; ver .env.example). Si falta alguna,
+        # vite.config.js detiene el build.
+        env:
+          VITE_FIREBASE_DEV_API_KEY: ${{ vars.VITE_FIREBASE_DEV_API_KEY }}
+          VITE_FIREBASE_DEV_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_DEV_AUTH_DOMAIN }}
+          VITE_FIREBASE_DEV_PROJECT_ID: ${{ vars.VITE_FIREBASE_DEV_PROJECT_ID }}
+          VITE_FIREBASE_DEV_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_DEV_STORAGE_BUCKET }}
+          VITE_FIREBASE_DEV_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_DEV_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_DEV_APP_ID: ${{ vars.VITE_FIREBASE_DEV_APP_ID }}
+          VITE_FIREBASE_PDN_API_KEY: ${{ vars.VITE_FIREBASE_PDN_API_KEY }}
+          VITE_FIREBASE_PDN_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_PDN_AUTH_DOMAIN }}
+          VITE_FIREBASE_PDN_PROJECT_ID: ${{ vars.VITE_FIREBASE_PDN_PROJECT_ID }}
+          VITE_FIREBASE_PDN_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_PDN_STORAGE_BUCKET }}
+          VITE_FIREBASE_PDN_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_PDN_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_PDN_APP_ID: ${{ vars.VITE_FIREBASE_PDN_APP_ID }}
+        run: npm run build
+
+      - name: Comprobar el sitio
+        # Las tres páginas existen, cada recurso que piden está en el sitio (si no, daría 404
+        # en PDN) y el bundle lleva el proyecto de Firebase de PDN.
         run: |
-          mkdir _site
-          cp index.html tablero.html login.html \
-             config.js auth.js cuenta.js inicio.js script.js login.js \
-             lucas.css inicio.css style.css login.css husky.svg _site/
-          VERSION="${GITHUB_SHA::7}"
-          sed -i -E "s#(src|href)=\"([a-z-]+\.(js|css))\"#\1=\"\2?v=${VERSION}\"#g" _site/*.html
-          # Ninguna página puede quedar con un .js o .css sin versión, y cada recurso que
-          # una página pide tiene que existir en el sitio (si no, daría 404 en PDN).
-          if grep -nE "(src|href)=\"[a-z-]+\.(js|css)\"" _site/*.html; then
-            echo "Hay recursos sin versión"; exit 1
-          fi
-          for ref in $(grep -ohE "(src|href)=\"[a-z-]+\.(js|css|svg|html)" _site/*.html | sed -E 's/.*"//' | sort -u); do
-            test -f "_site/${ref}" || { echo "Falta ${ref} en el sitio"; exit 1; }
+          for page in index.html tablero.html login.html; do
+            test -f "dist/${page}" || { echo "Falta ${page}"; exit 1; }
           done
-          grep -q "auth.js?v=${VERSION}" _site/index.html
-          grep -q "script.js?v=${VERSION}" _site/tablero.html
-          grep -q "login.js?v=${VERSION}" _site/login.html
+          for ref in $(grep -ohE "(src|href)=\"\./[^\"]+\"" dist/*.html | sed -E 's/.*"\.\/(.*)"/\1/' | sort -u); do
+            test -f "dist/${ref}" || { echo "Falta ${ref} en el sitio"; exit 1; }
+          done
+          grep -q "tablero-kanban-76c61" dist/assets/*.js || { echo "Falta la configuración de PDN"; exit 1; }
 
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v6
@@ -56,7 +74,7 @@ jobs:
       - name: Subir el sitio como artefacto
         uses: actions/upload-pages-artifact@v5
         with:
-          path: _site
+          path: dist
 
   deploy:
     needs: build

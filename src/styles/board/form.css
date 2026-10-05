@@ -1,0 +1,65 @@
+/* ---------- Formulario ---------- */
+
+#task-form {
+  display: flex;
+  gap: 8px;
+  max-width: 560px;
+  margin: 0 auto 16px;
+}
+
+#task-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: 1rem;
+  transition:
+    border-color var(--ease),
+    box-shadow var(--ease);
+}
+
+#task-input::placeholder {
+  color: var(--text-muted);
+}
+
+#task-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
+}
+
+#task-form button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: bold;
+  cursor: pointer;
+  transition:
+    background var(--ease),
+    transform var(--ease);
+}
+
+#task-form button:hover {
+  background: var(--color-primary-hover);
+}
+
+#task-form button:active {
+  transform: scale(0.97);
+}
+
+.notice {
+  text-align: center;
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+  border-radius: var(--radius);
+  padding: 10px;
+  margin: 0 0 16px;
+  animation:
+    slide-in 0.25s ease,
+    shake 0.4s ease 0.1s;
+}

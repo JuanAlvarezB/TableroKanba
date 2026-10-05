@@ -1,0 +1,68 @@
+/* ---------- Responsive y accesibilidad ---------- */
+
+@media (max-width: 760px) {
+  body {
+    padding: 16px;
+  }
+
+  .container {
+    padding: 16px;
+  }
+
+  .board {
+    grid-template-columns: 1fr;
+  }
+
+  .column {
+    min-height: 0;
+  }
+
+  .task-list {
+    max-height: none;
+  }
+
+  /* En pantallas pequeñas la decoración es más discreta */
+  .decor {
+    opacity: 0.6;
+  }
+
+  .flower.s2,
+  .flower.s4,
+  .butterfly:nth-of-type(2n) {
+    display: none;
+  }
+}
+
+/* Áreas táctiles más grandes en pantallas táctiles */
+@media (pointer: coarse) {
+  .move-btn,
+  .edit-btn,
+  .delete-btn {
+    min-width: 44px;
+    min-height: 40px;
+  }
+
+  .edit-cancel,
+  .edit-save {
+    min-height: 40px;
+    padding: 6px 16px;
+  }
+
+  /* Sin teclado físico los atajos no aplican */
+  .edit-hint {
+    display: none;
+  }
+
+  .card:hover {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

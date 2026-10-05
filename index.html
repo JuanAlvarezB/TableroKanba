@@ -4,14 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Inicio · LUCAS</title>
-  <link rel="icon" href="husky.svg" type="image/svg+xml">
-  <!-- Sustitutos libres de las fuentes de DESIGN.md: Manrope (Sofia Pro), Source Serif 4
+  <link rel="icon" href="/assets/husky.svg" type="image/svg+xml">
+  <!-- Sustitutos libres de las fuentes de docs/DESIGN.md: Manrope (Sofia Pro), Source Serif 4
        (P22 Mackinac Pro) e IBM Plex Mono. Si no cargan, se usan las del sistema. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Manrope:wght@400;500;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;1,8..60,700&display=swap">
-  <link rel="stylesheet" href="lucas.css">
-  <link rel="stylesheet" href="inicio.css">
+  <link rel="stylesheet" href="/src/styles/variables.css">
+  <link rel="stylesheet" href="/src/styles/lucas.css">
+  <link rel="stylesheet" href="/src/styles/inicio.css">
 </head>
 <body class="lucas-home auth-pending">
   <!-- Visible solo hasta confirmar la sesión (auth.js); si no hay conexión muestra Reintentar -->
@@ -22,7 +23,7 @@
   <div class="app-content">
     <header class="topbar">
       <a class="brand" href="index.html" aria-label="LUCAS, inicio">
-        <span class="brand-mark" aria-hidden="true"><img src="husky.svg" alt=""></span>
+        <span class="brand-mark" aria-hidden="true"><img src="/assets/husky.svg" alt=""></span>
         <span class="brand-name">LUCAS</span>
       </a>
       <div class="topbar-end">
@@ -107,9 +108,6 @@
     <footer class="footer">LUCAS · Organiza tu día a día</footer>
   </div>
 
-  <script src="config.js"></script>
-  <script src="auth.js"></script>
-  <script src="cuenta.js"></script>
-  <script src="inicio.js"></script>
+  <script type="module" src="/src/presentation/pages/home/main.js"></script>
 </body>
 </html>

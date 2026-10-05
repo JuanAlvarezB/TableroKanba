@@ -1,0 +1,58 @@
+# Revisa cada Pull Request hacia main antes del merge: formato, lint, pruebas y build.
+# No despliega nada; el despliegue lo hace deploy.yml al hacer merge en main.
+name: Revisar el código
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Si llega un push nuevo al mismo PR, cancela la revisión anterior
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v7
+
+      - name: Instalar Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Formato (Prettier)
+        run: npm run format:check
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Pruebas (Vitest)
+        run: npm test
+
+      - name: Build (Vite)
+        # Mismas variables que deploy.yml (ver .env.example); si falta alguna, el build falla.
+        env:
+          VITE_FIREBASE_DEV_API_KEY: ${{ vars.VITE_FIREBASE_DEV_API_KEY }}
+          VITE_FIREBASE_DEV_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_DEV_AUTH_DOMAIN }}
+          VITE_FIREBASE_DEV_PROJECT_ID: ${{ vars.VITE_FIREBASE_DEV_PROJECT_ID }}
+          VITE_FIREBASE_DEV_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_DEV_STORAGE_BUCKET }}
+          VITE_FIREBASE_DEV_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_DEV_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_DEV_APP_ID: ${{ vars.VITE_FIREBASE_DEV_APP_ID }}
+          VITE_FIREBASE_PDN_API_KEY: ${{ vars.VITE_FIREBASE_PDN_API_KEY }}
+          VITE_FIREBASE_PDN_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_PDN_AUTH_DOMAIN }}
+          VITE_FIREBASE_PDN_PROJECT_ID: ${{ vars.VITE_FIREBASE_PDN_PROJECT_ID }}
+          VITE_FIREBASE_PDN_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_PDN_STORAGE_BUCKET }}
+          VITE_FIREBASE_PDN_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_PDN_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_PDN_APP_ID: ${{ vars.VITE_FIREBASE_PDN_APP_ID }}
+        run: npm run build

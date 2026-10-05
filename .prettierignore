@@ -1,0 +1,11 @@
+# Generados o de terceros
+dist/
+node_modules/
+package-lock.json
+graphify-out/
+
+# Documentos internos (se editan a mano)
+docs/
+
+# Los HTML conservan su formato a mano (Prettier los reescribiría casi por completo).
+*.html

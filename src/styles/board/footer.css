@@ -1,0 +1,67 @@
+/* ---------- Mensajes y pie ---------- */
+
+#all-done-message {
+  text-align: center;
+  color: var(--color-done);
+  background: var(--color-success-soft);
+  border-radius: var(--radius);
+  padding: 10px;
+  font-weight: bold;
+  animation: slide-in 0.3s ease;
+}
+
+.hidden {
+  display: none;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.hint {
+  font-style: italic;
+}
+
+/* Estado de la sincronización entre dispositivos: punto de color + texto */
+.sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sync-status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.sync-status[data-state='online']::before {
+  background: var(--color-done);
+}
+
+.sync-status[data-state='offline']::before {
+  background: var(--color-danger);
+}
+
+/* Dedicatoria y fecha de creación del tablero */
+.site-footer {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-surface);
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.site-footer strong {
+  color: var(--text);
+}

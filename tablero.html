@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tablero de tareas · LUCAS</title>
-  <link rel="icon" href="husky.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="lucas.css">
+  <link rel="icon" href="/assets/husky.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/src/styles/board.css">
+  <link rel="stylesheet" href="/src/styles/lucas.css">
 </head>
 <body class="auth-pending">
   <!-- Visible solo hasta confirmar la sesión (auth.js); si no hay conexión muestra Reintentar -->
@@ -129,7 +129,7 @@
     <!-- Barra de LUCAS: volver al inicio y zona de usuario (cuenta.js) -->
     <nav class="board-nav" aria-label="LUCAS">
       <a class="board-home" href="index.html">
-        <span class="board-home-mark" aria-hidden="true"><img src="husky.svg" alt=""></span>
+        <span class="board-home-mark" aria-hidden="true"><img src="/assets/husky.svg" alt=""></span>
         <span><span aria-hidden="true">←</span> Inicio de LUCAS</span>
       </a>
       <div id="account"></div>
@@ -222,9 +222,6 @@
   <!-- Aviso flotante de tarea nueva; se oculta solo a los 3 segundos -->
   <p id="toast" class="toast hidden" role="status" aria-live="polite"></p>
 
-  <script src="config.js"></script>
-  <script src="auth.js"></script>
-  <script src="cuenta.js"></script>
-  <script src="script.js"></script>
+  <script type="module" src="/src/presentation/pages/board/main.js"></script>
 </body>
 </html>

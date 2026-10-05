@@ -1,8 +1,8 @@
 # Notas internas del proyecto (no se publican)
 PENDIENTES.txt
 
-# Sitio generado por el despliegue de GitHub Pages (deploy.yml)
-_site/
+# Sitio generado por vite build (deploy.yml lo publica en GitHub Pages)
+dist/
 
 # Respaldos de tareas con datos reales de PDN (ver GUIA_AMBIENTES.md, fase 0)
 respaldo-*.json
@@ -16,9 +16,10 @@ firebase-export-*/
 node_modules/
 npm-debug.log*
 
-# Variables de entorno locales, por si se usan en el futuro
+# Variables de entorno locales (la plantilla .env.example sí se commitea)
 .env
 .env.*
+!.env.example
 
 # Sistema operativo (macOS)
 .DS_Store
@@ -40,3 +41,5 @@ graphify-out
 DESIGN.md
 propuestas-design-md
 PROPUESTAS_REDISENO_LUCAS.md
+notificaciones.txt
+arquitecturaLimpia.md

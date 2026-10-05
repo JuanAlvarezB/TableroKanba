@@ -1,0 +1,675 @@
+/* Inicio de LUCAS (index.html) con el estilo de DESIGN.md: lienzo plano cálido, titulares en
+   serif, etiquetas en mono, tarjetas menta sin sombra y botones en píldora.
+   Se carga después de lucas.css. Las reglas de cuenta, diálogos y pantalla de carga van bajo
+   .lucas-home para no cambiar el tablero, que comparte lucas.css. */
+
+.lucas-home {
+  /* Tokens compartidos en variables.css; estos solo los usa el inicio. */
+  --color-illustration-ink: #231e21;
+  --color-error-hover: #6f2337;
+  --radius-nav: 88px;
+
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--color-paper-white);
+  color: var(--color-charcoal-navy);
+  font: 400 16px/1.5 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.lucas-home *,
+.lucas-home *::before,
+.lucas-home *::after {
+  box-sizing: border-box;
+}
+
+.lucas-home :focus-visible {
+  outline-color: var(--color-deep-teal);
+}
+
+.lucas-home .app-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.topbar,
+.home-main,
+.footer {
+  width: min(100% - 32px, var(--page-max-width));
+  margin-inline: auto;
+}
+
+/* ---------- Pantalla de carga ---------- */
+
+.lucas-home .auth-screen {
+  color: var(--color-muted);
+  font: 500 13px/1.5 var(--font-mono);
+  letter-spacing: 0.059em;
+  text-transform: uppercase;
+}
+
+.lucas-home .auth-retry {
+  padding: 12px 24px;
+  border-radius: var(--radius-buttons);
+  background: var(--color-deep-teal);
+  font: 500 15px/1 var(--font-sans);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.lucas-home .auth-retry:hover {
+  background: var(--color-forest-floor);
+}
+
+/* ---------- Etiqueta mono con punto de color ---------- */
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--color-pine-shadow);
+  font: 600 13px/1.3 var(--font-mono);
+  letter-spacing: 0.059em;
+  text-transform: uppercase;
+}
+
+.eyebrow::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-sage);
+  content: '';
+}
+
+/* ---------- Cabecera ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 6px 6px 6px 8px;
+  border: 1px solid var(--color-sea-foam);
+  border-radius: var(--radius-nav);
+}
+
+.topbar-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: var(--radius-nav);
+  color: inherit;
+  text-decoration: none;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid var(--color-sage);
+  border-radius: 50%;
+  background: var(--color-card-mint);
+}
+
+.brand-mark img {
+  width: 32px;
+  height: 32px;
+}
+
+.brand-name {
+  font: 500 22px/1 var(--font-serif);
+  letter-spacing: 0.02em;
+}
+
+.lucas-home .env-badge {
+  padding: 6px 12px;
+  border-color: #e3c98f;
+  background: #f6e7c8;
+  color: #6b3b00;
+  font: 600 12px/1 var(--font-mono);
+  letter-spacing: 0.059em;
+  text-transform: uppercase;
+}
+
+/* ---------- Zona de usuario (la monta cuenta.js) ----------
+   En el inicio el avatar siempre despliega un menú con el nombre y las acciones, también en
+   escritorio. En el tablero sigue como define lucas.css. */
+
+.lucas-home .account-toggle {
+  display: inline-flex;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 12px 4px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-nav);
+  color: var(--color-charcoal-navy);
+}
+
+/* Flecha que indica que el avatar abre un menú */
+.lucas-home .account-toggle::after {
+  width: 7px;
+  height: 7px;
+  margin: 0 2px 4px 4px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(45deg);
+  content: '';
+}
+
+.lucas-home .account.open .account-toggle::after {
+  margin-bottom: -4px;
+  transform: rotate(-135deg);
+}
+
+.lucas-home .account-toggle:hover,
+.lucas-home .account.open .account-toggle {
+  border-color: var(--color-sea-foam);
+  background: var(--color-card-mint);
+}
+
+.lucas-home .avatar {
+  background: var(--color-sage);
+  color: var(--color-illustration-ink);
+  font: 600 13px/1 var(--font-mono);
+  letter-spacing: 0.038em;
+}
+
+.lucas-home .account-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 20;
+  display: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: max-content;
+  min-width: 240px;
+  max-width: calc(100vw - 32px);
+  padding: 16px;
+  border: 1px solid var(--color-mint-mist);
+  border-radius: var(--radius-cards);
+  background: var(--color-card-mint);
+  box-shadow: none;
+}
+
+.lucas-home .account.open .account-panel {
+  display: flex;
+}
+
+.lucas-home .account-panel > .avatar {
+  display: none;
+}
+
+.lucas-home .account-name {
+  max-width: none;
+  padding: 0 4px 8px;
+  color: var(--color-charcoal-navy);
+  font-weight: 700;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.lucas-home .account-action {
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 1px solid var(--color-pine-shadow);
+  border-radius: var(--radius-buttons);
+  background: transparent;
+  color: var(--color-pine-shadow);
+  font-weight: 500;
+}
+
+.lucas-home .account-action:hover {
+  background: var(--color-sea-foam);
+}
+
+.lucas-home .account-action.logout {
+  border-color: var(--color-dusty-rose);
+  color: var(--color-error);
+}
+
+.lucas-home .account-action.logout:hover {
+  background: var(--color-blush-sand);
+}
+
+/* ---------- Diálogos de cuenta y aviso ---------- */
+
+.lucas-home .lucas-dialog {
+  border: 1px solid var(--color-mint-mist);
+  border-radius: var(--radius-cards);
+  background: var(--color-paper-white);
+  color: var(--color-charcoal-navy);
+  box-shadow: none;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+}
+
+.lucas-home .lucas-dialog::backdrop {
+  background: rgba(40, 51, 56, 0.35);
+}
+
+.lucas-home .dialog-body {
+  padding: 32px;
+}
+
+.lucas-home .dialog-title {
+  color: var(--color-charcoal-navy);
+  font: 400 28px/1.2 var(--font-serif);
+}
+
+.lucas-home .dialog-text {
+  color: var(--color-muted);
+}
+
+.lucas-home .dialog-form label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.lucas-home .dialog-actions {
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.lucas-home .dialog-btn {
+  padding: 10px 22px;
+  border: 1px solid var(--color-pine-shadow);
+  border-radius: var(--radius-buttons);
+  background: transparent;
+  color: var(--color-pine-shadow);
+  font-weight: 500;
+}
+
+.lucas-home .dialog-btn:hover {
+  background: var(--color-sea-foam);
+}
+
+.lucas-home .dialog-btn.primary {
+  border-color: var(--color-deep-teal);
+  background: var(--color-deep-teal);
+  color: #fff;
+}
+
+.lucas-home .dialog-btn.primary:hover {
+  background: var(--color-forest-floor);
+}
+
+.lucas-home .dialog-btn.danger {
+  border-color: var(--color-error);
+  background: var(--color-error);
+  color: #fff;
+}
+
+.lucas-home .dialog-btn.danger:hover {
+  background: var(--color-error-hover);
+}
+
+.lucas-home .password-field input {
+  min-height: 48px;
+  border-color: var(--color-mint-mist);
+  border-radius: var(--radius-cards);
+  background: var(--color-field);
+  color: var(--color-charcoal-navy);
+}
+
+.lucas-home .toggle-password {
+  top: 6px;
+  right: 6px;
+  height: calc(100% - 12px);
+  border-radius: var(--radius-pills);
+  background: var(--color-card-mint);
+  color: var(--color-pine-shadow);
+  font: 600 12px/1 var(--font-mono);
+  letter-spacing: 0.038em;
+  text-transform: uppercase;
+}
+
+.lucas-home .toggle-password:hover {
+  background: var(--color-sea-foam);
+}
+
+.lucas-home .form-error {
+  border-color: var(--color-dusty-rose);
+  border-radius: var(--radius-cards);
+  background: var(--color-blush-sand);
+  color: var(--color-error);
+}
+
+.lucas-home .lucas-toast {
+  border-radius: var(--radius-pills);
+  background: var(--color-charcoal-navy);
+  padding: 12px 20px;
+}
+
+/* ---------- Saludo ---------- */
+
+.home-main {
+  flex: 1;
+}
+
+.hero {
+  display: grid;
+  gap: 32px;
+  align-items: end;
+  margin-top: 48px;
+}
+
+.hero h1 {
+  margin: 0 0 12px;
+  font: 400 40px/1.16 var(--font-serif);
+  overflow-wrap: anywhere;
+}
+
+.hero h1 em {
+  color: var(--color-deep-teal);
+  font-style: italic;
+  font-weight: 700;
+}
+
+.home-intro {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 18px;
+  line-height: 1.56;
+}
+
+.hero-doodle {
+  display: none;
+}
+
+/* ---------- Funciones ---------- */
+
+.functions {
+  margin: 48px 0 64px;
+}
+
+.section-head {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-sea-foam);
+}
+
+.section-head h2 {
+  margin: 0;
+  font: 400 30px/1.2 var(--font-serif);
+}
+
+.function-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  padding: 24px;
+  border-radius: var(--radius-cards);
+  background: var(--color-card-mint);
+}
+
+.function-copy h3 {
+  margin: 0 0 8px;
+  font: 400 30px/1.2 var(--font-serif);
+}
+
+.function-copy > p:not(.eyebrow) {
+  margin: 0 0 24px;
+  color: var(--color-muted);
+  font-size: 18px;
+}
+
+.checklist {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 32px;
+  padding: 0;
+  list-style: none;
+}
+
+.checklist li {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: baseline;
+}
+
+.checklist li::before {
+  color: var(--color-deep-teal);
+  font-size: 18px;
+  font-weight: 700;
+  content: '✓';
+}
+
+.open-function {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 24px;
+  border-radius: var(--radius-buttons);
+  background: var(--color-deep-teal);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.open-function:hover {
+  background: var(--color-forest-floor);
+}
+
+/* Miniatura del tablero dentro de la tarjeta */
+.mockup {
+  padding: 16px;
+  border: 1px solid var(--color-mint-mist);
+  border-radius: var(--radius-cards);
+  background: var(--color-field);
+}
+
+.mockup-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.mockup-bar i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-sea-foam);
+}
+
+.mockup-bar i:first-child {
+  background: var(--color-dusty-rose);
+}
+
+.mockup-bar i:last-child {
+  background: var(--color-sage);
+}
+
+.mock-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mock-col {
+  min-height: 170px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--color-card-mint);
+}
+
+.mock-col:first-child {
+  background: var(--color-blush-sand);
+}
+
+.mock-col:last-child {
+  background: var(--color-sea-foam);
+}
+
+.mock-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 8px;
+  color: var(--color-pine-shadow);
+  font: 600 10px/1.3 var(--font-mono);
+  letter-spacing: 0.059em;
+  text-transform: uppercase;
+}
+
+.mock-task {
+  margin-bottom: 8px;
+  padding: 8px;
+  border: 1px solid var(--color-sea-foam);
+  border-radius: 8px;
+  background: var(--color-field);
+}
+
+.mock-line {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-mint-mist);
+}
+
+.mock-line + .mock-line {
+  width: 60%;
+  margin-top: 5px;
+}
+
+.chip {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 7px;
+  padding: 3px 7px;
+  border-radius: var(--radius-pills);
+  font: 600 9px/1 var(--font-mono);
+  letter-spacing: 0.038em;
+  text-transform: uppercase;
+}
+
+.chip.urgent {
+  border: 1px solid var(--color-dusty-rose);
+  background: var(--color-blush-sand);
+  color: var(--color-error);
+}
+
+.chip.high {
+  border: 1px solid var(--color-mint-mist);
+  background: var(--color-card-mint);
+  color: var(--color-pine-shadow);
+}
+
+.chip.done {
+  background: var(--color-sage);
+  color: var(--color-illustration-ink);
+}
+
+/* ---------- Pie ---------- */
+
+.footer {
+  margin-bottom: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--color-sea-foam);
+  color: var(--color-muted);
+  font: 400 12px/1.5 var(--font-mono);
+  letter-spacing: 0.059em;
+  text-transform: uppercase;
+}
+
+/* En celular la miniatura del tablero es decorativa y no cabe legible: se oculta. */
+@media (max-width: 599px) {
+  .mockup {
+    display: none;
+  }
+}
+
+/* En celular el nombre del enlace de marca se oculta si falta espacio. */
+@media (max-width: 379px) {
+  .brand-name {
+    display: none;
+  }
+}
+
+/* Tableta y escritorio */
+@media (min-width: 600px) {
+  .topbar {
+    margin-top: 24px;
+    padding: 8px 8px 8px 12px;
+  }
+
+  .hero {
+    margin-top: 88px;
+  }
+
+  .hero h1 {
+    font-size: 56px;
+  }
+
+  .functions {
+    margin-bottom: 88px;
+  }
+
+  .function-card {
+    padding: 32px;
+  }
+
+  .function-copy h3 {
+    font-size: 40px;
+  }
+
+  .open-function {
+    width: auto;
+  }
+}
+
+@media (min-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr auto;
+    gap: 48px;
+  }
+
+  .hero h1 {
+    font-size: 64px;
+  }
+
+  .hero-doodle {
+    display: block;
+    width: 220px;
+    height: auto;
+  }
+
+  .function-card {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    gap: 32px;
+    align-items: center;
+  }
+
+  .function-copy h3 {
+    font-size: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .open-function,
+  .lucas-home .account-toggle {
+    transition: background-color 0.15s ease;
+  }
+}

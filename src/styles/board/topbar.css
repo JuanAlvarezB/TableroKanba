@@ -1,0 +1,43 @@
+/* ---------- Barra de LUCAS: volver al inicio y zona de usuario ---------- */
+
+.board-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -8px 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-surface);
+}
+
+.board-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding-right: 8px;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.board-home:hover {
+  color: var(--text);
+}
+
+.board-home-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 2px solid #0b7d72;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.board-home-mark img {
+  width: 26px;
+  height: 26px;
+}
