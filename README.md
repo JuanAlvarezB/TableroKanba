@@ -8,18 +8,19 @@ Solo entran las personas autorizadas, con correo y contraseña o con su cuenta d
 cada una ve únicamente sus propias tareas. Es un sitio estático que se construye con
 [Vite](https://vite.dev) (módulos ES y el paquete `firebase` de npm):
 
-| Archivo                                                 | Qué es                                                         |
-| ------------------------------------------------------- | -------------------------------------------------------------- |
-| `login.html`, `src/login.js`, `src/styles/login.css`    | Inicio de sesión, recuperar contraseña y verificar el correo   |
-| `index.html`, `src/inicio.js`, `src/styles/inicio.css`  | Inicio de LUCAS: lista las funciones disponibles               |
-| `tablero.html`, `src/script.js`, `src/styles/style.css` | Tablero de tareas                                              |
-| `src/auth.js`                                           | Sesión compartida: carga Firebase, autoriza y cierra la sesión |
-| `src/cuenta.js`, `src/styles/lucas.css`                 | Zona de usuario y diálogos (cerrar sesión, cambiar contraseña) |
-| `src/shared/config/firebase.config.js`                  | Proyecto de Firebase de cada ambiente (lee `.env.local`)       |
-| `public/assets/`                                        | Imágenes que se publican tal cual (`husky.svg`)                |
+El código está organizado por capas (ver `docs/PLAN_ARQUITECTURA.md`):
 
-La reestructuración por capas (dominio, datos, presentación) está en curso: ver
-`docs/PLAN_ARQUITECTURA.md`.
+| Carpeta                        | Qué contiene                                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `src/domain/`                  | Reglas de negocio sin dependencias: entidad `Task`, vencimientos, prioridades, casos de uso             |
+| `src/data/`                    | Acceso a datos: Firestore, Firebase Authentication y `localStorage`, detrás de repositorios             |
+| `src/presentation/pages/`      | Un punto de entrada por página: `home` (`index.html`), `login` (`login.html`), `board` (`tablero.html`) |
+| `src/presentation/components/` | Piezas de la interfaz: tarjeta, editor, menú de etiquetas, alertas, zona de cuenta                      |
+| `src/presentation/state/`      | `boardStore.js`: estado del tablero y su sincronización                                                 |
+| `src/presentation/guards/`     | `session.js`: protege las páginas autenticadas y cierra la sesión                                       |
+| `src/shared/`                  | Configuración de Firebase por ambiente (lee `.env.local`) y textos compartidos                          |
+| `src/styles/`                  | Hojas de estilo                                                                                         |
+| `public/assets/`               | Imágenes que se publican tal cual (`husky.svg`)                                                         |
 
 Publicado en <https://juanalvarezb.github.io/TableroKanba/>.
 

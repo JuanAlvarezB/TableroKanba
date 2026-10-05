@@ -1,6 +1,6 @@
 # Plan de reestructuración de LUCAS: arquitectura limpia
 
-Estado: **en ejecución**. Fases 0 a 4 hechas (pendiente verificar en PDN); fases 5 a 7 sin empezar.
+Estado: **en ejecución**. Fases 0 a 5 hechas (pendiente verificar en PDN); fases 6 y 7 sin empezar.
 Fecha: 4 de octubre de 2026.
 
 Fuentes de contexto:
@@ -124,11 +124,18 @@ Cambios respecto al diseño inicial:
 
 ### Fase 5: Presentación y estado
 
-- [ ] **Un estado central**: `presentation/state/boardStore.js`, con `getState`, `dispatch` y `subscribe`. Los casos de uso actualizan el store y la vista se suscribe y vuelve a dibujar sola. Así se corta el acoplamiento de `addTask → render` y `render()` deja de ser un nodo de 25 conexiones.
-- [ ] **Componentes**, cada uno con su JS y su CSS: `TaskCard`, `Column`, `TaskEditor`, `LabelMenu`, `OverdueBanner`, `ReminderToast`, `FilterBar`, `AccountMenu` (hoy `cuenta.js`) y `ConfirmDialog`.
-- [ ] **Páginas**: `HomePage`, `LoginPage` y `BoardPage`.
-- [ ] **Un punto de entrada por página.** `arquitecturaLimpia.md` propone un solo `main.js`, pero el proyecto es multipágina. Se sugiere `src/pages/*/main.js` como composition root de cada página: ahí se conectan los repositorios, los casos de uso y la interfaz.
-- [ ] **Guardias de sesión**: `requireSession()` pasa a `presentation/guards/` y lo usan Home y Board.
+- [x] **Un estado central**: `presentation/state/boardStore.js`, sin DOM, con eventos (`change`, `notice`, `highlight`, `added`, `edited`, `sync`). Coordina los casos de uso, la copia local y Firestore; la vista se suscribe y vuelve a dibujar. `addTask` ya no llama a `render()`.
+- [x] **Componentes**: `TaskCard`, `TaskEditor`, `LabelMenu`, `TaskTags`, `TaskHistory`, `OverdueAlerts` (contadores, resumen y aviso de recordatorio), `FlashMessage` y `AccountMenu` (antes `cuenta.js`).
+- [x] **Páginas**: `pages/board` (`BoardPage.js` + `main.js`), `pages/home/main.js` y `pages/login/main.js`.
+- [x] **Un punto de entrada por página** (`src/presentation/pages/*/main.js`), que conecta repositorios, store y vista.
+- [x] **Guardias de sesión**: `presentation/guards/session.js` (antes `auth.js`), con exportaciones en lugar del objeto global `LUCAS_AUTH`.
+- [x] Caso de uso `AuthorizeUser` y repositorio `SessionStore` (claves por persona y última autorización confirmada).
+- [x] Pruebas del store, de la autorización y de los textos de vencimiento (98 pruebas en total).
+
+Cambios respecto al diseño inicial:
+- El código de la interfaz se movió a componentes **sin reescribir su lógica** (foco, edición que sobrevive a los redibujados, resaltados, arrastre por grupos), para no introducir regresiones. Los componentes reciben el estado de la vista como parámetros.
+- El login no tiene `LoginPage.js` aparte: no compone ningún store, así que su `main.js` es la página.
+- Los textos de la interfaz (prioridades, columnas, fechas en español) están en `presentation/format/`.
 
 ### Fase 6: Estilos
 

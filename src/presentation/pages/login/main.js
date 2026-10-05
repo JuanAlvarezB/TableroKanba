@@ -1,8 +1,9 @@
-// Pantalla de inicio de sesión de LUCAS: Google (ventana emergente), correo y contraseña,
-// recuperar contraseña y verificar el correo. Con una sesión autorizada lleva al inicio.
-import { APP_ENV } from './shared/config/firebase.config.js';
-import { LUCAS_AUTH } from './auth.js';
-import { DENIED_MESSAGE, errorMessage } from './shared/constants/messages.js';
+// Punto de entrada del inicio de sesión (login.html): Google (ventana emergente), correo y
+// contraseña, recuperar contraseña y verificar el correo. Con una sesión autorizada lleva al
+// inicio.
+import { APP_ENV } from '../../../shared/config/firebase.config.js';
+import { DENIED_MESSAGE, errorMessage } from '../../../shared/constants/messages.js';
+import { HOME_PAGE, authorize, loadAuth, loginUrl, rejectUser, takeLoginMessage } from '../../guards/session.js';
 
 const RESEND_COOLDOWN = 60; // segundos entre envíos de correos de Firebase
 
@@ -93,9 +94,9 @@ async function continueWith(user) {
     }
   }
 
-  const result = await LUCAS_AUTH.authorize(user);
+  const result = await authorize(user);
   if (result.status === 'ok') {
-    location.replace(LUCAS_AUTH.HOME_PAGE);
+    location.replace(HOME_PAGE);
     return;
   }
   if (result.status === 'unverified') {
@@ -103,7 +104,7 @@ async function continueWith(user) {
     return;
   }
   if (result.status === 'denied') {
-    await LUCAS_AUTH.rejectUser(user);
+    await rejectUser(user);
     showView('signin');
     showError(signinError, DENIED_MESSAGE, emailInput);
     return;
@@ -192,7 +193,7 @@ resetForm.addEventListener('submit', async (event) => {
   resetDone.hidden = true;
   resetSubmit.disabled = true;
   try {
-    await auth.sendPasswordReset(email, LUCAS_AUTH.loginUrl());
+    await auth.sendPasswordReset(email, loginUrl());
   } catch (error) {
     // El mismo mensaje exista o no la cuenta, para no revelar qué correos están registrados.
     if (error.code !== 'auth/user-not-found') {
@@ -221,7 +222,7 @@ verifySend.addEventListener('click', async () => {
   showError(verifyError, '');
   verifySend.disabled = true;
   try {
-    await auth.sendEmailVerification(user, LUCAS_AUTH.loginUrl());
+    await auth.sendEmailVerification(user, loginUrl());
   } catch (error) {
     verifySend.disabled = false;
     showError(verifyError, errorMessage(error), verifySend);
@@ -253,7 +254,7 @@ verifyCheck.addEventListener('click', async () => {
 
 verifySignout.addEventListener('click', async () => {
   const user = auth.currentUser();
-  if (user) await LUCAS_AUTH.rejectUser(user);
+  if (user) await rejectUser(user);
   passwordInput.value = '';
   showView('signin');
   emailInput.focus();
@@ -267,10 +268,10 @@ async function startLogin() {
     document.getElementById('env-badge').hidden = false;
   }
 
-  const pendingMessage = LUCAS_AUTH.takeLoginMessage();
+  const pendingMessage = takeLoginMessage();
   setSigninBusy(true);
   try {
-    auth = await LUCAS_AUTH.loadAuth();
+    auth = await loadAuth();
   } catch (error) {
     console.error('No se pudo cargar Firebase:', error);
     showView('signin');
@@ -287,7 +288,7 @@ async function startLogin() {
     await continueWith(user);
   } else {
     // Las sesiones anónimas del tablero anterior se cierran: ya no dan acceso.
-    if (user) await LUCAS_AUTH.rejectUser(user);
+    if (user) await rejectUser(user);
     showView('signin');
     if (pendingMessage) showError(signinError, pendingMessage);
   }
