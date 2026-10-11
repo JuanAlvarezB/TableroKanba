@@ -1,4 +1,4 @@
-# Despliega el tablero Kanban en GitHub Pages en cada push a la rama main.
+# Despliega el tablero Kanban en GitHub Pages en cada push a la rama main, solo si pasan las pruebas.
 name: Desplegar en GitHub Pages
 
 on:
@@ -19,7 +19,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    # Si alguna prueba falla, build y deploy no se ejecutan y PDN conserva la versión actual.
+    # No necesita las variables de Firebase: las pruebas usan repositorios falsos.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v7
+
+      - name: Instalar Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Pruebas (Vitest)
+        run: npm test
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Descargar el código
