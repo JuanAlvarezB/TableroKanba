@@ -24,7 +24,7 @@ npm-debug.log*
 # Sistema operativo (macOS)
 .DS_Store
 ._*
-
+docs/
 # Editores
 .vscode/
 .idea/
@@ -43,3 +43,5 @@ propuestas-design-md
 PROPUESTAS_REDISENO_LUCAS.md
 notificaciones.txt
 arquitecturaLimpia.md
+CLAUDE.md
+CLAUDE
