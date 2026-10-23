@@ -1,3 +1,4 @@
+[![Board Status](https://dev.azure.com/jcabdim12/4f38858a-93c6-4189-a15c-df8831e85eba/a06d0fc1-7580-4314-8d54-03c441a038cc/_apis/work/boardbadge/e0a56b9e-fd96-4360-bb67-2a8cffefa892)](https://dev.azure.com/jcabdim12/4f38858a-93c6-4189-a15c-df8831e85eba/_boards/board/t/a06d0fc1-7580-4314-8d54-03c441a038cc/Microsoft.RequirementCategory)
 # LUCAS
 
 **LUCAS organiza tu día a día.** Su primera función es un tablero de tareas con tres
