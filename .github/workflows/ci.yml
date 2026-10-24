@@ -1,4 +1,5 @@
-# Revisa cada Pull Request hacia main antes del merge: formato, lint, pruebas y build.
+# Revisa cada Pull Request hacia main antes del merge: formato, lint, pruebas y build (revisar),
+# y las reglas de Firestore en el emulador (reglas).
 # No despliega nada; el despliegue lo hace deploy.yml al hacer merge en main.
 name: Revisar el código
 
@@ -56,3 +57,35 @@ jobs:
           VITE_FIREBASE_PDN_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_PDN_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_PDN_APP_ID: ${{ vars.VITE_FIREBASE_PDN_APP_ID }}
         run: npm run build
+
+  reglas:
+    # Prueba firestore.rules en el emulador con el proyecto ficticio demo-lucas: sin variables,
+    # secretos ni credenciales, y sin conexión con Desarrollo ni PDN (docs/PLAN_USUARIOS.md, 1.8).
+    # Va aparte de revisar para exigirlo por separado en el ruleset de main.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Instalar Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar Java (el emulador de Firestore pide JDK 21 o superior)
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Instalar dependencias
+        # firebase-tools sale de package-lock.json, con versión exacta.
+        run: npm ci
+
+      - name: Pruebas de reglas (emulador de Firestore)
+        run: npm run test:rules
