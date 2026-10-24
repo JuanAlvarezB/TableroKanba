@@ -2,7 +2,7 @@
 // contraseña, recuperar contraseña y verificar el correo. Con una sesión autorizada lleva al
 // inicio.
 import { APP_ENV } from '../../../shared/config/firebase.config.js';
-import { DENIED_MESSAGE, errorMessage } from '../../../shared/constants/messages.js';
+import { LOGIN_MESSAGES, errorMessage } from '../../../shared/constants/messages.js';
 import { HOME_PAGE, authorize, loadAuth, loginUrl, rejectUser, takeLoginMessage } from '../../guards/session.js';
 
 const RESEND_COOLDOWN = 60; // segundos entre envíos de correos de Firebase
@@ -103,10 +103,10 @@ async function continueWith(user) {
     showVerify(user);
     return;
   }
-  if (result.status === 'denied') {
+  if (result.status === 'denied' || result.status === 'inactive') {
     await rejectUser(user);
     showView('signin');
-    showError(signinError, DENIED_MESSAGE, emailInput);
+    showError(signinError, LOGIN_MESSAGES[result.status], emailInput);
     return;
   }
   showView('signin');

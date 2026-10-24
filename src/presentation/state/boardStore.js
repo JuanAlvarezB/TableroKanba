@@ -9,6 +9,8 @@
 //   added      → tareas nuevas que hay que anunciar.
 //   edited     → tareas cuyo texto cambió en otro dispositivo.
 //   sync       → estado de la conexión: 'connecting' | 'online' | 'offline'.
+//   access-lost → las reglas rechazaron una operación: quizá la persona fue desactivada, así que
+//                la guardia revalida su acceso (presentation/guards/session.js).
 import { missingDates } from '../../domain/entities/Task.js';
 import { sortTasks } from '../../domain/rules/board.js';
 import { addTask } from '../../domain/usecases/AddTask.js';
@@ -68,6 +70,7 @@ export function createBoardStore({ newId = createId } = {}) {
         'notice',
         'El servidor rechazó el cambio (reglas de seguridad de Firestore). Revisa la consola para más detalle.',
       );
+      emit('access-lost');
       return;
     }
 

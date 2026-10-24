@@ -6,9 +6,10 @@ import { createAllowedUsersRepository } from '../../data/repositories/AllowedUse
 import { createFirebaseAuthRepository } from '../../data/repositories/FirebaseAuthRepository.js';
 import { createSessionStore } from '../../data/repositories/SessionStore.js';
 import { displayName, hasPasswordProvider } from '../../domain/entities/Session.js';
+import { accessChanged, accessState } from '../../domain/rules/permissions.js';
 import { authorizeUser } from '../../domain/usecases/AuthorizeUser.js';
 import { APP_ENV } from '../../shared/config/firebase.config.js';
-import { DENIED_MESSAGE } from '../../shared/constants/messages.js';
+import { LOGIN_MESSAGES } from '../../shared/constants/messages.js';
 
 const LOGIN_PAGE = 'login.html';
 export const HOME_PAGE = 'index.html';
@@ -16,11 +17,19 @@ export const HOME_PAGE = 'index.html';
 // Aviso que login.html muestra al llegar (por ejemplo, "cuenta sin acceso").
 const LOGIN_MESSAGE_KEY = 'lucas-mensaje-login';
 
+// Al volver a la pestaña se revalida el acceso como máximo una vez por minuto.
+const REVALIDATE_INTERVAL = 60 * 1000;
+
 const sessionStore = createSessionStore(APP_ENV);
 
 let services = null;
 let leaving = false;
 const cleanups = [];
+
+// Persona de la página protegida y el rol y los permisos con los que entró, para revalidarla.
+let current = null;
+let checking = null;
+let lastCheck = 0;
 
 // Firebase y los repositorios de autenticación, creados una sola vez. Si Firebase no cargó
 // (sin internet, bloqueado), el siguiente intento vuelve a pedirlo.
@@ -45,12 +54,15 @@ export async function loadAuth() {
 
 /* ---------- Autorización ---------- */
 
-// Comprueba si la persona está en allowedUsers y tiene el correo verificado.
-// Devuelve { status: 'ok' | 'denied' | 'unverified' | 'offline', name, offline }.
+// Comprueba si la persona está en allowedUsers, activa y con el correo verificado (ver
+// domain/usecases/AuthorizeUser.js), y registra su uid la primera vez que entra.
 export async function authorize(user) {
   const { allowedUsers } = await loadServices();
-  const result = await authorizeUser(user, { allowedUsers, sessionStore });
+  const result = await authorizeUser(user, { allowedUsers, sessionStore, now: Date.now() });
   if (result.status === 'offline') console.error('No se pudo comprobar la autorización:', result.error);
+  if (result.claimError) {
+    console.warn('No se pudo registrar el uid; se reintenta en el siguiente acceso:', result.claimError);
+  }
   return result;
 }
 
@@ -58,7 +70,8 @@ export async function authorize(user) {
 
 // Devuelve el aviso pendiente para el login (y lo borra), o null.
 export function takeLoginMessage() {
-  return takeSessionValue(LOGIN_MESSAGE_KEY) === 'denied' ? DENIED_MESSAGE : null;
+  const reason = takeSessionValue(LOGIN_MESSAGE_KEY);
+  return Object.hasOwn(LOGIN_MESSAGES, reason) ? LOGIN_MESSAGES[reason] : null;
 }
 
 // Con replace, el botón "atrás" no vuelve a una página protegida.
@@ -131,12 +144,61 @@ function watchSession(auth, uid) {
   });
 }
 
+// Saca a quien perdió el acceso ('denied' o 'inactive'): suelta los recursos de la página, borra
+// su copia local, cierra la sesión y la lleva al login con el aviso.
+async function expel(user, reason) {
+  leaving = true;
+  runCleanups();
+  await rejectUser(user);
+  writeSessionValue(LOGIN_MESSAGE_KEY, reason);
+  goToLogin();
+}
+
+async function checkAccess() {
+  lastCheck = Date.now();
+  const { user, access } = current;
+  const result = await authorize(user);
+  if (result.status === 'denied' || result.status === 'inactive') {
+    await expel(user, result.status);
+    return;
+  }
+  // Sin conexión no se puede saber; se comprueba en la siguiente ocasión.
+  if (result.status !== 'ok' || result.offline) return;
+  if (accessChanged(access, result)) location.reload();
+}
+
+/**
+ * Vuelve a comprobar el acceso de la página abierta (docs/PLAN_USUARIOS.md, 1.4): si ya no
+ * tiene acceso sale al login con el aviso; si cambió su rol o sus permisos, recarga la página; si
+ * no cambió nada, no hace nada. La llaman la propia guardia al volver a la pestaña y el tablero
+ * cuando las reglas rechazan una operación.
+ */
+export function revalidateSession() {
+  if (!current || leaving) return Promise.resolve();
+  checking ??= checkAccess()
+    .catch((error) => console.error('No se pudo revalidar la sesión:', error))
+    .finally(() => {
+      checking = null;
+    });
+  return checking;
+}
+
+function watchAccess() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && Date.now() - lastCheck >= REVALIDATE_INTERVAL) {
+      revalidateSession();
+    }
+  });
+}
+
 /**
  * Protege una página: devuelve la sesión si la persona está autorizada. Si no, la lleva al
- * login o muestra la pantalla sin conexión, y la promesa no se resuelve.
+ * login o muestra la pantalla sin conexión, y la promesa no se resuelve. Con { role: 'admin' },
+ * quien no es administrador (o está sin conexión) vuelve al inicio sin ver la página.
+ * @param {{ role?: 'admin' }} [options]
  * @returns {Promise<import('../../domain/entities/Session.js').Session>}
  */
-export async function requireSession() {
+export async function requireSession({ role } = {}) {
   let firebase;
   let auth;
   try {
@@ -156,10 +218,8 @@ export async function requireSession() {
   }
 
   const result = await authorize(user);
-  if (result.status === 'denied') {
-    await rejectUser(user);
-    writeSessionValue(LOGIN_MESSAGE_KEY, 'denied');
-    goToLogin();
+  if (result.status === 'denied' || result.status === 'inactive') {
+    await expel(user, result.status);
     return halt();
   }
   // El login se encarga de pedir la verificación del correo.
@@ -171,9 +231,17 @@ export async function requireSession() {
     showOfflineScreen();
     return halt();
   }
+  if (role && accessState(result) !== role) {
+    leaving = true;
+    location.replace(HOME_PAGE);
+    return halt();
+  }
 
   const keys = sessionStore.keysFor(user.uid);
+  current = { user, access: { role: result.role, permissions: result.permissions } };
+  lastCheck = Date.now();
   watchSession(auth, user.uid);
+  watchAccess();
   document.body.classList.remove('auth-pending');
   return {
     firebase,
@@ -181,6 +249,8 @@ export async function requireSession() {
     uid: user.uid,
     email: user.email,
     name: displayName(user, result.name),
+    role: result.role,
+    permissions: result.permissions,
     photoURL: user.photoURL,
     hasPassword: hasPasswordProvider(user),
     offline: Boolean(result.offline),

@@ -1,7 +1,13 @@
 // Textos en español de los errores de autenticación y autorización.
 
 const WRONG_CREDENTIALS = 'Correo o contraseña incorrectos.';
-export const DENIED_MESSAGE = 'Tu cuenta no tiene acceso a LUCAS. Pídeselo al administrador.';
+
+// Avisos del login según por qué la persona no pudo entrar o tuvo que salir. Solo los ve quien ya
+// se autenticó con esa cuenta, así que no revelan qué correos existen.
+export const LOGIN_MESSAGES = {
+  denied: 'Tu cuenta no tiene acceso a LUCAS. Pídeselo al administrador.',
+  inactive: 'Tu acceso a LUCAS fue desactivado. Habla con el administrador.',
+};
 
 // Códigos de Firebase → texto en español. Los vacíos no muestran nada (la persona cerró la
 // ventana de Google a propósito). Los de credenciales comparten mensaje para no revelar
