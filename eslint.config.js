@@ -14,7 +14,7 @@ export default [
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ['*.config.js'],
+    files: ['*.config.js', 'rules-tests/**/*.js'],
     languageOptions: { globals: globals.node },
   },
   {
