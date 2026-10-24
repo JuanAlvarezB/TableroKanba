@@ -85,6 +85,11 @@ cuentas no se comparten entre Desarrollo y PDN).
    temporal que no se comparte; la persona crea la suya con **¿Olvidaste tu contraseña?**
    y verifica su correo desde el login. Con Google no hay que crear nada: basta el paso 1.
 
+Un documento con solo `name` es un **miembro activo**. Campos opcionales: `role` (`admin` da el rol
+de administrador; cualquier otro valor es miembro) y `active` (`false` desactiva la cuenta sin borrar
+sus datos). El campo `uid` no se escribe a mano: lo registra la propia persona en su primer acceso.
+El administrador no ve las tareas de nadie más.
+
 Las contraseñas nunca se escriben en el repositorio ni se envían por chat o correo.
 
 ## Reglas de Firestore
