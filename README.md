@@ -64,6 +64,7 @@ npm run dev       # servidor de desarrollo en http://localhost:8000, recarga al 
 npm run build     # genera el sitio en dist/
 npm run preview   # sirve dist/ en http://localhost:5500, igual que en PDN
 npm test          # pruebas (Vitest)
+npm run test:rules # pruebas de firestore.rules en el emulador (necesita Java 21; ver abajo)
 npm run lint      # errores comunes (ESLint)
 npm run format    # formatea el código (Prettier)
 ```
@@ -101,6 +102,28 @@ npx firebase-tools deploy --only firestore:rules --project pdn    # PDN, antes d
 - Publica siempre con `--only firestore:rules` y con `--project`.
 - No uses `firebase init`: puede sobrescribir `firestore.rules`.
 
+### Probar las reglas en local
+
+Las pruebas de `rules-tests/` ejercen `firestore.rules` en el emulador de Firestore, con el
+proyecto ficticio `demo-lucas`: no necesitan `firebase login`, claves ni `.env.local`, y no tocan
+Desarrollo ni PDN. Si se ejecutan fuera del emulador o con un proyecto que no empiece por `demo-`,
+se detienen sin conectarse a nada.
+
+El emulador necesita **Java 21 o superior** (`java -version`). En macOS:
+
+```bash
+brew install openjdk@21
+```
+
+Después:
+
+```bash
+npm run test:rules   # arranca el emulador (puerto 8180), corre las pruebas y lo apaga
+```
+
+`npm test` no las corre, para no depender de Java. En cada Pull Request las corre el trabajo
+`reglas` de `ci.yml`. Cada regla nueva lleva su prueba, también la que comprueba lo que se niega.
+
 ## Cómo hacer un cambio
 
 `main` es PDN: cada merge a `main` despliega a GitHub Pages
@@ -112,7 +135,8 @@ Pull Request.
 2. Desarrolla y prueba en local, contra Desarrollo, con commits pequeños.
 3. Si cambian las reglas, publícalas en `dev` y prueba.
 4. Abre un Pull Request hacia `main` y revisa "Files changed". `ci.yml` revisa formato, lint,
-   pruebas y build; tiene que terminar en verde.
+   pruebas y build (`revisar`) y las reglas en el emulador (`reglas`); los dos tienen que
+   terminar en verde.
 5. Si cambiaron las reglas, publícalas en `pdn` **antes** del merge.
 6. Haz merge con **Create a merge commit**. Espera a que Actions termine en verde y
    verifica PDN (recarga con `Cmd + Shift + R`).
