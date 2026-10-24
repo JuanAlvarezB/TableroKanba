@@ -23,6 +23,7 @@ que tiene debajo: `domain` no depende de nada, `data` del dominio, y `presentati
 | `src/shared/`                  | Configuración de Firebase por ambiente (lee `.env.local`) y textos compartidos                          |
 | `src/styles/`                  | Hojas de estilo                                                                                         |
 | `public/assets/`               | Imágenes que se publican tal cual (`husky.svg`)                                                         |
+| `scripts/admin/`               | Script administrativo local (Admin SDK, credenciales de Google del administrador); no se publica        |
 
 Publicado en <https://juanalvarezb.github.io/TableroKanba/>.
 
@@ -107,6 +108,86 @@ npx firebase-tools deploy --only firestore:rules --project pdn    # PDN, antes d
 - Publica siempre con `--only firestore:rules` y con `--project`.
 - No uses `firebase init`: puede sobrescribir `firestore.rules`.
 
+Las reglas son la única barrera real de seguridad: lo publicado tiene que ser siempre el archivo.
+
+### Publicar reglas paso a paso
+
+En cada ambiente, primero Desarrollo y después PDN:
+
+1. **Antes de publicar**, abre la consola de Firebase del proyecto → Firestore → **Reglas** y anota
+   la fecha y hora de la versión vigente (la primera del historial, a la izquierda). Es la versión
+   a la que se vuelve si algo falla.
+2. Publica con la CLI (comandos de arriba). Debe terminar en `Deploy complete!` y nombrar el
+   proyecto correcto.
+3. Comprueba que lo publicado es el archivo:
+   `npm run admin -- verificar-reglas --ambiente dev` (o `pdn`; ver más abajo). Sin el script,
+   compara a mano el texto de la consola con `firestore.rules`.
+4. Anota en la descripción del Pull Request el ambiente, la hora de la versión anterior y la de la
+   nueva, y el resultado de la comprobación.
+5. Después de publicar en PDN, etiqueta el commit cuyo `firestore.rules` publicaste, con la hora de
+   la versión anterior en el mensaje:
+
+   ```bash
+   git tag -a pdn-reglas-AAAA-MM-DD -m "Reglas en PDN. Versión anterior: AAAA-MM-DD HH:MM"
+   git push origin pdn-reglas-AAAA-MM-DD
+   ```
+
+### Volver a las reglas anteriores
+
+- **Desde la consola** (lo más rápido): Firestore → Reglas → en el historial abre la versión que
+  anotaste antes de publicar; la consola la compara con la actual y permite publicarla de nuevo.
+- **Desde git**, con la etiqueta de una publicación anterior:
+
+  ```bash
+  git show pdn-reglas-AAAA-MM-DD:firestore.rules > firestore.rules
+  npx firebase-tools deploy --only firestore:rules --project pdn
+  npm run admin -- verificar-reglas --ambiente pdn   # compara con el archivo restaurado
+  git checkout -- firestore.rules                    # vuelve el archivo a la versión de la rama
+  ```
+
+Después de revertir, anota la hora en el Pull Request o en una incidencia. Si el código ya
+publicado necesita las reglas nuevas, revierte también el merge (ver "Cómo hacer un cambio").
+
+### Comprobar con el script (`verificar-reglas`)
+
+`npm run admin -- verificar-reglas --ambiente dev|pdn` descarga, con la API de Firebase Rules, las
+reglas vigentes del proyecto (el de ese alias en `.firebaserc`) y compara su huella SHA-256 con
+`firestore.rules`. Solo lee: no cambia nada en Firebase. Termina con código 0 si coinciden, 1 si no
+coinciden (muestra la primera línea distinta) y 2 si no pudo comprobarlo. Si solo cambian espacios al
+final de línea, lo indica y cuenta como coincidencia.
+
+Usa tus credenciales de Google, nunca archivos de llave (si existe `GOOGLE_APPLICATION_CREDENTIALS`
+se niega a correr). La primera vez:
+
+```bash
+brew install --cask gcloud-cli              # Google Cloud CLI (gratis)
+gcloud auth application-default login      # con la cuenta de Google que tiene rol en Firebase
+```
+
+Si pide un proyecto de cuota: `gcloud auth application-default set-quota-project <proyecto>`.
+El script vive en `scripts/admin/` (fuera de `src/`): no se empaqueta con el sitio ni se despliega.
+
+### Pull Requests que cambian las reglas: orden y borrador
+
+Las reglas se publican en PDN **antes** del merge. Hay cambios en los que el orden es estricto: si
+el código nuevo escribe campos o colecciones que las reglas anteriores rechazan (por ejemplo, un
+campo nuevo en la lista de `isValidTask`), fusionar antes de publicar haría que PDN rechace las
+escrituras. Para que el orden no dependa de la memoria:
+
+1. Abre el Pull Request como **borrador** (**Create draft pull request**): GitHub no deja fusionar
+   un borrador.
+2. Pon en la descripción esta lista y complétala al publicar:
+
+   ```markdown
+   - [ ] Reglas en Desarrollo: versión anterior HH:MM → nueva HH:MM · verificar-reglas ✔
+   - [ ] Reglas en PDN: versión anterior HH:MM → nueva HH:MM · verificar-reglas ✔
+   ```
+
+3. Marca el Pull Request **Ready for review** solo cuando las dos casillas estén marcadas; entonces
+   ya se puede fusionar.
+
+Si dudas de si un cambio es de orden estricto, trátalo como si lo fuera.
+
 ### Probar las reglas en local
 
 Las pruebas de `rules-tests/` ejercen `firestore.rules` en el emulador de Firestore, con el
@@ -138,14 +219,17 @@ Pull Request.
 1. `git checkout main && git pull`, y crea una rama: `feature/…`, `fix/…`, `docs/…` o
    `chore/…`.
 2. Desarrolla y prueba en local, contra Desarrollo, con commits pequeños.
-3. Si cambian las reglas, publícalas en `dev` y prueba.
-4. Abre un Pull Request hacia `main` y revisa "Files changed". `ci.yml` revisa formato, lint,
-   pruebas y build (`revisar`) y las reglas en el emulador (`reglas`); los dos tienen que
-   terminar en verde.
-5. Si cambiaron las reglas, publícalas en `pdn` **antes** del merge.
+3. Si cambian las reglas, publícalas en `dev`, compruébalas y prueba (ver "Publicar reglas paso a
+   paso").
+4. Abre un Pull Request hacia `main` (**como borrador** si cambia las reglas) y revisa "Files
+   changed". `ci.yml` revisa formato, lint, pruebas y build (`revisar`) y las reglas en el emulador
+   (`reglas`); los dos tienen que terminar en verde.
+5. Si cambiaron las reglas, publícalas en `pdn` y compruébalas **antes** del merge; después marca el
+   Pull Request **Ready for review**.
 6. Haz merge con **Create a merge commit**. Espera a que Actions termine en verde y
    verifica PDN (recarga con `Cmd + Shift + R`).
-7. Etiqueta la versión (`git tag -a pdn-AAAA-MM-DD`) y borra la rama.
+7. Etiqueta la versión (`git tag -a pdn-AAAA-MM-DD`; si se publicaron reglas, también
+   `pdn-reglas-AAAA-MM-DD`) y borra la rama.
 
 Si algo falla en PDN, se revierte el merge con el botón **Revert** del Pull Request (o
 `git revert -m 1 <hash-del-merge>`). Nunca `git reset` ni `push --force` sobre `main`.
