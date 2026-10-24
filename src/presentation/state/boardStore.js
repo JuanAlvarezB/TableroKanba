@@ -19,6 +19,8 @@ import { migrateLocalTasks } from '../../domain/usecases/MigrateLocalTasks.js';
 import { moveTask } from '../../domain/usecases/MoveTask.js';
 import { setDueDate } from '../../domain/usecases/SetDueDate.js';
 import { setPriority } from '../../domain/usecases/SetPriority.js';
+import { SAVED_WITHOUT_HISTORY } from '../../data/repositories/LocalTaskCache.js';
+import { BOARD_MESSAGES } from '../../shared/constants/messages.js';
 
 function createId() {
   return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -48,11 +50,19 @@ export function createBoardStore({ newId = createId } = {}) {
   // provocaría reintentos sin fin.
   const backfilledIds = new Set();
 
+  // Si la copia local solo cabe sin el historial se avisa una sola vez: el tablero funciona igual.
+  let historyNoticeShown = false;
+
   /* ---------- Guardar ---------- */
 
   function saveLocal() {
     if (!cache) return;
-    if (!cache.save(tasks)) emit('notice', 'No se pudieron guardar los cambios en este navegador.');
+    const saved = cache.save(tasks);
+    if (!saved) emit('notice', 'No se pudieron guardar los cambios en este navegador.');
+    if (saved === SAVED_WITHOUT_HISTORY && !historyNoticeShown) {
+      historyNoticeShown = true;
+      emit('notice', BOARD_MESSAGES.historyNotStored);
+    }
   }
 
   function setSync(state) {

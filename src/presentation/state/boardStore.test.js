@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SAVED_WITHOUT_HISTORY } from '../../data/repositories/LocalTaskCache.js';
 import { RepositoryError } from '../../domain/repositories/RepositoryError.js';
+import { BOARD_MESSAGES } from '../../shared/constants/messages.js';
 import { createBoardStore } from './boardStore.js';
 
 const task = (id, fields = {}) => ({
@@ -109,6 +111,17 @@ describe('boardStore sin conexión', () => {
     const events = record(store);
     store.add('x');
     expect(events[0]).toEqual(['notice', 'No se pudieron guardar los cambios en este navegador.']);
+  });
+
+  it('si la copia local solo cabe sin el historial, avisa una sola vez', () => {
+    const store = createBoardStore({ newId });
+    const cache = fakeCache();
+    cache.save = () => SAVED_WITHOUT_HISTORY;
+    store.loadLocal(cache);
+    const events = record(store);
+    store.add('a');
+    store.add('b');
+    expect(events.filter(([type]) => type === 'notice')).toEqual([['notice', BOARD_MESSAGES.historyNotStored]]);
   });
 
   it('sincroniza las pestañas del mismo navegador sin Firestore', () => {

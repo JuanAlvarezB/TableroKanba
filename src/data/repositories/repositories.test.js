@@ -3,7 +3,7 @@ import { RepositoryError } from '../../domain/repositories/RepositoryError.js';
 import { createAllowedUsersRepository } from './AllowedUsersRepository.js';
 import { createFirebaseAuthRepository } from './FirebaseAuthRepository.js';
 import { createFirestoreTaskRepository, toDocument } from './FirestoreTaskRepository.js';
-import { createLocalTaskCache } from './LocalTaskCache.js';
+import { SAVED_WITHOUT_HISTORY, createLocalTaskCache } from './LocalTaskCache.js';
 import { createReminderStore } from './ReminderStore.js';
 
 const firebaseError = (code) => Object.assign(new Error(code), { code });
@@ -304,6 +304,36 @@ describe('almacenamiento local', () => {
 
     expect(cache.save([task('n')])).toBe(true);
     expect(JSON.parse(store.get(keys.tasksKey))[0].id).toBe('n');
+  });
+
+  const event = (id, text = 'x') => ({ id, type: 'create', at: 1, text });
+
+  it('LocalTaskCache guarda y lee el historial', () => {
+    const cache = createLocalTaskCache(keys);
+    expect(cache.save([task('a', { history: [event('e1')] }), task('b', { history: null })])).toBe(true);
+    expect(cache.load().map((t) => t.history)).toEqual([[event('e1')], null]);
+  });
+
+  it('LocalTaskCache reintenta sin el historial si no cabe, y lo avisa', () => {
+    // localStorage lleno: no acepta valores de más de 2 000 caracteres.
+    vi.stubGlobal('localStorage', {
+      getItem: (key) => (store.has(key) ? store.get(key) : null),
+      setItem: (key, value) => {
+        if (String(value).length > 2000) throw new DOMException('lleno', 'QuotaExceededError');
+        store.set(key, String(value));
+      },
+    });
+    const cache = createLocalTaskCache(keys);
+    const tasks = [task('a', { history: [event('e1', 'y'.repeat(200)), event('e2', 'y'.repeat(200))] })];
+    expect(cache.save(Array.from({ length: 4 }, (_, i) => ({ ...tasks[0], id: `t${i}` })))).toBe(SAVED_WITHOUT_HISTORY);
+    const saved = cache.load();
+    expect(saved.map((t) => t.id)).toEqual(['t0', 't1', 't2', 't3']);
+    expect(saved.every((t) => t.history === null)).toBe(true);
+
+    // Si ni sin historial caben, no se guarda nada.
+    expect(
+      cache.save(Array.from({ length: 30 }, (_, i) => task(`t${i}`, { text: 'z'.repeat(100), history: [] }))),
+    ).toBe(false);
   });
 
   it('LocalTaskCache empieza vacío con datos corruptos', () => {

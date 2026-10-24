@@ -4,6 +4,9 @@
 import { isStoredTask, taskFromStorage } from '../../domain/entities/Task.js';
 import { readStorage, writeStorage } from '../datasources/browserStorage.js';
 
+// Resultado de save cuando las tareas solo cupieron sin su historial.
+export const SAVED_WITHOUT_HISTORY = 'without-history';
+
 /**
  * @param {{ tasksKey: string, migratedKey: string }} keys
  */
@@ -25,9 +28,14 @@ export function createLocalTaskCache({ tasksKey, migratedKey }) {
       return parsed.filter(isStoredTask).map(taskFromStorage);
     },
 
-    // Devuelve false si el navegador no permitió guardar.
+    // Guarda las tareas con su historial. Si no caben (localStorage tiene ≈ 5 MB por sitio), lo
+    // reintenta sin el historial, que sigue en Firestore (docs/PLAN_USUARIOS.md, A-42). Devuelve
+    // true, SAVED_WITHOUT_HISTORY o false si el navegador no permitió guardar.
     save(tasks) {
-      return writeStorage(tasksKey, JSON.stringify(tasks));
+      if (writeStorage(tasksKey, JSON.stringify(tasks))) return true;
+      if (!tasks.some((task) => Array.isArray(task.history))) return false;
+      const withoutHistory = tasks.map(({ history, ...task }) => task);
+      return writeStorage(tasksKey, JSON.stringify(withoutHistory)) ? SAVED_WITHOUT_HISTORY : false;
     },
 
     // Si las tareas guardadas solo en este navegador ya se subieron a Firestore. Sin
