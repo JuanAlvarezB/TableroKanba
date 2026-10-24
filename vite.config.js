@@ -22,6 +22,9 @@ export default defineConfig(({ command, mode }) => {
     // npm run dev usa el 8000 para no chocar con Live Server de VS Code, que usa el 5500.
     server: { port: 8000, strictPort: true },
     preview: { port: 5500, strictPort: true },
+    // npm test solo corre las pruebas de src/; las de rules-tests/ necesitan el emulador y Java
+    // (npm run test:rules, con rules-tests/vitest.config.js).
+    test: { include: ['src/**/*.test.js'] },
     build: {
       // El SDK de Firestore (~560 kB) es un solo bloque y se carga aparte, solo cuando hace falta.
       chunkSizeWarningLimit: 600,
