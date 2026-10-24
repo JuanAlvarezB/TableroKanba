@@ -1,5 +1,6 @@
 // AllowedUsersRepository (domain/repositories/AuthRepository.js) sobre Firestore: la colección
 // allowedUsers tiene un documento por persona autorizada, cuyo id es su correo en minúsculas.
+import { userFromData } from '../../domain/entities/User.js';
 import { toRepositoryError } from './firebaseErrors.js';
 
 const ALLOWED_USERS = 'allowedUsers';
@@ -17,9 +18,16 @@ export function createAllowedUsersRepository({ db, fs }) {
       } catch (error) {
         throw toRepositoryError(error);
       }
-      if (!snapshot.exists()) return null;
-      const { name } = snapshot.data();
-      return { name: typeof name === 'string' ? name.trim() : '' };
+      return snapshot.exists() ? userFromData(email, snapshot.data()) : null;
+    },
+
+    // Las reglas solo dejan escribir el campo uid, una vez y con el uid de la propia sesión.
+    async claimUid(email, uid) {
+      try {
+        await fs.updateDoc(fs.doc(db, ALLOWED_USERS, email), { uid });
+      } catch (error) {
+        throw toRepositoryError(error);
+      }
     },
   };
 }

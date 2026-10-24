@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { FILTERS, countByStatus, isColumnFull, nextOrder, orderBefore, sortTasks } from './board.js';
 import { businessDaysUntil, calendarDaysSince } from './dates.js';
 import { dueStatus, needsDueAttention, parseDueDate } from './dueDates.js';
+import { ACCESS_STATES, ACTIONS, accessChanged, accessState, can, canChangeUser } from './permissions.js';
 import { priorityRank, sortByPriority } from './priority.js';
 import { attentionIds, currentReminderSlot } from './reminders.js';
 import { stalledDays } from './stalledTasks.js';
@@ -157,5 +158,97 @@ describe('recordatorios', () => {
       overdueDue: ['vencida'],
       soonDue: ['pronto'],
     });
+  });
+});
+
+describe('matriz de permisos', () => {
+  // Fila por acción, columnas: administrador, miembro, inactivo, no autorizado (docs/PLAN_USUARIOS.md, 1.6).
+  const expected = {
+    'tasks.own': [true, true, false, false],
+    'tasks.others': [false, false, false, false],
+    'users.readOwn': [true, true, true, false],
+    'users.claimUid': [true, true, false, false],
+    'users.changeOwn': [false, false, false, false],
+    'users.readOthers': [true, false, false, false],
+    'users.writeOthers': [false, false, false, false],
+    'users.delete': [false, false, false, false],
+  };
+
+  it('cubre todas las acciones', () => {
+    expect(ACTIONS).toEqual(Object.keys(expected));
+  });
+
+  it.each(ACTIONS.flatMap((action) => ACCESS_STATES.map((state, i) => [action, state, expected[action][i]])))(
+    '%s · %s → %s',
+    (action, state, allowed) => {
+      expect(can(state, action)).toBe(allowed);
+    },
+  );
+
+  it('nadie, en ningún estado, toca tareas ajenas', () => {
+    expect(ACCESS_STATES.filter((state) => can(state, 'tasks.others'))).toEqual([]);
+  });
+
+  it('una acción desconocida se niega', () => {
+    expect(can('admin', 'users.todo')).toBe(false);
+    expect(can('admin', 'toString')).toBe(false);
+  });
+
+  it('el estado sale de la autorización; sin conexión nunca se es administrador', () => {
+    expect(accessState({ status: 'ok', role: 'admin', permissions: {} })).toBe('admin');
+    expect(accessState({ status: 'ok', role: 'admin', permissions: {}, offline: true })).toBe('member');
+    expect(accessState({ status: 'ok', role: 'member', permissions: {} })).toBe('member');
+    expect(accessState({ status: 'inactive' })).toBe('inactive');
+    expect(accessState({ status: 'denied' })).toBe('unauthorized');
+    expect(accessState({ status: 'unverified' })).toBe('unauthorized');
+    expect(accessState({ status: 'offline', error: null })).toBe('unauthorized');
+  });
+});
+
+describe('canChangeUser', () => {
+  const person = (email, fields = {}) => ({
+    email,
+    name: email,
+    role: 'member',
+    active: true,
+    uid: null,
+    permissions: {},
+    ...fields,
+  });
+  const admin = person('admin@x.com', { role: 'admin' });
+  const ana = person('ana@x.com');
+
+  it.each([[{ role: 'member' }], [{ active: false }], [{ remove: true }]])(
+    'un administrador no se cambia a sí mismo: %j',
+    (change) => {
+      expect(canChangeUser(admin, admin, change)).toEqual({ ok: false, reason: 'self' });
+    },
+  );
+
+  it('un miembro (o un administrador inactivo) no cambia a nadie', () => {
+    expect(canChangeUser(ana, admin, { role: 'member' })).toEqual({ ok: false, reason: 'not-admin' });
+    expect(canChangeUser(person('otro@x.com', { role: 'admin', active: false }), ana, { active: false })).toEqual({
+      ok: false,
+      reason: 'not-admin',
+    });
+  });
+
+  it('un administrador sí cambia el rol o el estado de otra persona', () => {
+    expect(canChangeUser(admin, ana, { role: 'admin' })).toEqual({ ok: true });
+    expect(canChangeUser(admin, ana, { active: false })).toEqual({ ok: true });
+    expect(canChangeUser(admin, person('otro@x.com', { role: 'admin' }), { role: 'member' })).toEqual({ ok: true });
+  });
+
+  it('rechaza un rol desconocido', () => {
+    expect(canChangeUser(admin, ana, { role: 'root' })).toEqual({ ok: false, reason: 'unknown-role' });
+  });
+});
+
+describe('accessChanged', () => {
+  it('detecta un cambio de rol o de permisos, sin importar el orden de las claves', () => {
+    const before = { role: 'member', permissions: { a: true, b: false } };
+    expect(accessChanged(before, { role: 'member', permissions: { b: false, a: true } })).toBe(false);
+    expect(accessChanged(before, { role: 'admin', permissions: { a: true, b: false } })).toBe(true);
+    expect(accessChanged(before, { role: 'member', permissions: { a: false, b: false } })).toBe(true);
   });
 });

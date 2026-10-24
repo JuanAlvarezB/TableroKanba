@@ -18,6 +18,7 @@ al cargar cada página.
 - [ ] Una contraseña incorrecta muestra "Correo o contraseña incorrectos." sin revelar si el correo existe.
 - [ ] Entrar con Google funciona; cerrar la ventana de Google no muestra error.
 - [ ] Una cuenta que no está en `allowedUsers` ve el aviso "Tu cuenta no tiene acceso a LUCAS…" y no entra.
+- [ ] Una cuenta con `active: false` ve el aviso "Tu acceso a LUCAS fue desactivado…" y no entra.
 - [ ] El botón de mostrar u ocultar la contraseña funciona.
 - [ ] "Olvidé mi contraseña" envía el correo y vuelve a la vista de inicio de sesión.
 - [ ] Verificación de correo: se puede reenviar, el botón respeta la espera, y "Ya verifiqué" continúa.
@@ -66,3 +67,23 @@ Sincronización:
 - [ ] El workflow de GitHub Actions termina en verde.
 - [ ] En PDN, después de recargar, el navegador usa la versión nueva (Safari incluido).
 - [ ] No hay errores 404 en la pestaña Red.
+
+## 7. Roles y acceso
+
+Diseño en `docs/PLAN_USUARIOS.md`, sección 1. Los cambios de `role` y `active` se hacen en la consola
+de Firebase (Firestore → `allowedUsers`) hasta que exista la página de usuarios. Se necesitan dos
+cuentas: la del administrador y una de miembro.
+
+- [ ] Documento solo con `name`: la persona entra y trabaja con su tablero sin cambios.
+- [ ] Tras el primer acceso, el documento de la persona tiene `uid`; en el segundo acceso no cambia.
+- [ ] Marcar `active: false`: con la sesión abierta, al volver a la pestaña o al intentar guardar,
+      LUCAS cierra la sesión y muestra el aviso de cuenta desactivada en el login. No quedan pantallas a medias.
+- [ ] Marcar `active: false` con la persona sin conexión: puede abrir LUCAS dentro de 7 días con
+      su copia local; al recuperar la red es expulsada con el aviso.
+- [ ] Volver a `active: true`: la persona entra y ve todas sus tareas.
+- [ ] El administrador (con `role: 'admin'`) entra y mantiene su tablero. Sin rol, entra como miembro.
+- [ ] Una cuenta de miembro no puede abrir una página de administración escribiendo la URL (va al
+      inicio). Se comprueba cuando exista la primera página de administración (sección 2 del plan).
+- [ ] El mensaje del login antes de autenticarse sigue siendo genérico ("Correo o contraseña incorrectos.").
+- [ ] Con dos cuentas, el administrador no ve las tareas del miembro en ningún lugar.
+- [ ] Revisar en la consola de Firebase que las reglas publicadas coinciden con `firestore.rules`.

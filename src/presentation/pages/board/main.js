@@ -5,7 +5,7 @@ import { createLocalTaskCache } from '../../../data/repositories/LocalTaskCache.
 import { createReminderStore } from '../../../data/repositories/ReminderStore.js';
 import { APP_ENV } from '../../../shared/config/firebase.config.js';
 import { mountAccountMenu } from '../../components/AccountMenu.js';
-import { onSignOut, requireSession } from '../../guards/session.js';
+import { onSignOut, requireSession, revalidateSession } from '../../guards/session.js';
 import { createBoardStore } from '../../state/boardStore.js';
 import { createBoardPage } from './BoardPage.js';
 
@@ -35,6 +35,7 @@ async function startBoard() {
   store.connect(createFirestoreTaskRepository(session.firebase, session.uid), { offline: session.offline });
   // Al cerrar la sesión se deja de escuchar y de escribir antes de borrar la copia local.
   onSignOut(() => store.disconnect());
+  store.on('access-lost', revalidateSession);
 }
 
 showEnvironmentBadge();

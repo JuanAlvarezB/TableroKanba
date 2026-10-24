@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { RepositoryError } from '../repositories/RepositoryError.js';
 import { addTask } from './AddTask.js';
+import { OFFLINE_GRACE_MS, authorizeUser } from './AuthorizeUser.js';
 import { checkReminder } from './CheckReminder.js';
+import { claimUid } from './ClaimUid.js';
 import { clearCompleted, deleteTask } from './DeleteTasks.js';
 import { migrateLocalTasks } from './MigrateLocalTasks.js';
 import { adjacentStatus, moveTask } from './MoveTask.js';
@@ -137,5 +140,174 @@ describe('checkReminder', () => {
 
   it('no lo muestra si no hay nada que atender', () => {
     expect(checkReminder([task('a', { createdAt: now.getTime() })], { lastShownId: null, now })).toBeNull();
+  });
+});
+
+describe('authorizeUser', () => {
+  const user = (fields = {}) => ({ uid: 'u1', email: 'Ana@X.com', emailVerified: true, isAnonymous: false, ...fields });
+  const person = (fields = {}) => ({
+    email: 'ana@x.com',
+    name: 'Ana',
+    role: 'member',
+    active: true,
+    uid: 'u1',
+    permissions: {},
+    ...fields,
+  });
+
+  // Repositorios falsos: allowedUsers devuelve `found` (o lanza `error`); sessionStore guarda en memoria.
+  function deps({ found = person(), error = null, remembered = null } = {}) {
+    const memory = { remembered };
+    return {
+      allowedUsers: {
+        find: vi.fn(async () => {
+          if (error) throw error;
+          return found;
+        }),
+        claimUid: vi.fn(async () => {}),
+      },
+      sessionStore: {
+        remembered: () => memory.remembered,
+        remember: vi.fn((uid, name, at) => {
+          memory.remembered = { name, at };
+        }),
+        forget: vi.fn(() => {
+          memory.remembered = null;
+        }),
+        clearLegacy: vi.fn(),
+      },
+      now: NOW,
+    };
+  }
+
+  it('activo: entra con su rol y sus permisos, y recuerda la autorización con la hora', async () => {
+    const d = deps({ found: person({ role: 'admin', permissions: { tablero: true } }) });
+    expect(await authorizeUser(user(), d)).toEqual({
+      status: 'ok',
+      name: 'Ana',
+      role: 'admin',
+      permissions: { tablero: true },
+    });
+    expect(d.allowedUsers.find).toHaveBeenCalledWith('ana@x.com');
+    expect(d.sessionStore.remember).toHaveBeenCalledWith('u1', 'Ana', NOW);
+    expect(d.sessionStore.clearLegacy).toHaveBeenCalled();
+  });
+
+  it('un documento legado entra como miembro', async () => {
+    const legacy = { email: 'ana@x.com', name: 'Ana', role: 'member', active: true, uid: null, permissions: {} };
+    expect(await authorizeUser(user(), deps({ found: legacy }))).toMatchObject({ status: 'ok', role: 'member' });
+  });
+
+  it('sin documento: denied y olvida lo recordado', async () => {
+    const d = deps({ found: null, remembered: { name: 'Ana', at: NOW } });
+    expect(await authorizeUser(user(), d)).toEqual({ status: 'denied' });
+    expect(d.sessionStore.forget).toHaveBeenCalledWith('u1');
+  });
+
+  it('desactivada: inactive (aunque no haya verificado el correo) y olvida lo recordado', async () => {
+    const d = deps({ found: person({ active: false }), remembered: { name: 'Ana', at: NOW } });
+    expect(await authorizeUser(user({ emailVerified: false }), d)).toEqual({ status: 'inactive' });
+    expect(d.sessionStore.forget).toHaveBeenCalledWith('u1');
+    expect(d.allowedUsers.claimUid).not.toHaveBeenCalled();
+  });
+
+  it('activa sin correo verificado: unverified', async () => {
+    expect(await authorizeUser(user({ emailVerified: false }), deps())).toEqual({ status: 'unverified' });
+  });
+
+  it('otro uid registrado: denied, sin sobrescribirlo', async () => {
+    const d = deps({ found: person({ uid: 'otro' }) });
+    expect(await authorizeUser(user(), d)).toEqual({ status: 'denied' });
+    expect(d.allowedUsers.claimUid).not.toHaveBeenCalled();
+    expect(d.sessionStore.remember).not.toHaveBeenCalled();
+  });
+
+  it('sin correo o anónima: denied sin consultar', async () => {
+    const d = deps();
+    expect(await authorizeUser(user({ email: null }), d)).toEqual({ status: 'denied' });
+    expect(await authorizeUser(user({ isAnonymous: true }), d)).toEqual({ status: 'denied' });
+    expect(d.allowedUsers.find).not.toHaveBeenCalled();
+  });
+
+  it('si las reglas niegan la lectura: denied', async () => {
+    const d = deps({ error: new RepositoryError('permission-denied'), remembered: { name: 'Ana', at: NOW } });
+    expect(await authorizeUser(user(), d)).toEqual({ status: 'denied' });
+  });
+
+  describe('sin conexión', () => {
+    const unavailable = new RepositoryError('unavailable');
+
+    it('con una autorización de menos de 7 días entra, siempre como miembro', async () => {
+      const remembered = { name: 'Ana', at: NOW - OFFLINE_GRACE_MS };
+      expect(await authorizeUser(user(), deps({ error: unavailable, remembered }))).toEqual({
+        status: 'ok',
+        name: 'Ana',
+        role: 'member',
+        permissions: {},
+        offline: true,
+      });
+    });
+
+    it('con una de más de 7 días muestra "sin conexión"', async () => {
+      const remembered = { name: 'Ana', at: NOW - OFFLINE_GRACE_MS - 1 };
+      expect(await authorizeUser(user(), deps({ error: unavailable, remembered }))).toEqual({
+        status: 'offline',
+        error: unavailable,
+      });
+    });
+
+    it('acepta el formato anterior, sin hora', async () => {
+      const result = await authorizeUser(user(), deps({ error: unavailable, remembered: { name: 'Ana' } }));
+      expect(result).toMatchObject({ status: 'ok', offline: true });
+    });
+
+    it('sin nada recordado muestra "sin conexión"', async () => {
+      expect(await authorizeUser(user(), deps({ error: unavailable }))).toMatchObject({ status: 'offline' });
+    });
+  });
+
+  describe('registro del uid', () => {
+    it('lo registra cuando falta', async () => {
+      const d = deps({ found: person({ uid: null }) });
+      expect(await authorizeUser(user(), d)).toMatchObject({ status: 'ok' });
+      expect(d.allowedUsers.claimUid).toHaveBeenCalledWith('ana@x.com', 'u1');
+    });
+
+    it('no lo vuelve a escribir cuando ya está', async () => {
+      const d = deps();
+      await authorizeUser(user(), d);
+      expect(d.allowedUsers.claimUid).not.toHaveBeenCalled();
+    });
+
+    it('si falla, la persona entra igual y el error queda para la consola', async () => {
+      const d = deps({ found: person({ uid: null }) });
+      const error = new RepositoryError('permission-denied');
+      d.allowedUsers.claimUid.mockRejectedValue(error);
+      expect(await authorizeUser(user(), d)).toMatchObject({ status: 'ok', name: 'Ana', claimError: error });
+    });
+  });
+});
+
+describe('claimUid', () => {
+  const allowedUsers = () => ({ claimUid: vi.fn(async () => {}) });
+  const person = (uid) => ({ email: 'ana@x.com', name: 'Ana', role: 'member', active: true, uid, permissions: {} });
+
+  it('escribe el uid de la sesión si el documento no lo tiene', async () => {
+    const repository = allowedUsers();
+    expect(await claimUid({ uid: 'u1' }, person(null), { allowedUsers: repository })).toEqual({ status: 'claimed' });
+    expect(repository.claimUid).toHaveBeenCalledWith('ana@x.com', 'u1');
+  });
+
+  it('no hace nada si ya está registrado', async () => {
+    const repository = allowedUsers();
+    expect(await claimUid({ uid: 'u1' }, person('u1'), { allowedUsers: repository })).toEqual({ status: 'skipped' });
+    expect(repository.claimUid).not.toHaveBeenCalled();
+  });
+
+  it('no lanza si falla: devuelve el error', async () => {
+    const repository = allowedUsers();
+    repository.claimUid.mockRejectedValue(new Error('sin red'));
+    const result = await claimUid({ uid: 'u1' }, person(null), { allowedUsers: repository });
+    expect(result).toMatchObject({ status: 'failed', error: expect.any(Error) });
   });
 });

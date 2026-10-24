@@ -49,7 +49,7 @@ function fakeRepository() {
 // Registra los eventos del store en orden.
 function record(store) {
   const events = [];
-  ['change', 'notice', 'highlight', 'added', 'edited', 'sync'].forEach((type) =>
+  ['change', 'notice', 'highlight', 'added', 'edited', 'sync', 'access-lost'].forEach((type) =>
     store.on(type, (payload) => events.push([type, payload])),
   );
   return events;
@@ -184,6 +184,25 @@ describe('boardStore con Firestore', () => {
     await new Promise((resolve) => setTimeout(resolve));
     expect(events).toContainEqual(['notice', expect.stringContaining('reglas de seguridad')]);
     expect(events).not.toContainEqual(['sync', 'offline']);
+  });
+
+  it('si las reglas rechazan una operación avisa que quizá se perdió el acceso', async () => {
+    const { store, repository, events, onError } = connected();
+    repository.save.mockRejectedValue(new RepositoryError('permission-denied'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    store.add('a');
+    onError(new RepositoryError('permission-denied'));
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(events.filter(([type]) => type === 'access-lost')).toHaveLength(2);
+  });
+
+  it('sin conexión no avisa de acceso perdido', async () => {
+    const { store, repository, events } = connected();
+    repository.save.mockRejectedValue(new RepositoryError('unavailable'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    store.add('a');
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(events.map(([type]) => type)).not.toContain('access-lost');
   });
 
   it('al desconectar deja de escuchar y de guardar', () => {

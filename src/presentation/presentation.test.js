@@ -51,7 +51,16 @@ describe('authorizeUser y SessionStore', () => {
 
   const env = { name: 'dev', storageKey: 'tareas-dev', migratedKey: 'tareas-migradas-dev' };
   const user = (fields = {}) => ({ uid: 'u1', email: 'Ana@X.com', emailVerified: true, isAnonymous: false, ...fields });
-  const allowed = (result) => ({ find: vi.fn(async () => result) });
+  const member = (fields = {}) => ({
+    email: 'ana@x.com',
+    name: 'Ana',
+    role: 'member',
+    active: true,
+    uid: 'u1',
+    permissions: {},
+    ...fields,
+  });
+  const allowed = (result) => ({ find: vi.fn(async () => result), claimUid: vi.fn(async () => {}) });
 
   it('usa claves con el ambiente y el uid', () => {
     expect(createSessionStore(env).keysFor('u1')).toEqual({
@@ -63,11 +72,16 @@ describe('authorizeUser y SessionStore', () => {
 
   it('autoriza, recuerda el nombre y borra las copias del tablero anónimo', async () => {
     store.set('tareas-dev', '[]');
-    const allowedUsers = allowed({ name: 'Ana' });
+    const allowedUsers = allowed(member());
     const sessionStore = createSessionStore(env);
-    expect(await authorizeUser(user(), { allowedUsers, sessionStore })).toEqual({ status: 'ok', name: 'Ana' });
+    expect(await authorizeUser(user(), { allowedUsers, sessionStore, now: 1000 })).toEqual({
+      status: 'ok',
+      name: 'Ana',
+      role: 'member',
+      permissions: {},
+    });
     expect(allowedUsers.find).toHaveBeenCalledWith('ana@x.com');
-    expect(sessionStore.remembered('u1')).toEqual({ name: 'Ana' });
+    expect(sessionStore.remembered('u1')).toEqual({ name: 'Ana', at: 1000 });
     expect(store.has('tareas-dev')).toBe(false);
   });
 
@@ -81,15 +95,15 @@ describe('authorizeUser y SessionStore', () => {
   it('pide verificar el correo y no deja entrar a sesiones anónimas', async () => {
     const sessionStore = createSessionStore(env);
     expect(
-      await authorizeUser(user({ emailVerified: false }), { allowedUsers: allowed({ name: '' }), sessionStore }),
+      await authorizeUser(user({ emailVerified: false }), { allowedUsers: allowed(member()), sessionStore }),
     ).toEqual({
       status: 'unverified',
     });
-    expect(
-      await authorizeUser(user({ isAnonymous: true }), { allowedUsers: allowed({ name: '' }), sessionStore }),
-    ).toEqual({
-      status: 'denied',
-    });
+    expect(await authorizeUser(user({ isAnonymous: true }), { allowedUsers: allowed(member()), sessionStore })).toEqual(
+      {
+        status: 'denied',
+      },
+    );
   });
 
   it('sin conexión vale la última autorización confirmada', async () => {
@@ -97,12 +111,36 @@ describe('authorizeUser y SessionStore', () => {
     const offline = { find: () => Promise.reject(new RepositoryError('unavailable')) };
     expect(await authorizeUser(user(), { allowedUsers: offline, sessionStore })).toMatchObject({ status: 'offline' });
 
-    sessionStore.remember('u1', 'Ana');
-    expect(await authorizeUser(user(), { allowedUsers: offline, sessionStore })).toEqual({
+    sessionStore.remember('u1', 'Ana', 1000);
+    expect(await authorizeUser(user(), { allowedUsers: offline, sessionStore, now: 2000 })).toEqual({
       status: 'ok',
       name: 'Ana',
+      role: 'member',
+      permissions: {},
       offline: true,
     });
+  });
+
+  it('SessionStore guarda la hora de la autorización y sigue leyendo el formato anterior', () => {
+    const sessionStore = createSessionStore(env);
+    sessionStore.remember('u1', 'Ana', 1000);
+    expect(JSON.parse(store.get('lucas-autorizado-dev-u1'))).toEqual({ name: 'Ana', at: 1000 });
+
+    store.set('lucas-autorizado-dev-u1', JSON.stringify({ name: 'Ana' }));
+    expect(sessionStore.remembered('u1')).toEqual({ name: 'Ana' });
+    store.set('lucas-autorizado-dev-u1', '{roto');
+    expect(sessionStore.remembered('u1')).toBeNull();
+  });
+
+  it('una persona desactivada no entra y se borran sus datos locales', async () => {
+    store.set('tareas-dev-u1', '[]');
+    store.set('lucas-autorizado-dev-u1', JSON.stringify({ name: 'Ana', at: 1 }));
+    const allowedUsers = allowed(member({ active: false }));
+    expect(await authorizeUser(user(), { allowedUsers, sessionStore: createSessionStore(env) })).toEqual({
+      status: 'inactive',
+    });
+    expect(store.has('tareas-dev-u1')).toBe(false);
+    expect(store.has('lucas-autorizado-dev-u1')).toBe(false);
   });
 
   it('si las reglas le niegan la lectura, la cuenta no tiene acceso', async () => {

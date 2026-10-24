@@ -1,9 +1,10 @@
 rules_version = '2';
 
 // Reglas de seguridad de Firestore de LUCAS (tablero de tareas).
-// Solo entran las personas de allowedUsers, y cada una solo lee y escribe sus propias tareas.
-// Se publican desde la consola de Firebase (Firestore Database → Reglas) o con
-// `firebase deploy --only firestore:rules`; este archivo no se despliega con GitHub Pages.
+// Solo entran las personas activas de allowedUsers, y cada una solo lee y escribe sus propias
+// tareas; el rol de administrador no da acceso a tareas ajenas (docs/PLAN_USUARIOS.md, 1.7).
+// Se publican con `firebase deploy --only firestore:rules --project dev|pdn`; este archivo no
+// se despliega con GitHub Pages. Se prueban con npm run test:rules (rules-tests/).
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -12,12 +13,40 @@ service cloud.firestore {
       return request.auth.token.email.lower();
     }
 
-    // Sesión con correo verificado y presente en la lista de autorizados. Los anónimos no
-    // tienen correo, así que quedan fuera.
+    // Documento de autorización de quien hace la petición: una sola lectura por petición, que
+    // Firestore no repite aunque varias reglas la pidan. Si no existe, la regla falla y se niega.
+    function callerDoc() {
+      return get(/databases/$(database)/documents/allowedUsers/$(normalizedEmail())).data;
+    }
+
+    // Sesión con correo verificado. Los anónimos no tienen correo, así que quedan fuera.
+    function isSigned() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    // Sin el campo active, la persona está activa (documentos de antes de los roles). Cualquier
+    // valor que no sea exactamente true la desactiva: un dato corrupto niega, nunca concede.
+    function isActiveUser(user) {
+      return !('active' in user) || user.active == true;
+    }
+
+    // Solo el texto exacto 'admin' da el rol; cualquier otro valor (o ninguno) es miembro.
+    function isAdminUser(user) {
+      return user.get('role', 'member') == 'admin';
+    }
+
+    // Persona activa de la lista de autorizados, con correo verificado.
     function isAuthorized() {
-      return request.auth != null
-        && request.auth.token.email_verified == true
-        && exists(/databases/$(database)/documents/allowedUsers/$(normalizedEmail()));
+      return isSigned() && isActiveUser(callerDoc());
+    }
+
+    function isAdmin() {
+      return isAuthorized() && isAdminUser(callerDoc());
+    }
+
+    // uid sin registrar: la persona todavía no ha entrado nunca.
+    function hasNoUid(user) {
+      return !('uid' in user) || user.uid == null || user.uid == '';
     }
 
     // Dueño de la tarea: ownerId (uid de quien la creó) debe ser el de quien lee o escribe.
@@ -57,8 +86,9 @@ service cloud.firestore {
         && isDueDate(data);
     }
 
-    // Nadie ve ni toca tareas ajenas. Al actualizar se comprueba el dueño antes y después,
-    // para que nadie pueda reasignar una tarea a otro ownerId.
+    // Nadie ve ni toca tareas ajenas, tampoco el administrador: aquí no hay ninguna regla con
+    // isAdmin(). Al actualizar se comprueba el dueño antes y después, para que nadie pueda
+    // reasignar una tarea a otro ownerId.
     match /tasks/{taskId} {
       allow read: if isAuthorized() && isOwner(resource.data);
       // Borrar una tarea que otro dispositivo ya borró no es un error (resource == null).
@@ -69,11 +99,22 @@ service cloud.firestore {
         && isOwner(resource.data) && isOwner(request.resource.data);
     }
 
-    // Cada persona solo lee su propio documento (para saber si está autorizada y su nombre);
-    // nadie puede listar quién más lo está. Se administra desde la consola, no desde la app.
+    // Cada persona lee su propio documento (para saber si está autorizada, activa y su nombre),
+    // aunque no haya verificado el correo o esté desactivada. Solo un administrador activo lee
+    // y lista los de los demás. Altas, cambios de rol o estado y bajas se hacen desde la consola
+    // hasta la sección 2 del plan.
     match /allowedUsers/{email} {
-      allow read: if request.auth != null && normalizedEmail() == email;
-      allow write: if false;
+      allow get: if (request.auth != null && normalizedEmail() == email) || isAdmin();
+      allow list: if isAdmin();
+
+      // Única escritura de una persona sobre su documento: registrar su propio uid en su primer
+      // acceso, una sola vez, sin tocar ningún otro campo y solo si está activa.
+      allow update: if isSigned()
+        && normalizedEmail() == email
+        && isActiveUser(resource.data)
+        && hasNoUid(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid;
     }
   }
 }
