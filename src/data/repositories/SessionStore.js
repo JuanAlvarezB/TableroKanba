@@ -19,7 +19,8 @@ export function createSessionStore(env) {
   return {
     keysFor,
 
-    // Última autorización confirmada en este navegador ({ name }), o null.
+    // Última autorización confirmada en este navegador ({ name, at }), o null. Las guardadas antes
+    // de los roles son { name }, sin hora. El rol no se guarda: sin conexión nadie es administrador.
     remembered(uid) {
       try {
         const value = JSON.parse(readStorage(keysFor(uid).authorized));
@@ -29,8 +30,8 @@ export function createSessionStore(env) {
       }
     },
 
-    remember(uid, name) {
-      writeStorage(keysFor(uid).authorized, JSON.stringify({ name }));
+    remember(uid, name, at) {
+      writeStorage(keysFor(uid).authorized, JSON.stringify({ name, at }));
     },
 
     // Borra todo lo de esa persona en este navegador (copia de tareas incluida).

@@ -157,15 +157,44 @@ describe('FirestoreTaskRepository', () => {
 describe('AllowedUsersRepository', () => {
   const repo = (getDoc) => createAllowedUsersRepository({ db: 'db', fs: { doc: (db, c, id) => `${c}/${id}`, getDoc } });
 
-  it('devuelve el nombre de la persona autorizada, o null si no lo está', async () => {
+  it('devuelve la persona autorizada (un documento legado es miembro activo), o null si no lo está', async () => {
     const found = repo(async (ref) => ({ exists: () => true, data: () => ({ name: `  ${ref}  ` }) }));
-    expect(await found.find('ana@x.com')).toEqual({ name: 'allowedUsers/ana@x.com' });
+    expect(await found.find('ana@x.com')).toEqual({
+      email: 'ana@x.com',
+      name: 'allowedUsers/ana@x.com',
+      role: 'member',
+      active: true,
+      uid: null,
+      permissions: {},
+    });
 
     const missing = repo(async () => ({ exists: () => false }));
     expect(await missing.find('nadie@x.com')).toBeNull();
 
     const noName = repo(async () => ({ exists: () => true, data: () => ({}) }));
-    expect(await noName.find('a@x.com')).toEqual({ name: '' });
+    expect(await noName.find('a@x.com')).toMatchObject({ name: '' });
+
+    const admin = repo(async () => ({ exists: () => true, data: () => ({ name: 'Admin', role: 'admin', uid: 'u9' }) }));
+    expect(await admin.find('admin@x.com')).toMatchObject({ role: 'admin', active: true, uid: 'u9' });
+  });
+
+  it('claimUid escribe solo el campo uid y traduce los errores', async () => {
+    const writes = [];
+    const fs = {
+      doc: (db, c, id) => `${c}/${id}`,
+      updateDoc: async (ref, data) => {
+        writes.push([ref, data]);
+        if (fs.failWith) throw fs.failWith;
+      },
+    };
+    const repository = createAllowedUsersRepository({ db: 'db', fs });
+    await repository.claimUid('ana@x.com', 'u1');
+    expect(writes).toEqual([['allowedUsers/ana@x.com', { uid: 'u1' }]]);
+
+    fs.failWith = firebaseError('permission-denied');
+    await expect(repository.claimUid('ana@x.com', 'u1')).rejects.toMatchObject({ reason: 'permission-denied' });
+    fs.failWith = firebaseError('unavailable');
+    await expect(repository.claimUid('ana@x.com', 'u1')).rejects.toBeInstanceOf(RepositoryError);
   });
 
   it('distingue "sin permiso" de "sin conexión"', async () => {
