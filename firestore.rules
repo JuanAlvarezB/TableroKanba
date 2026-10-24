@@ -71,8 +71,16 @@ service cloud.firestore {
         || (data.dueDate is string && data.dueDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'));
     }
 
+    // Historial de la tarea (docs/PLAN_USUARIOS.md, 4.3): opcional, una lista de 100 eventos como
+    // máximo. Las reglas no pueden recorrer la lista; cada evento lo valida el cliente al leerlo.
+    // Al revertir, 'history' nunca sale de hasOnly: las tareas que ya lo tienen dejarían de poder
+    // editarse (A-41; ver README, "Volver a las reglas anteriores").
+    function isHistory(data) {
+      return !('history' in data) || (data.history is list && data.history.size() <= 100);
+    }
+
     function isValidTask(data) {
-      return data.keys().hasOnly(['text', 'status', 'order', 'createdAt', 'startedAt', 'completedAt', 'priority', 'dueDate', 'ownerId'])
+      return data.keys().hasOnly(['text', 'status', 'order', 'createdAt', 'startedAt', 'completedAt', 'priority', 'dueDate', 'ownerId', 'history'])
         && data.ownerId is string
         && data.text is string
         && data.text.size() > 0
@@ -83,7 +91,8 @@ service cloud.firestore {
         && isDate(data, 'startedAt')
         && isDate(data, 'completedAt')
         && isPriority(data)
-        && isDueDate(data);
+        && isDueDate(data)
+        && isHistory(data);
     }
 
     // Nadie ve ni toca tareas ajenas, tampoco el administrador: aquí no hay ninguna regla con

@@ -1,4 +1,4 @@
-// Textos en español de los errores de autenticación y autorización.
+// Textos en español de los errores de autenticación y autorización, y avisos del tablero.
 
 const WRONG_CREDENTIALS = 'Correo o contraseña incorrectos.';
 
@@ -7,6 +7,13 @@ const WRONG_CREDENTIALS = 'Correo o contraseña incorrectos.';
 export const LOGIN_MESSAGES = {
   denied: 'Tu cuenta no tiene acceso a LUCAS. Pídeselo al administrador.',
   inactive: 'Tu acceso a LUCAS fue desactivado. Habla con el administrador.',
+};
+
+// Avisos del tablero (presentation/state/boardStore.js).
+export const BOARD_MESSAGES = {
+  // La copia local no cupo con el historial (docs/PLAN_USUARIOS.md, A-42).
+  historyNotStored:
+    'Este navegador no tiene espacio para el historial de las tareas: la copia local se guardó sin él. El historial sigue guardado en el servidor.',
 };
 
 // Códigos de Firebase → texto en español. Los vacíos no muestran nada (la persona cerró la

@@ -148,6 +148,33 @@ En cada ambiente, primero Desarrollo y después PDN:
 Después de revertir, anota la hora en el Pull Request o en una incidencia. Si el código ya
 publicado necesita las reglas nuevas, revierte también el merge (ver "Cómo hacer un cambio").
 
+#### Historial de tareas: nunca revertir a reglas sin `history`
+
+Desde el historial de tareas (`docs/PLAN_USUARIOS.md`, sección 4) los documentos de `tasks` pueden
+tener el campo `history`. Unas reglas sin `'history'` en el `hasOnly` de `isValidTask` rechazan
+**cualquier** edición de esas tareas, aunque no toque el historial (caso H-9 de
+`rules-tests/history.rules.test.js`; alarma A-41). Por eso:
+
+- **No vuelvas a una versión de las reglas anterior a la publicación del historial**, ni desde el
+  historial de la consola ni con una etiqueta `pdn-reglas-…` anterior.
+- Para deshacer un cambio de reglas posterior, parte de la versión anterior y, antes de publicar,
+  comprueba que conserva `history` y su tope de 100:
+
+  ```bash
+  grep -q "'ownerId', 'history'\]" firestore.rules && grep -q "&& isHistory(data)" firestore.rules \
+    && echo "Conserva history" || echo "NO conserva history: no la publiques"
+  ```
+
+  En la consola, busca lo mismo en el texto de la versión elegida antes de publicarla.
+
+- **Para revertir el historial** se revierte solo el código, nunca las reglas:
+  1. Revierte el merge del Pull Request (`git revert -m 1 <hash-del-merge>`). El código anterior no
+     lee `history` y sus ediciones (`updateDoc`) solo cambian los campos que tocan, así que no lo
+     borran.
+  2. Las reglas se quedan como están, con `history` en `hasOnly`.
+  3. Quitar el campo de todas las tareas solo tiene sentido si se abandona la función: se hará con un
+     comando del script administrativo, primero en Desarrollo y con respaldo previo de PDN.
+
 ### Comprobar con el script (`verificar-reglas`)
 
 `npm run admin -- verificar-reglas --ambiente dev|pdn` descarga, con la API de Firebase Rules, las

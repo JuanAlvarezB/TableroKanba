@@ -13,22 +13,30 @@
 //                la guardia revalida su acceso (presentation/guards/session.js).
 import { missingDates } from '../../domain/entities/Task.js';
 import { sortTasks } from '../../domain/rules/board.js';
+import { historyEventsFor, planHistoryWrite } from '../../domain/rules/history.js';
 import { addTask } from '../../domain/usecases/AddTask.js';
 import { clearCompleted, deleteTask } from '../../domain/usecases/DeleteTasks.js';
 import { migrateLocalTasks } from '../../domain/usecases/MigrateLocalTasks.js';
 import { moveTask } from '../../domain/usecases/MoveTask.js';
 import { setDueDate } from '../../domain/usecases/SetDueDate.js';
 import { setPriority } from '../../domain/usecases/SetPriority.js';
+import { SAVED_WITHOUT_HISTORY } from '../../data/repositories/LocalTaskCache.js';
+import { BOARD_MESSAGES } from '../../shared/constants/messages.js';
 
 function createId() {
   return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+// Identificador de un evento del historial: 8 caracteres aleatorios (el final de un id de tarea).
+function createEventId() {
+  return createId().replace(/-/g, '').slice(-8);
+}
+
 /**
  * El tablero empieza vacío y sin copia local: se abre con loadLocal() al confirmar la sesión.
- * @param {{ newId?: () => string }} [deps]
+ * @param {{ newId?: () => string, newEventId?: () => string, now?: () => number }} [deps]
  */
-export function createBoardStore({ newId = createId } = {}) {
+export function createBoardStore({ newId = createId, newEventId = createEventId, now = Date.now } = {}) {
   /** @type {import('../../domain/entities/Task.js').Task[]} */
   let tasks = [];
   /** @type {ReturnType<typeof import('../../data/repositories/LocalTaskCache.js').createLocalTaskCache> | null} */
@@ -48,11 +56,19 @@ export function createBoardStore({ newId = createId } = {}) {
   // provocaría reintentos sin fin.
   const backfilledIds = new Set();
 
+  // Si la copia local solo cabe sin el historial se avisa una sola vez: el tablero funciona igual.
+  let historyNoticeShown = false;
+
   /* ---------- Guardar ---------- */
 
   function saveLocal() {
     if (!cache) return;
-    if (!cache.save(tasks)) emit('notice', 'No se pudieron guardar los cambios en este navegador.');
+    const saved = cache.save(tasks);
+    if (!saved) emit('notice', 'No se pudieron guardar los cambios en este navegador.');
+    if (saved === SAVED_WITHOUT_HISTORY && !historyNoticeShown) {
+      historyNoticeShown = true;
+      emit('notice', BOARD_MESSAGES.historyNotStored);
+    }
   }
 
   function setSync(state) {
@@ -84,8 +100,8 @@ export function createBoardStore({ newId = createId } = {}) {
     if (repository) repository.save(task).catch(handleSyncError);
   }
 
-  function updateRemote(id, fields) {
-    if (repository) repository.update(id, fields).catch(handleSyncError);
+  function updateRemote(id, fields, historyWrite = null) {
+    if (repository) repository.update(id, fields, historyWrite).catch(handleSyncError);
   }
 
   function deleteRemote(ids) {
@@ -97,7 +113,7 @@ export function createBoardStore({ newId = createId } = {}) {
   function backfillDates() {
     const pending = tasks
       .filter((task) => !backfilledIds.has(task.id))
-      .map((task) => [task, missingDates(task)])
+      .map((task) => [task, missingDates(task, now())])
       .filter(([, fields]) => Object.keys(fields).length > 0);
     if (pending.length === 0) return;
 
@@ -125,15 +141,33 @@ export function createBoardStore({ newId = createId } = {}) {
     if (edited.length > 0) emit('edited', edited);
   }
 
+  /* ---------- Historial ---------- */
+
+  // Eventos de un cambio y cómo escribirlos (domain/rules/history.js), calculados con la tarea de
+  // antes del cambio; null si no hay eventos (por ejemplo, al reordenar en la misma columna).
+  function historyWriteFor(before, fields, at) {
+    return planHistoryWrite(before, historyEventsFor(before, fields, { now: at, newId: newEventId }));
+  }
+
+  // Aplica el plan a la tarea local, como lo hará Firestore con el documento.
+  function applyHistory(task, historyWrite) {
+    if (!historyWrite) return;
+    task.history =
+      historyWrite.mode === 'replace' ? historyWrite.history : [...(task.history ?? []), ...historyWrite.events];
+  }
+
   /* ---------- Acciones ---------- */
 
-  // Cambia solo los campos indicados, así no pisa lo que otro dispositivo cambie a la vez.
+  // Cambia solo los campos indicados, así no pisa lo que otro dispositivo cambie a la vez. Sus
+  // eventos del historial van en la misma escritura.
   function updateTask(id, fields) {
     const task = tasks.find((t) => t.id === id);
     if (!task) return false;
+    const historyWrite = historyWriteFor(task, fields, now());
     Object.assign(task, fields);
+    applyHistory(task, historyWrite);
     saveLocal();
-    updateRemote(id, fields);
+    updateRemote(id, fields, historyWrite);
     return true;
   }
 
@@ -160,7 +194,9 @@ export function createBoardStore({ newId = createId } = {}) {
     },
 
     add(text) {
-      const result = addTask(tasks, { id: newId(), text });
+      const at = now();
+      const history = historyEventsFor(null, { text }, { now: at, newId: newEventId });
+      const result = addTask(tasks, { id: newId(), text, now: at, history });
       tasks = result.tasks;
       saveLocal();
       saveRemote(result.task);
@@ -170,7 +206,9 @@ export function createBoardStore({ newId = createId } = {}) {
 
     // Mueve una tarea a otra columna; si se indica beforeId, la coloca antes de esa tarea.
     move(id, status, beforeId = null) {
-      const result = moveTask(tasks, { id, status, beforeId });
+      const at = now();
+      const before = tasks.find((t) => t.id === id);
+      const result = moveTask(tasks, { id, status, beforeId, now: at });
       if (!result.ok) {
         if (result.reason === 'wip-limit') {
           emit(
@@ -180,9 +218,11 @@ export function createBoardStore({ newId = createId } = {}) {
         }
         return;
       }
+      const historyWrite = historyWriteFor(before, result.changes, at);
+      applyHistory(result.task, historyWrite);
       tasks = result.tasks;
       saveLocal();
-      updateRemote(id, result.changes);
+      updateRemote(id, result.changes, historyWrite);
       emit('change');
     },
 

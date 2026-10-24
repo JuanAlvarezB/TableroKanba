@@ -7,12 +7,24 @@ import { toRepositoryError } from './firebaseErrors.js';
 const TASKS_COLLECTION = 'tasks';
 
 // Campos de la tarea que se guardan en Firestore (todo menos el id, que es el del documento),
-// más el dueño. Las etiquetas vacías no se envían: una tarea nueva no las necesita.
+// más el dueño. Las etiquetas vacías no se envían: una tarea nueva no las necesita. El historial
+// se conserva, porque save y saveAll reemplazan el documento entero; si la tarea aún no tiene
+// (null), no se envía.
 export function toDocument({ id, ...data }, ownerId) {
   ['priority', 'dueDate'].forEach((field) => {
     if (data[field] === null) delete data[field];
   });
+  if (!Array.isArray(data.history)) delete data.history;
   return { ...data, ownerId };
+}
+
+// Campos de update con el historial del plan (domain/rules/history.js): arrayUnion no pisa los
+// eventos que otro dispositivo añada a la vez y funciona sin conexión; al compactar se envía la
+// lista entera.
+function withHistory(fs, fields, historyWrite) {
+  if (historyWrite?.mode === 'append') return { ...fields, history: fs.arrayUnion(...historyWrite.events) };
+  if (historyWrite?.mode === 'replace') return { ...fields, history: historyWrite.history };
+  return fields;
 }
 
 /**
@@ -31,8 +43,8 @@ export function createFirestoreTaskRepository({ db, fs }, ownerId) {
       return fs.setDoc(ref(task.id), toDocument(task, ownerId)).catch(fail);
     },
 
-    update(id, fields) {
-      return fs.updateDoc(ref(id), fields).catch((error) => {
+    update(id, fields, historyWrite = null) {
+      return fs.updateDoc(ref(id), withHistory(fs, fields, historyWrite)).catch((error) => {
         // Otro dispositivo borró la tarea mientras se cambiaba aquí; el snapshot ya la quitará.
         if (error?.code === 'not-found') return;
         fail(error);
