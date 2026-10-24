@@ -173,7 +173,11 @@ describe('boardStore con Firestore', () => {
     store.move('a', 'in-progress');
     store.delete('nueva-1');
     expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({ id: 'nueva-1', text: 'Nueva' }));
-    expect(repository.update).toHaveBeenCalledWith('a', expect.objectContaining({ status: 'in-progress' }));
+    expect(repository.update).toHaveBeenCalledWith(
+      'a',
+      expect.objectContaining({ status: 'in-progress' }),
+      expect.objectContaining({ mode: 'append' }),
+    );
     expect(repository.remove).toHaveBeenCalledWith(['nueva-1']);
   });
 
@@ -227,5 +231,129 @@ describe('boardStore con Firestore', () => {
     store.add('después');
     expect(repository.save).not.toHaveBeenCalled();
     expect(cache.stored).toBe(before);
+  });
+});
+
+describe('boardStore: historial', () => {
+  const NOW = 1_790_000_000_000;
+  let events;
+  beforeEach(() => {
+    events = 0;
+  });
+  const newEventId = () => `ev-${++events}`;
+
+  function connected(initial) {
+    const store = createBoardStore({ newId, newEventId, now: () => NOW });
+    const cache = fakeCache(initial);
+    store.loadLocal(cache);
+    const repository = fakeRepository();
+    store.connect(repository);
+    const [onChange] = repository.subscribe.mock.calls[0];
+    onChange({ tasks: structuredClone(initial), added: [], fromCache: false });
+    return { store, cache, repository, onChange };
+  }
+
+  const recorded = { id: 'r1', type: 'create', at: 1, text: 'a' };
+  const withHistory = (id, fields = {}) => task(id, { history: [recorded], ...fields });
+  const lastUpdate = (repository) => repository.update.mock.calls.at(-1);
+
+  it('add crea la tarea con su evento create', () => {
+    const { store, repository, cache } = connected([]);
+    store.add('Comprar pan');
+    const created = { id: 'ev-1', type: 'create', at: NOW, text: 'Comprar pan' };
+    expect(repository.save).toHaveBeenCalledWith(expect.objectContaining({ createdAt: NOW, history: [created] }));
+    expect(cache.stored[0].history).toEqual([created]);
+  });
+
+  it('move añade el evento en la misma escritura y lo aplica a la tarea local', () => {
+    const { store, repository, cache } = connected([withHistory('a')]);
+    store.move('a', 'in-progress');
+    const moved = { id: 'ev-1', type: 'move', at: NOW, from: 'pending', to: 'in-progress' };
+    expect(lastUpdate(repository)).toEqual([
+      'a',
+      { status: 'in-progress', order: 0, startedAt: NOW, completedAt: null },
+      { mode: 'append', events: [moved] },
+    ]);
+    expect(store.tasks[0].history).toEqual([recorded, moved]);
+    expect(cache.stored[0].history).toEqual([recorded, moved]);
+  });
+
+  it('una tarea sin history materializa los derivados de sus fechas con el primer cambio', () => {
+    const { store, repository } = connected([task('a', { createdAt: 10, history: null })]);
+    store.move('a', 'in-progress');
+    expect(lastUpdate(repository)[2]).toEqual({
+      mode: 'append',
+      events: [
+        { id: 'd:pending:10', type: 'move', at: 10, from: null, to: 'pending', derived: true },
+        { id: 'ev-1', type: 'move', at: NOW, from: 'pending', to: 'in-progress' },
+      ],
+    });
+  });
+
+  it('reordenar dentro de la misma columna escribe el orden sin eventos', () => {
+    const { store, repository } = connected([withHistory('a', { order: 0 }), withHistory('b', { order: 1 })]);
+    store.move('b', 'pending', 'a');
+    expect(lastUpdate(repository)).toEqual(['b', { status: 'pending', order: -0.5 }, null]);
+    expect(store.tasks.find((t) => t.id === 'b').history).toEqual([recorded]);
+  });
+
+  it('un movimiento rechazado por el límite WIP no escribe ni genera eventos', () => {
+    const full = Array.from({ length: 200 }, (_, i) =>
+      withHistory(`p${i}`, { status: 'in-progress', order: i, startedAt: 1 }),
+    );
+    const { store, repository } = connected([...full, withHistory('x', { order: 300 })]);
+    store.move('x', 'in-progress');
+    expect(repository.update).not.toHaveBeenCalled();
+    expect(store.tasks.find((t) => t.id === 'x').history).toEqual([recorded]);
+  });
+
+  it('editText, setPriority y setDueDate envían su evento con el valor anterior y el nuevo', () => {
+    const { store, repository } = connected([withHistory('a', { text: 'Antes' })]);
+    store.editText('a', 'Después');
+    expect(lastUpdate(repository)).toEqual([
+      'a',
+      { text: 'Después' },
+      { mode: 'append', events: [{ id: 'ev-1', type: 'edit', at: NOW, from: 'Antes', to: 'Después' }] },
+    ]);
+    store.setPriority('a', 'urgent');
+    expect(lastUpdate(repository)[2].events).toEqual([
+      { id: 'ev-2', type: 'priority', at: NOW, from: null, to: 'urgent' },
+    ]);
+    store.setDueDate('a', '2026-10-15');
+    store.setDueDate('a', null);
+    expect(lastUpdate(repository)[2].events).toEqual([
+      { id: 'ev-4', type: 'due', at: NOW, from: '2026-10-15', to: null },
+    ]);
+    expect(store.tasks[0].history.map((event) => event.type)).toEqual(['create', 'edit', 'priority', 'due', 'due']);
+  });
+
+  it('sin cambios no hay eventos', () => {
+    const { store, repository } = connected([withHistory('a', { text: 'Igual', priority: 'low' })]);
+    store.editText('a', 'Igual');
+    expect(lastUpdate(repository)).toEqual(['a', { text: 'Igual' }, null]);
+    store.setPriority('a', 'low');
+    expect(repository.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('desde 90 eventos compacta a los 60 más recientes más el nuevo', () => {
+    const history = Array.from({ length: 90 }, (_, i) => ({
+      ...recorded,
+      id: `r${i}`,
+      type: 'edit',
+      from: 'a',
+      to: 'b',
+    }));
+    const { store, repository } = connected([task('a', { history })]);
+    store.editText('a', 'Nueva');
+    const [, , plan] = lastUpdate(repository);
+    expect(plan.mode).toBe('replace');
+    expect(plan.history).toHaveLength(61);
+    expect(plan.history[0].id).toBe('r30');
+    expect(store.tasks[0].history).toEqual(plan.history);
+  });
+
+  it('completar fechas ausentes no genera eventos', () => {
+    const { repository } = connected([task('a', { createdAt: null, history: null })]);
+    expect(repository.update).toHaveBeenCalledWith('a', { createdAt: NOW }, null);
   });
 });
