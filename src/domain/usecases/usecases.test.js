@@ -35,6 +35,11 @@ describe('addTask', () => {
     expect(result.tasks.map((t) => t.id)).toEqual(['a', 'b', 'c', 'n']);
     expect(tasks).toHaveLength(3);
   });
+
+  it('la tarea nace con el evento de creación que recibe', () => {
+    const history = [{ id: 'e1', type: 'create', at: NOW, text: 'Nueva' }];
+    expect(addTask(board(), { id: 'n', text: 'Nueva', now: NOW, history }).task.history).toEqual(history);
+  });
 });
 
 describe('moveTask', () => {

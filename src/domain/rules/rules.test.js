@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { FILTERS, countByStatus, isColumnFull, nextOrder, orderBefore, sortTasks } from './board.js';
 import { businessDaysUntil, calendarDaysSince } from './dates.js';
 import { dueStatus, needsDueAttention, parseDueDate } from './dueDates.js';
+import {
+  HISTORY_KEEP,
+  HISTORY_LIMIT,
+  HISTORY_SOFT_LIMIT,
+  HISTORY_TEXT_LIMIT,
+  deriveHistory,
+  effectiveHistory,
+  historyEventsFor,
+  planHistoryWrite,
+  truncateText,
+} from './history.js';
 import { ACCESS_STATES, ACTIONS, accessChanged, accessState, can, canChangeUser } from './permissions.js';
 import { priorityRank, sortByPriority } from './priority.js';
 import { attentionIds, currentReminderSlot } from './reminders.js';
@@ -250,5 +261,201 @@ describe('accessChanged', () => {
     expect(accessChanged(before, { role: 'member', permissions: { b: false, a: true } })).toBe(false);
     expect(accessChanged(before, { role: 'admin', permissions: { a: true, b: false } })).toBe(true);
     expect(accessChanged(before, { role: 'member', permissions: { a: false, b: false } })).toBe(true);
+  });
+});
+
+describe('historial: truncateText', () => {
+  it('deja igual un texto de 200 caracteres o menos', () => {
+    expect(truncateText('Hola')).toBe('Hola');
+    expect(truncateText('a'.repeat(200))).toBe('a'.repeat(200));
+  });
+
+  it('recorta a 200 caracteres con … al final, sin partir un emoji', () => {
+    expect(truncateText('a'.repeat(201))).toBe('a'.repeat(199) + '…');
+    const clipped = truncateText('a'.repeat(198) + '😀😀😀');
+    expect(clipped).toBe('a'.repeat(198) + '😀…');
+    expect(Array.from(clipped)).toHaveLength(HISTORY_TEXT_LIMIT);
+  });
+});
+
+describe('historial: historyEventsFor', () => {
+  const AT = 1_790_000_000_000;
+  let count;
+  const clock = () => {
+    count = 0;
+    return { now: AT, newId: () => `h${++count}` };
+  };
+  const before = task({ id: 'a', text: 'Antes', createdAt: 1 });
+
+  it('al crear genera create con el texto recortado', () => {
+    expect(historyEventsFor(null, { text: 'Nueva' }, clock())).toEqual([
+      { id: 'h1', type: 'create', at: AT, text: 'Nueva' },
+    ]);
+    expect(historyEventsFor(null, { text: 'x'.repeat(300) }, clock())[0].text).toHaveLength(HISTORY_TEXT_LIMIT);
+  });
+
+  it('edit guarda el texto anterior y el nuevo, recortados', () => {
+    expect(historyEventsFor(before, { text: 'Después' }, clock())).toEqual([
+      { id: 'h1', type: 'edit', at: AT, from: 'Antes', to: 'Después' },
+    ]);
+    const [event] = historyEventsFor(before, { text: 'y'.repeat(500) }, clock());
+    expect(event.to).toBe('y'.repeat(199) + '…');
+  });
+
+  it('move al cambiar de columna; las fechas y el orden no generan eventos', () => {
+    expect(
+      historyEventsFor(before, { status: 'in-progress', order: 4, startedAt: AT, completedAt: null }, clock()),
+    ).toEqual([{ id: 'h1', type: 'move', at: AT, from: 'pending', to: 'in-progress' }]);
+  });
+
+  it('reordenar dentro de la misma columna no genera eventos', () => {
+    expect(historyEventsFor(before, { status: 'pending', order: 7 }, clock())).toEqual([]);
+  });
+
+  it('priority al poner, cambiar o quitar la etiqueta', () => {
+    expect(historyEventsFor(before, { priority: 'urgent', order: 3 }, clock())).toEqual([
+      { id: 'h1', type: 'priority', at: AT, from: null, to: 'urgent' },
+    ]);
+    const urgent = { ...before, priority: 'urgent' };
+    expect(historyEventsFor(urgent, { priority: 'low' }, clock())[0]).toMatchObject({ from: 'urgent', to: 'low' });
+    expect(historyEventsFor(urgent, { priority: null }, clock())[0]).toMatchObject({ from: 'urgent', to: null });
+  });
+
+  it('due al poner, cambiar o quitar la fecha límite', () => {
+    expect(historyEventsFor(before, { dueDate: '2026-10-15' }, clock())).toEqual([
+      { id: 'h1', type: 'due', at: AT, from: null, to: '2026-10-15' },
+    ]);
+    const due = { ...before, dueDate: '2026-10-15' };
+    expect(historyEventsFor(due, { dueDate: '2026-10-20' }, clock())[0]).toMatchObject({
+      from: '2026-10-15',
+      to: '2026-10-20',
+    });
+    expect(historyEventsFor(due, { dueDate: null }, clock())[0]).toMatchObject({ from: '2026-10-15', to: null });
+  });
+
+  it('un cambio sin diferencias no genera eventos', () => {
+    expect(historyEventsFor(before, {}, clock())).toEqual([]);
+    expect(historyEventsFor(before, { text: 'Antes', priority: null, dueDate: null }, clock())).toEqual([]);
+  });
+
+  it('ningún evento lleva datos de la persona', () => {
+    const owned = { ...before, ownerId: 'uid-ana', email: 'ana@example.com', name: 'Ana' };
+    const events = [
+      ...historyEventsFor(null, { text: 'Nueva', ownerId: 'uid-ana' }, clock()),
+      ...historyEventsFor(
+        owned,
+        { text: 'Otra', status: 'completed', priority: 'high', dueDate: '2026-10-15', ownerId: 'uid-beto' },
+        clock(),
+      ),
+      ...deriveHistory(task({ status: 'completed', createdAt: 1, startedAt: 2, completedAt: 3 })),
+    ];
+    expect(events.map((event) => event.type)).toEqual([
+      'create',
+      'edit',
+      'move',
+      'priority',
+      'due',
+      'move',
+      'move',
+      'move',
+    ]);
+    const allowed = ['id', 'type', 'at', 'text', 'from', 'to', 'derived'];
+    events.forEach((event) => expect(Object.keys(event).filter((key) => !allowed.includes(key))).toEqual([]));
+    expect(JSON.stringify(events)).not.toMatch(/uid-|example\.com|Ana/);
+  });
+});
+
+describe('historial: deriveHistory (tareas anteriores al historial)', () => {
+  const move = (from, to, at) => ({ id: `d:${to}:${at}`, type: 'move', at, from, to, derived: true });
+
+  it('en Pendiente sin fecha de En curso: un move a Pendiente', () => {
+    expect(deriveHistory(task({ createdAt: 10 }))).toEqual([move(null, 'pending', 10)]);
+  });
+
+  it('devuelta a Pendiente: empieza por En curso y vuelve a Pendiente', () => {
+    expect(deriveHistory(task({ createdAt: 30, startedAt: 20 }))).toEqual([
+      move(null, 'in-progress', 20),
+      move('in-progress', 'pending', 30),
+    ]);
+  });
+
+  it('en curso: Pendiente y luego En curso', () => {
+    expect(deriveHistory(task({ status: 'in-progress', createdAt: 10, startedAt: 20 }))).toEqual([
+      move(null, 'pending', 10),
+      move('pending', 'in-progress', 20),
+    ]);
+  });
+
+  it('completada: los anteriores que existan y luego Completada', () => {
+    expect(deriveHistory(task({ status: 'completed', createdAt: 10, startedAt: 20, completedAt: 30 }))).toEqual([
+      move(null, 'pending', 10),
+      move('pending', 'in-progress', 20),
+      move('in-progress', 'completed', 30),
+    ]);
+    expect(deriveHistory(task({ status: 'completed', createdAt: 10, completedAt: 30 }))).toEqual([
+      move(null, 'pending', 10),
+      move('pending', 'completed', 30),
+    ]);
+    // Estuvo en curso, volvió a Pendiente y se completó desde allí.
+    expect(deriveHistory(task({ status: 'completed', createdAt: 25, startedAt: 20, completedAt: 30 }))).toEqual([
+      move(null, 'in-progress', 20),
+      move('in-progress', 'pending', 25),
+      move('pending', 'completed', 30),
+    ]);
+  });
+
+  it('omite las fechas ausentes', () => {
+    expect(deriveHistory(task({ status: 'in-progress', startedAt: 20 }))).toEqual([move(null, 'in-progress', 20)]);
+    expect(deriveHistory(task({ status: 'completed', completedAt: 30 }))).toEqual([move(null, 'completed', 30)]);
+    expect(deriveHistory(task())).toEqual([]);
+  });
+
+  it('nunca genera create y sus identificadores son deterministas', () => {
+    const old = task({ status: 'completed', createdAt: 10, startedAt: 20, completedAt: 30 });
+    expect(deriveHistory(old)).toEqual(deriveHistory({ ...old }));
+    expect(deriveHistory(old).map((event) => event.id)).toEqual(['d:pending:10', 'd:in-progress:20', 'd:completed:30']);
+    expect(deriveHistory(old).some((event) => event.type === 'create')).toBe(false);
+  });
+});
+
+describe('historial: effectiveHistory y planHistoryWrite', () => {
+  const AT = 1_790_000_000_000;
+  const event = (id) => ({ id, type: 'edit', at: AT, from: 'a', to: 'b' });
+  const events = (n) => Array.from({ length: n }, (_, i) => event(`e${i}`));
+  const old = task({ createdAt: 10 });
+
+  it('effectiveHistory usa el guardado y, si no hay, el derivado', () => {
+    expect(effectiveHistory({ ...old, history: [event('e1')] })).toEqual([event('e1')]);
+    expect(effectiveHistory({ ...old, history: [] })).toEqual([]);
+    expect(effectiveHistory({ ...old, history: null })).toEqual(deriveHistory(old));
+  });
+
+  it('sin eventos no hay nada que escribir', () => {
+    expect(planHistoryWrite({ ...old, history: [] }, [])).toBeNull();
+    expect(planHistoryWrite({ ...old, history: null }, [])).toBeNull();
+  });
+
+  it('sin history guardado, materializa los derivados en la misma escritura', () => {
+    expect(planHistoryWrite({ ...old, history: null }, [event('n')])).toEqual({
+      mode: 'append',
+      events: [...deriveHistory(old), event('n')],
+    });
+  });
+
+  it('con history guardado por debajo del tope blando, solo añade', () => {
+    expect(planHistoryWrite({ ...old, history: events(HISTORY_SOFT_LIMIT - 1) }, [event('n')])).toEqual({
+      mode: 'append',
+      events: [event('n')],
+    });
+  });
+
+  it('desde el tope blando, compacta a los 60 más recientes más los nuevos', () => {
+    const history = events(HISTORY_SOFT_LIMIT);
+    const plan = planHistoryWrite({ ...old, history }, [event('n1'), event('n2')]);
+    expect(plan.mode).toBe('replace');
+    expect(plan.history).toHaveLength(HISTORY_KEEP + 2);
+    expect(plan.history[0]).toEqual(history[HISTORY_SOFT_LIMIT - HISTORY_KEEP]);
+    expect(plan.history.slice(-2)).toEqual([event('n1'), event('n2')]);
+    expect(planHistoryWrite({ ...old, history: events(HISTORY_LIMIT) }, [event('n')]).history).toHaveLength(61);
   });
 });

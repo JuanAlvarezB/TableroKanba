@@ -15,6 +15,19 @@
  * @property {number | null} completedAt Cuándo se completó.
  * @property {Priority | null} priority Etiqueta opcional.
  * @property {string | null} dueDate Fecha límite opcional ("2026-10-15", día local).
+ * @property {HistoryEvent[] | null} history Cambios de la tarea; null si aún no tiene historial
+ *   guardado (tareas anteriores a él: se deriva de las fechas, ver domain/rules/history.js).
+ *
+ * Evento del historial (docs/PLAN_USUARIOS.md, 4.2). No lleva datos de la persona: su dueño es el
+ * ownerId de la tarea.
+ * @typedef {object} HistoryEvent
+ * @property {string} id Aleatorio (arrayUnion descarta elementos idénticos); determinista en los derivados.
+ * @property {'create' | 'edit' | 'move' | 'priority' | 'due'} type
+ * @property {number} at Hora del dispositivo (ms desde 1970).
+ * @property {string} [text] create: texto inicial, recortado.
+ * @property {string | null} [from] edit, move, priority y due: valor anterior.
+ * @property {string | null} [to] Valor nuevo.
+ * @property {true} [derived] Calculado a partir de las fechas guardadas.
  */
 
 // Columnas del tablero, en el orden del flujo de trabajo.
@@ -48,6 +61,45 @@ export function readLabels(source) {
   };
 }
 
+// Tope de eventos del historial de una tarea; las reglas de Firestore también lo exigen.
+export const HISTORY_LIMIT = 100;
+
+const isText = (value) => typeof value === 'string';
+const isStatus = (value) => STATUSES.includes(value);
+const isPriorityOrNone = (value) => value === null || PRIORITY_LEVELS.includes(value);
+const isDueDateOrNone = (value) => value === null || (isText(value) && DUE_DATE_PATTERN.test(value));
+
+// Campos propios de cada tipo de evento y cómo se validan. El from de un move es null en el
+// primer evento derivado (antes de él no se sabe nada de la tarea).
+const EVENT_FIELDS = {
+  create: { text: isText },
+  edit: { from: isText, to: isText },
+  move: { from: (value) => value === null || isStatus(value), to: isStatus },
+  priority: { from: isPriorityOrNone, to: isPriorityOrNone },
+  due: { from: isDueDateOrNone, to: isDueDateOrNone },
+};
+
+// Copia del evento con solo sus campos conocidos, o null si está mal formado.
+function readEvent(raw) {
+  if (!raw || !Object.hasOwn(EVENT_FIELDS, raw.type)) return null;
+  if (!isText(raw.id) || raw.id === '' || !Number.isFinite(raw.at)) return null;
+  const event = { id: raw.id, type: raw.type, at: raw.at };
+  for (const [field, isValid] of Object.entries(EVENT_FIELDS[raw.type])) {
+    if (!isValid(raw[field])) return null;
+    event[field] = raw[field];
+  }
+  if (raw.derived === true) event.derived = true;
+  return event;
+}
+
+// Lee el historial guardado: descarta los eventos mal formados (las reglas no pueden revisarlos uno
+// a uno) y se queda como mucho con los 100 más recientes. Sin lista, null: la tarea es anterior al
+// historial y se deriva de sus fechas.
+export function readHistory(source) {
+  if (!Array.isArray(source.history)) return null;
+  return source.history.map(readEvent).filter(Boolean).slice(-HISTORY_LIMIT);
+}
+
 // Lo mínimo para considerar tarea un elemento guardado en localStorage.
 export function isStoredTask(raw) {
   return Boolean(raw) && typeof raw.text === 'string';
@@ -66,6 +118,7 @@ export function taskFromStorage(raw, index) {
     order: typeof raw.order === 'number' ? raw.order : index,
     ...readDates(raw),
     ...readLabels(raw),
+    history: readHistory(raw),
   };
 }
 
@@ -81,14 +134,17 @@ export function taskFromData(id, data) {
     order: typeof data.order === 'number' ? data.order : 0,
     ...readDates(data),
     ...readLabels(data),
+    history: readHistory(data),
   };
 }
 
 /**
- * Tarea nueva: entra en Pendiente, sin etiquetas.
+ * Tarea nueva: entra en Pendiente, sin etiquetas. Su historial empieza con el evento de creación,
+ * que se recibe hecho (domain/rules/history.js lo genera con historyEventsFor).
+ * @param {{ id: string, text: string, order: number, now?: number, history?: HistoryEvent[] }} input
  * @returns {Task}
  */
-export function createTask({ id, text, order, now = Date.now() }) {
+export function createTask({ id, text, order, now = Date.now(), history = [] }) {
   return {
     id,
     text,
@@ -97,6 +153,7 @@ export function createTask({ id, text, order, now = Date.now() }) {
     ...readDates({}),
     ...readLabels({}),
     createdAt: now,
+    history,
   };
 }
 

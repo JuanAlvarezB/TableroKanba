@@ -4,6 +4,7 @@ import {
   datesForStatus,
   isStoredTask,
   missingDates,
+  readHistory,
   taskFromData,
   taskFromStorage,
   wasInProgress,
@@ -23,6 +24,7 @@ describe('taskFromStorage', () => {
       completedAt: null,
       priority: null,
       dueDate: null,
+      history: null,
     });
   });
 
@@ -54,8 +56,9 @@ describe('taskFromData', () => {
 });
 
 describe('createTask', () => {
-  it('crea la tarea en Pendiente, sin etiquetas y con fecha de creación', () => {
-    expect(createTask({ id: 'n', text: 'Nueva', order: 4, now: NOW })).toEqual({
+  it('crea la tarea en Pendiente, sin etiquetas, con fecha de creación y su evento create', () => {
+    const created = { id: 'e1', type: 'create', at: NOW, text: 'Nueva' };
+    expect(createTask({ id: 'n', text: 'Nueva', order: 4, now: NOW, history: [created] })).toEqual({
       id: 'n',
       text: 'Nueva',
       status: 'pending',
@@ -65,7 +68,62 @@ describe('createTask', () => {
       completedAt: null,
       priority: null,
       dueDate: null,
+      history: [created],
     });
+  });
+});
+
+describe('readHistory', () => {
+  const move = { id: 'e2', type: 'move', at: NOW, from: 'pending', to: 'in-progress' };
+
+  it('sin el campo, o si no es una lista, devuelve null (tarea anterior al historial)', () => {
+    expect(readHistory({})).toBeNull();
+    expect(readHistory({ history: { 0: move } })).toBeNull();
+    expect(readHistory({ history: 'texto' })).toBeNull();
+  });
+
+  it('conserva los eventos válidos de cada tipo, con solo sus campos', () => {
+    const events = [
+      { id: 'e1', type: 'create', at: NOW, text: 'Hola' },
+      { id: 'e2', type: 'edit', at: NOW, from: 'Hola', to: 'Adiós' },
+      { id: 'd:pending:1', type: 'move', at: 1, from: null, to: 'pending', derived: true },
+      { id: 'e3', type: 'priority', at: NOW, from: null, to: 'urgent' },
+      { id: 'e4', type: 'due', at: NOW, from: '2026-10-15', to: null },
+    ];
+    expect(readHistory({ history: [...events, { ...move, extra: 'x', derived: 'sí' }] })).toEqual([...events, move]);
+  });
+
+  it('descarta los eventos mal formados', () => {
+    const broken = [
+      null,
+      'texto',
+      { ...move, type: 'delete' },
+      { ...move, type: 'constructor' },
+      { ...move, id: '' },
+      { ...move, id: 7 },
+      { ...move, at: 'ayer' },
+      { ...move, to: 'archived' },
+      { ...move, to: null },
+      { id: 'e', type: 'create', at: NOW },
+      { id: 'e', type: 'edit', at: NOW, from: 'a', to: 5 },
+      { id: 'e', type: 'priority', at: NOW, from: null, to: 'máxima' },
+      { id: 'e', type: 'due', at: NOW, from: null, to: '15/10/2026' },
+    ];
+    expect(readHistory({ history: [...broken, move] })).toEqual([move]);
+  });
+
+  it('se queda con los 100 eventos más recientes', () => {
+    const many = Array.from({ length: 105 }, (_, i) => ({ ...move, id: `e${i}`, at: i }));
+    const history = readHistory({ history: many });
+    expect(history).toHaveLength(100);
+    expect(history[0].id).toBe('e5');
+    expect(history.at(-1).id).toBe('e104');
+  });
+
+  it('taskFromData y taskFromStorage leen el historial', () => {
+    expect(taskFromData('id', { text: 'x', history: [move, { basura: true }] }).history).toEqual([move]);
+    expect(taskFromStorage({ id: 'x', text: 'x', history: [move] }, 0).history).toEqual([move]);
+    expect(taskFromData('id', { text: 'x' }).history).toBeNull();
   });
 });
 
