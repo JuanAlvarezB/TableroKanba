@@ -93,3 +93,24 @@ cuentas: la del administrador y una de miembro.
 - [ ] Con dos cuentas, el administrador no ve las tareas del miembro en ningún lugar.
 - [ ] Las reglas publicadas coinciden con `firestore.rules`: `npm run admin -- verificar-reglas
       --ambiente <dev|pdn>` termina en "✔ Coinciden" (o, sin el script, comparando en la consola).
+
+## 8. Historial de tareas
+
+Diseño en `docs/PLAN_USUARIOS.md`, sección 4. Hasta que exista la vista del historial completo, los
+eventos se revisan en la consola de Firebase (Firestore → `tasks` → el documento de la tarea, campo
+`history`), solo con tareas de prueba propias.
+
+- [ ] Antes de publicar: respaldo de PDN hecho y número de tareas por columna anotado.
+- [ ] Las reglas publicadas conservan `'history'` en `isValidTask` (`verificar-reglas` termina en
+      "✔ Coinciden").
+- [ ] Una tarea existente que no se toca no cambia: su documento sigue sin `history`.
+- [ ] Crear una tarea: su documento tiene `history` con un solo evento `create`.
+- [ ] Editar, mover, poner y quitar prioridad y fecha límite: cada cambio añade un evento con `from`
+      y `to`; ninguno tiene correo, nombre, uid ni `actorId`.
+- [ ] El primer cambio de una tarea existente añade antes sus eventos derivados (`derived: true`).
+- [ ] Reordenar dentro de la columna no añade eventos.
+- [ ] Con dos dispositivos, los cambios de ambos quedan en `history`.
+- [ ] Sin conexión: los cambios se registran y sus eventos suben al reconectar.
+- [ ] Borrar la tarea: el documento desaparece con su historial.
+- [ ] La línea de tiempo de la tarjeta sigue mostrando las mismas fechas que antes.
+- [ ] Después del merge, en PDN siguen las mismas tareas por columna que antes de publicar.
