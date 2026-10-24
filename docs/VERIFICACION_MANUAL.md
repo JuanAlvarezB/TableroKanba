@@ -6,6 +6,11 @@ Desarrollo (local) y después en PDN. Copia la lista en la descripción del PR y
 Antes de empezar: abre la consola del navegador y confirma que no aparece ningún error en rojo
 al cargar cada página.
 
+Excepción conocida (Safari): `Fetch API cannot load https://firestore.googleapis.com/…/Listen/channel?…
+due to access control checks`. Es el canal de tiempo real de Firestore al cerrarse y reabrirse; Safari
+lo muestra como error, pero no es un error de LUCAS. No cuenta como falla si el tablero sigue en
+"Sincronizado" y un cambio llega a otro navegador. Cualquier otro error en rojo sí cuenta.
+
 ## 1. Ambiente
 
 - [ ] En local, el tablero muestra la insignia **DESARROLLO** y el título empieza por `[DEV]`.
@@ -86,4 +91,5 @@ cuentas: la del administrador y una de miembro.
       inicio). Se comprueba cuando exista la primera página de administración (sección 2 del plan).
 - [ ] El mensaje del login antes de autenticarse sigue siendo genérico ("Correo o contraseña incorrectos.").
 - [ ] Con dos cuentas, el administrador no ve las tareas del miembro en ningún lugar.
-- [ ] Revisar en la consola de Firebase que las reglas publicadas coinciden con `firestore.rules`.
+- [ ] Las reglas publicadas coinciden con `firestore.rules`: `npm run admin -- verificar-reglas
+      --ambiente <dev|pdn>` termina en "✔ Coinciden" (o, sin el script, comparando en la consola).
