@@ -21,11 +21,20 @@ function assertSafeEnvironment() {
   return projectId;
 }
 
-/** Entorno de pruebas con las reglas de firestore.rules cargadas en el emulador. */
-export function createTestEnvironment() {
+/** Texto de firestore.rules. */
+export function readRules() {
+  return readFileSync(RULES, 'utf-8');
+}
+
+/**
+ * Entorno de pruebas con las reglas de firestore.rules cargadas en el emulador, u otras (por ejemplo,
+ * las anteriores a un cambio). Las reglas valen para todo el emulador hasta que otro entorno cargue
+ * las suyas.
+ */
+export function createTestEnvironment({ rules = readRules() } = {}) {
   return initializeTestEnvironment({
     projectId: assertSafeEnvironment(),
-    firestore: { rules: readFileSync(RULES, 'utf-8') },
+    firestore: { rules },
   });
 }
 
