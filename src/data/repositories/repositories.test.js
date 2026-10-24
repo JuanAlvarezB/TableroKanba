@@ -30,6 +30,7 @@ function fakeFirestore() {
     collection: (db, name) => name,
     where: (field, op, value) => ({ field, op, value }),
     query: (collection, filter) => ({ collection, filter }),
+    arrayUnion: (...elements) => ({ arrayUnion: elements }),
     setDoc: async (ref, data) => {
       calls.push(['set', ref, data]);
       if (fs.failWith) throw fs.failWith;
@@ -76,6 +77,45 @@ describe('FirestoreTaskRepository', () => {
       dueDate: '2026-10-15',
       ownerId: 'u',
     });
+  });
+
+  const event = (id) => ({ id, type: 'move', at: 2, from: 'pending', to: 'in-progress' });
+
+  it('toDocument conserva el historial y no lo envía si la tarea aún no tiene', () => {
+    expect(toDocument(task('t', { history: [event('e1')] }), 'u').history).toEqual([event('e1')]);
+    expect(toDocument(task('t', { history: [] }), 'u').history).toEqual([]);
+    expect(toDocument(task('t', { history: null }), 'u')).not.toHaveProperty('history');
+  });
+
+  it('save y saveAll guardan la tarea con su historial', async () => {
+    const { db, fs, calls } = fakeFirestore();
+    const repository = createFirestoreTaskRepository({ db, fs }, 'u');
+    await repository.save(task('a', { history: [event('e1')] }));
+    await repository.saveAll([task('b', { history: [event('e2')] })]);
+    expect(calls[0][2].history).toEqual([event('e1')]);
+    expect(calls[1][1][0][2].history).toEqual([event('e2')]);
+  });
+
+  it('update traduce el plan del historial en la misma escritura que los campos', async () => {
+    const { db, fs, calls } = fakeFirestore();
+    const repository = createFirestoreTaskRepository({ db, fs }, 'u');
+    await repository.update('t1', { status: 'in-progress' }, { mode: 'append', events: [event('e1'), event('e2')] });
+    await repository.update('t1', { text: 'x' }, { mode: 'replace', history: [event('e3')] });
+    await repository.update('t1', { createdAt: 5 });
+    expect(calls).toEqual([
+      ['update', 'tasks/t1', { status: 'in-progress', history: { arrayUnion: [event('e1'), event('e2')] } }],
+      ['update', 'tasks/t1', { text: 'x', history: [event('e3')] }],
+      ['update', 'tasks/t1', { createdAt: 5 }],
+    ]);
+  });
+
+  it('subscribe lee el historial de cada documento', () => {
+    const { db, fs } = fakeFirestore();
+    const onChange = vi.fn();
+    createFirestoreTaskRepository({ db, fs }, 'u').subscribe(onChange, vi.fn());
+    const doc = { id: 'a', data: () => ({ text: 'a', history: [event('e1'), 'basura'] }), metadata: {} };
+    fs.listener.next({ docs: [doc], docChanges: () => [], metadata: { fromCache: false } });
+    expect(onChange.mock.calls[0][0].tasks[0].history).toEqual([event('e1')]);
   });
 
   it('update ignora las tareas que otro dispositivo ya borró', async () => {
