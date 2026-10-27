@@ -1,6 +1,6 @@
-// Fechas en español para las tarjetas y textos de vencimiento.
-import { dueStatus } from '../../domain/rules/dueDates.js';
-import { plural } from './labels.js';
+// Fechas en español para las tarjetas, textos de vencimiento y eventos del historial.
+import { dueStatus, parseDueDate } from '../../domain/rules/dueDates.js';
+import { COLUMN_NAMES, HISTORY_TEXTS, PRIORITIES, plural } from './labels.js';
 
 const dateFormat = new Intl.DateTimeFormat('es', {
   day: 'numeric',
@@ -16,6 +16,7 @@ const dateFormatWithYear = new Intl.DateTimeFormat('es', {
   minute: '2-digit',
 });
 export const shortDateFormat = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short' });
+const dayFormat = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short', year: 'numeric' });
 const longDateFormat = new Intl.DateTimeFormat('es', { dateStyle: 'full' });
 export const fullDateFormat = new Intl.DateTimeFormat('es', { dateStyle: 'full', timeStyle: 'short' });
 
@@ -40,4 +41,22 @@ export function dueInfo(task, now = new Date()) {
     return { kind, text, title };
   }
   return { kind, text: `📅 Vence el ${shortDateFormat.format(due)}`, title };
+}
+
+// Texto de un evento del historial, sin su hora ni la marca de derivado (las pone TaskHistory).
+// Los valores ausentes (sin etiqueta, sin fecha) se nombran para que se lea el antes y el después.
+const priorityText = (value) => (value ? PRIORITIES[value].label : HISTORY_TEXTS.noPriority);
+const dueDateText = (value) => (value ? dayFormat.format(parseDueDate(value)) : HISTORY_TEXTS.noDueDate);
+const EVENT_TEXTS = {
+  create: ({ text }) => `Creada: «${text}»`,
+  edit: ({ from, to }) => `Texto: «${from}» → «${to}»`,
+  move: ({ from, to }) =>
+    from === null ? `Entró en ${COLUMN_NAMES[to]}` : `Movida de ${COLUMN_NAMES[from]} a ${COLUMN_NAMES[to]}`,
+  priority: ({ from, to }) => `Prioridad: ${priorityText(from)} → ${priorityText(to)}`,
+  due: ({ from, to }) => `Fecha límite: ${dueDateText(from)} → ${dueDateText(to)}`,
+};
+
+/** @param {import('../../domain/entities/Task.js').HistoryEvent} event */
+export function historyEventText(event) {
+  return EVENT_TEXTS[event.type](event);
 }

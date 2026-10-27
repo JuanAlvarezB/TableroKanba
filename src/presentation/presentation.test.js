@@ -3,8 +3,8 @@ import { createSessionStore } from '../data/repositories/SessionStore.js';
 import { RepositoryError } from '../domain/repositories/RepositoryError.js';
 import { authorizeUser } from '../domain/usecases/AuthorizeUser.js';
 import { stepLabel } from './components/TaskHistory.js';
-import { dueInfo, formatDate } from './format/dates.js';
-import { plural } from './format/labels.js';
+import { dueInfo, formatDate, historyEventText } from './format/dates.js';
+import { HISTORY_TEXTS, plural } from './format/labels.js';
 
 const WEDNESDAY = new Date(2026, 9, 7, 10, 30);
 const pending = (dueDate) => ({ status: 'pending', dueDate });
@@ -39,6 +39,27 @@ describe('textos de vencimiento', () => {
 });
 
 describe('historial de la tarjeta', () => {
+  const event = (fields) => ({ id: 'abcd1234', at: WEDNESDAY.getTime(), ...fields });
+
+  it.each([
+    [{ type: 'create', text: 'Revisar el informe' }, 'Creada: «Revisar el informe»'],
+    [{ type: 'edit', from: 'Revisar', to: 'Revisar el informe' }, 'Texto: «Revisar» → «Revisar el informe»'],
+    [{ type: 'move', from: 'pending', to: 'in-progress' }, 'Movida de Pendiente a En curso'],
+    [{ type: 'move', from: 'in-progress', to: 'completed' }, 'Movida de En curso a Completada'],
+    [{ type: 'move', from: null, to: 'pending' }, 'Entró en Pendiente'],
+    [{ type: 'priority', from: null, to: 'urgent' }, 'Prioridad: sin etiqueta → Urgente'],
+    [{ type: 'priority', from: 'high', to: null }, 'Prioridad: Prioritaria → sin etiqueta'],
+    [{ type: 'due', from: null, to: '2026-10-15' }, 'Fecha límite: sin fecha → 15 oct 2026'],
+    [{ type: 'due', from: '2026-10-15', to: null }, 'Fecha límite: 15 oct 2026 → sin fecha'],
+  ])('%o → %s', (fields, text) => {
+    expect(historyEventText(event(fields))).toBe(text);
+  });
+
+  it('el control cuenta los eventos', () => {
+    expect(HISTORY_TEXTS.toggle(3)).toBe('Ver historial (3)');
+    expect(HISTORY_TEXTS.derived).toBe('(según las fechas guardadas)');
+  });
+
   // B-4.1: en una tarea devuelta, createdAt es la fecha del regreso a Pendiente.
   it('la fecha de Pendiente dice "Creada" salvo en las tareas devueltas', () => {
     const fresh = { status: 'pending', createdAt: 1000, startedAt: null, completedAt: null };
