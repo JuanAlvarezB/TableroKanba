@@ -2,6 +2,9 @@
 
 export const STATUS_LABELS = { pending: 'Creada', 'in-progress': 'En curso', completed: 'Completada' };
 
+// En una tarea devuelta a Pendiente, createdAt es la fecha del regreso, no la de creación (B-4.1).
+export const PENDING_SINCE_LABEL = 'En Pendiente desde';
+
 // Etiquetas de prioridad, en el orden de PRIORITY_LEVELS (domain/entities/Task.js).
 export const PRIORITIES = {
   urgent: { icon: '🔴', label: 'Urgente' },

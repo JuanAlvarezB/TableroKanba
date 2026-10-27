@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSessionStore } from '../data/repositories/SessionStore.js';
 import { RepositoryError } from '../domain/repositories/RepositoryError.js';
 import { authorizeUser } from '../domain/usecases/AuthorizeUser.js';
+import { stepLabel } from './components/TaskHistory.js';
 import { dueInfo, formatDate } from './format/dates.js';
 import { plural } from './format/labels.js';
 
@@ -34,6 +35,19 @@ describe('textos de vencimiento', () => {
   it('plural', () => {
     expect(plural(1, 'tarea', 'tareas')).toBe('1 tarea');
     expect(plural(3, 'tarea', 'tareas')).toBe('3 tareas');
+  });
+});
+
+describe('historial de la tarjeta', () => {
+  // B-4.1: en una tarea devuelta, createdAt es la fecha del regreso a Pendiente.
+  it('la fecha de Pendiente dice "Creada" salvo en las tareas devueltas', () => {
+    const fresh = { status: 'pending', createdAt: 1000, startedAt: null, completedAt: null };
+    const returned = { status: 'pending', createdAt: 3000, startedAt: 2000, completedAt: null };
+    const started = { status: 'in-progress', createdAt: 1000, startedAt: 2000, completedAt: null };
+    expect(stepLabel(fresh, 'pending')).toBe('Creada');
+    expect(stepLabel(returned, 'pending')).toBe('En Pendiente desde');
+    expect(stepLabel(started, 'pending')).toBe('Creada');
+    expect(stepLabel(started, 'in-progress')).toBe('En curso');
   });
 });
 

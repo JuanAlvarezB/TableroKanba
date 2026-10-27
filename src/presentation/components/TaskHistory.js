@@ -3,7 +3,12 @@
 import { STATUSES, STATUS_DATE_FIELDS, wasInProgress } from '../../domain/entities/Task.js';
 import { stalledDays } from '../../domain/rules/stalledTasks.js';
 import { formatDate, fullDateFormat, shortDateFormat } from '../format/dates.js';
-import { STATUS_LABELS } from '../format/labels.js';
+import { PENDING_SINCE_LABEL, STATUS_LABELS } from '../format/labels.js';
+
+// La fecha de Pendiente de una tarea devuelta es la del regreso, no la de creación (B-4.1).
+export function stepLabel(task, status) {
+  return status === 'pending' && wasInProgress(task) ? PENDING_SINCE_LABEL : STATUS_LABELS[status];
+}
 
 export function createTaskHistory(task) {
   const list = document.createElement('ol');
@@ -24,7 +29,7 @@ export function createTaskHistory(task) {
 
     const label = document.createElement('span');
     label.className = 'history-label';
-    label.textContent = STATUS_LABELS[status];
+    label.textContent = stepLabel(task, status);
 
     const time = document.createElement('time');
     time.dateTime = new Date(ms).toISOString();
