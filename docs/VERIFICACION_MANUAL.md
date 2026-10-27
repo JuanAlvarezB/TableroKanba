@@ -96,9 +96,9 @@ cuentas: la del administrador y una de miembro.
 
 ## 8. Historial de tareas
 
-Diseño en `docs/PLAN_USUARIOS.md`, sección 4. Hasta que exista la vista del historial completo, los
-eventos se revisan en la consola de Firebase (Firestore → `tasks` → el documento de la tarea, campo
-`history`), solo con tareas de prueba propias.
+Diseño en `docs/PLAN_USUARIOS.md`, sección 4. Los eventos guardados se revisan en la consola de Firebase
+(Firestore → `tasks` → el documento de la tarea, campo `history`), solo con tareas de prueba propias; desde
+el PR 11 también se ven en la tarjeta (8.1).
 
 - [ ] Antes de publicar: respaldo de PDN hecho y número de tareas por columna anotado.
 - [ ] Las reglas publicadas conservan `'history'` en `isValidTask` (`verificar-reglas` termina en
@@ -114,3 +114,30 @@ eventos se revisan en la consola de Firebase (Firestore → `tasks` → el docum
 - [ ] Borrar la tarea: el documento desaparece con su historial.
 - [ ] La línea de tiempo de la tarjeta sigue mostrando las mismas fechas que antes.
 - [ ] Después del merge, en PDN siguen las mismas tareas por columna que antes de publicar.
+
+### 8.1 Vista del historial en la tarjeta
+
+Pasos de `docs/PLAN_USUARIOS.md`, 4.7, más la etiqueta de B-4.1 y la accesibilidad (PBI-4.4).
+
+- [ ] Una tarea **existente** muestra su historial derivado, marcado "(según las fechas guardadas)", sin
+      haberla tocado (su documento sigue sin `history`).
+- [ ] Crear una tarea: el historial tiene "Creada".
+- [ ] Editar, mover, poner y quitar prioridad y fecha: cada cambio aparece con su valor anterior y el nuevo
+      (por ejemplo "Prioridad: sin etiqueta → Urgente"), del más reciente al más antiguo.
+- [ ] "Ver historial (N)" cuenta los eventos que despliega.
+- [ ] Reordenar dentro de la columna no añade eventos.
+- [ ] Con dos dispositivos, cambios en ambos aparecen en el historial de los dos; un historial desplegado
+      sigue desplegado cuando llega un cambio del otro dispositivo.
+- [ ] Sin conexión: los cambios se registran y se sincronizan al volver.
+- [ ] Borrar la tarea: desaparece con su historial.
+- [ ] Otra cuenta y el administrador no ven el historial (consola de Firebase con su sesión).
+- [ ] La línea de tiempo resumida sigue mostrando las mismas fechas que antes.
+- [ ] B-4.1: una tarea devuelta de En curso a Pendiente dice "En Pendiente desde" (no "Creada") con la
+      fecha del regreso; las demás siguen diciendo "Creada".
+- [ ] Con el permiso `history` apagado, el historial no se ve y se sigue registrando. **Pendiente:** el
+      permiso llega con la sección 3 (PR 8); hasta entonces este punto no aplica.
+- [ ] Teclado: Tab llega a "Ver historial (N)"; Enter y Espacio lo despliegan y lo pliegan; el foco no se
+      pierde al desplegar.
+- [ ] Lector de pantalla (VoiceOver): anuncia el botón con "contraído" o "expandido" y lee cada evento con
+      su fecha; la flecha ▸ no se lee.
+- [ ] A 320 px de ancho, los eventos largos se parten en varias líneas sin desbordar la tarjeta.
