@@ -145,6 +145,74 @@
   font-weight: 600;
 }
 
+/* Control que despliega el historial completo de cambios */
+.history-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  margin: -2px 0 0;
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-primary-hover);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--ease);
+}
+
+.history-toggle:hover {
+  background: var(--color-primary-soft);
+}
+
+/* Flecha decorativa; el lector de pantalla anuncia aria-expanded */
+.history-toggle::before {
+  content: '▸';
+  content: '▸' / '';
+  transition: transform var(--ease);
+}
+
+.history-toggle[aria-expanded='true']::before {
+  transform: rotate(90deg);
+}
+
+/* Eventos del historial, del más reciente al más antiguo */
+.history-events {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-events[hidden] {
+  display: none;
+}
+
+.history-event {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.history-event time {
+  white-space: nowrap;
+}
+
+/* Eventos calculados a partir de las fechas en las tareas anteriores al historial */
+.history-derived {
+  font-style: italic;
+}
+
 /* Fecha desde la que se cuenta la alerta */
 .history-step.is-overdue,
 .history-step.is-overdue time {

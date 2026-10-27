@@ -2,6 +2,12 @@
 
 export const STATUS_LABELS = { pending: 'Creada', 'in-progress': 'En curso', completed: 'Completada' };
 
+// En una tarea devuelta a Pendiente, createdAt es la fecha del regreso, no la de creación (B-4.1).
+export const PENDING_SINCE_LABEL = 'En Pendiente desde';
+
+// Nombre de cada columna en los eventos del historial ("Movida de Pendiente a En curso").
+export const COLUMN_NAMES = { pending: 'Pendiente', 'in-progress': 'En curso', completed: 'Completada' };
+
 // Etiquetas de prioridad, en el orden de PRIORITY_LEVELS (domain/entities/Task.js).
 export const PRIORITIES = {
   urgent: { icon: '🔴', label: 'Urgente' },
@@ -14,6 +20,16 @@ export const PRIORITIES = {
 export const OVERDUE_COLUMNS = {
   pending: { name: 'Pendiente', phrase: 'en Pendiente' },
   'in-progress': { name: 'En curso', phrase: 'en curso' },
+};
+
+// Historial completo de la tarjeta (docs/PLAN_USUARIOS.md, 4.6). Los textos de cada evento, que
+// llevan fechas, están en format/dates.js.
+export const HISTORY_TEXTS = {
+  toggle: (count) => `Ver historial (${count})`,
+  listLabel: 'Historial completo, del cambio más reciente al más antiguo',
+  derived: '(según las fechas guardadas)',
+  noPriority: 'sin etiqueta',
+  noDueDate: 'sin fecha',
 };
 
 export function plural(count, singular, pluralForm) {
