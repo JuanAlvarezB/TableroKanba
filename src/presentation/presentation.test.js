@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSessionStore } from '../data/repositories/SessionStore.js';
 import { RepositoryError } from '../domain/repositories/RepositoryError.js';
 import { authorizeUser } from '../domain/usecases/AuthorizeUser.js';
-import { stepLabel } from './components/TaskHistory.js';
+import { deriveHistory } from '../domain/rules/history.js';
+import { newestFirst, stepLabel } from './components/TaskHistory.js';
 import { dueInfo, formatDate, historyEventText } from './format/dates.js';
 import { HISTORY_TEXTS, plural } from './format/labels.js';
 
@@ -58,6 +59,25 @@ describe('historial de la tarjeta', () => {
   it('el control cuenta los eventos', () => {
     expect(HISTORY_TEXTS.toggle(3)).toBe('Ver historial (3)');
     expect(HISTORY_TEXTS.derived).toBe('(según las fechas guardadas)');
+  });
+
+  it('del más reciente al más antiguo; con la misma hora, primero el último añadido', () => {
+    const events = [
+      { id: 'a', at: 1 },
+      { id: 'b', at: 3 },
+      { id: 'c', at: 3 },
+      { id: 'd', at: 2 },
+    ];
+    expect(newestFirst(events).map((e) => e.id)).toEqual(['c', 'b', 'd', 'a']);
+    expect(events.map((e) => e.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('una tarea existente muestra su historial derivado de las fechas, del más reciente al más antiguo', () => {
+    const task = { status: 'in-progress', createdAt: 1000, startedAt: 2000, completedAt: null, history: null };
+    expect(newestFirst(deriveHistory(task)).map(historyEventText)).toEqual([
+      'Movida de Pendiente a En curso',
+      'Entró en Pendiente',
+    ]);
   });
 
   // B-4.1: en una tarea devuelta, createdAt es la fecha del regreso a Pendiente.
