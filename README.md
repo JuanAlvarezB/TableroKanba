@@ -175,6 +175,24 @@ tener el campo `history`. Unas reglas sin `'history'` en el `hasOnly` de `isVali
   3. Quitar el campo de todas las tareas solo tiene sentido si se abandona la función: se hará con un
      comando del script administrativo, primero en Desarrollo y con respaldo previo de PDN.
 
+#### Índice de tareas: primero el código, después las reglas
+
+Desde la gestión de usuarios (`docs/PLAN_USUARIOS.md`, 2.6) crear o borrar una tarea escribe también
+su documento de `taskIndex` en el mismo lote. Unas reglas sin `match /taskIndex/` rechazan el lote
+**entero**: nadie podría crear ni borrar tareas. Por eso:
+
+- Las reglas con `taskIndex` se publican en Desarrollo y en PDN **antes** del merge del código que lo
+  escribe (orden estricto, ver más abajo).
+- **Para revertir el índice**, primero se revierte el código (`git revert -m 1 <hash-del-merge>`) y se
+  espera a que el sitio publicado ya no lo escriba; solo después, si hace falta, se vuelve a las reglas
+  anteriores. Los documentos de `taskIndex` que queden no estorban a nadie.
+- Antes de publicar una versión anterior de las reglas mientras el código del índice siga publicado,
+  comprueba que la tiene:
+
+  ```bash
+  grep -q "match /taskIndex/" firestore.rules && echo "Tiene taskIndex" || echo "SIN taskIndex: no la publiques"
+  ```
+
 ### Comprobar con el script (`verificar-reglas`)
 
 `npm run admin -- verificar-reglas --ambiente dev|pdn` descarga, con la API de Firebase Rules, las

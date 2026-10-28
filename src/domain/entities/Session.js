@@ -12,6 +12,7 @@
  * @property {boolean} offline true si la autorización se tomó de la última confirmada (sin red).
  * @property {string} storageKey Clave de localStorage de su copia de tareas.
  * @property {string} migratedKey Clave de la marca de tareas locales ya subidas.
+ * @property {string} indexKey Clave de la marca de índice de tareas ya completo.
  * @property {AuthUser} user Usuario de autenticación (para cambiar la contraseña).
  * @property {object} firebase Conexión con Firebase, para crear los repositorios de la página.
  *

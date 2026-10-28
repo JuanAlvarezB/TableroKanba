@@ -22,6 +22,7 @@ function fakeCache(initial = []) {
     tasksKey: 'tareas-dev-u1',
     stored: initial,
     migrated: true,
+    indexCompletedAt: 1,
     load() {
       return structuredClone(this.stored);
     },
@@ -35,6 +36,12 @@ function fakeCache(initial = []) {
     markMigrated() {
       this.migrated = true;
     },
+    isIndexComplete() {
+      return this.indexCompletedAt !== null;
+    },
+    markIndexComplete(at) {
+      this.indexCompletedAt = at;
+    },
   };
 }
 
@@ -44,6 +51,9 @@ function fakeRepository() {
     update: vi.fn().mockResolvedValue(),
     remove: vi.fn().mockResolvedValue(),
     saveAll: vi.fn().mockResolvedValue(),
+    indexedIds: vi.fn().mockResolvedValue([]),
+    addToIndex: vi.fn().mockResolvedValue(),
+    removeFromIndex: vi.fn().mockResolvedValue(),
     subscribe: vi.fn(() => vi.fn()),
   };
 }
@@ -220,6 +230,42 @@ describe('boardStore con Firestore', () => {
     store.add('a');
     await new Promise((resolve) => setTimeout(resolve));
     expect(events.map(([type]) => type)).not.toContain('access-lost');
+  });
+
+  it('completa el índice una sola vez, con el primer snapshot del servidor', async () => {
+    const { cache, repository, onChange } = connected([task('local')]);
+    cache.indexCompletedAt = null;
+    repository.indexedIds.mockResolvedValue(['huerfano']);
+    onChange({ tasks: [], added: [], fromCache: true });
+    expect(repository.indexedIds).not.toHaveBeenCalled();
+
+    onChange({ tasks: [task('a'), task('b')], added: [], fromCache: false });
+    onChange({ tasks: [task('a'), task('b'), task('c')], added: [task('c')], fromCache: false });
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(repository.indexedIds).toHaveBeenCalledTimes(1);
+    expect(repository.addToIndex).toHaveBeenCalledWith(['a', 'b', 'c']);
+    expect(repository.removeFromIndex).toHaveBeenCalledWith(['huerfano']);
+    expect(cache.indexCompletedAt).toEqual(expect.any(Number));
+  });
+
+  it('con el índice ya completo no lo vuelve a leer', async () => {
+    const { repository, onChange } = connected();
+    onChange({ tasks: [task('a')], added: [], fromCache: false });
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(repository.indexedIds).not.toHaveBeenCalled();
+  });
+
+  it('si no puede completar el índice no avisa ni se desconecta', async () => {
+    const { cache, repository, events, onChange } = connected();
+    cache.indexCompletedAt = null;
+    repository.indexedIds.mockRejectedValue(new RepositoryError('unavailable'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    onChange({ tasks: [task('a')], added: [], fromCache: false });
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(warn).toHaveBeenCalled();
+    expect(cache.indexCompletedAt).toBeNull();
+    expect(events.map(([type]) => type)).not.toContain('notice');
+    expect(events).not.toContainEqual(['sync', 'offline']);
   });
 
   it('al desconectar deja de escuchar y de guardar', () => {

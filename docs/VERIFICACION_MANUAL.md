@@ -94,6 +94,28 @@ cuentas: la del administrador y una de miembro.
 - [ ] Las reglas publicadas coinciden con `firestore.rules`: `npm run admin -- verificar-reglas
       --ambiente <dev|pdn>` termina en "✔ Coinciden" (o, sin el script, comparando en la consola).
 
+### 7.1 Gestión de usuarios: reglas de transición e índice de tareas
+
+Diseño en `docs/PLAN_USUARIOS.md`, sección 2 (2.6 y 2.9). Todavía no hay página de usuarios: se
+comprueba que las personas actuales siguen trabajando y que el índice se escribe. Los documentos se
+revisan en la consola de Firebase (Firestore), solo con tareas de prueba propias.
+
+- [ ] Una persona actual (documento solo con `name` o sin `uid`) entra y trabaja con su tablero sin
+      cambios: ve sus tareas, crea, edita, mueve y borra.
+- [ ] Tras su primer acceso con el código nuevo, cada tarea suya tiene un documento en `taskIndex` con el
+      mismo ID y solo `ownerId`; no hay índices de tareas que ya no existen.
+- [ ] En el navegador queda la marca `lucas-indice-<ambiente>-<uid>` (DevTools → Application →
+      Local Storage) con la hora en que se completó; al volver a entrar, la hora no cambia.
+- [ ] Crear una tarea crea su documento en `taskIndex`; borrarla (también con "Limpiar completadas") borra
+      los dos.
+- [ ] Editar el texto, mover, poner prioridad o fecha no cambia el documento de `taskIndex`.
+- [ ] Sin conexión: crear y borrar tareas funciona y, al volver, la tarea y su índice llegan juntos.
+- [ ] Con dos cuentas, el administrador sigue sin ver las tareas del miembro en ningún lugar.
+- [ ] Una cuenta de miembro no puede escribir en `allowedUsers`, `adminLog` ni `deletions` (no hay
+      pantalla para hacerlo; lo cubren las pruebas P-2, P-4, P-7 y P-8 del emulador).
+- [ ] Las reglas publicadas coinciden con `firestore.rules` (`verificar-reglas` termina en "✔ Coinciden").
+- [ ] Después del merge, en PDN siguen las mismas tareas por columna que antes de publicar.
+
 ## 8. Historial de tareas
 
 Diseño en `docs/PLAN_USUARIOS.md`, sección 4. Los eventos guardados se revisan en la consola de Firebase

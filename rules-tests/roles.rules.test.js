@@ -128,11 +128,18 @@ describe('R-7 y R-8 el administrador y las tareas', () => {
     await assertFails(setDoc(doc(signedIn(env, ADMIN), 'tasks/admin-2'), task(ANA.uid)));
   });
 
-  it('R-7 ninguna regla de tasks menciona isAdmin()', () => {
+  // Desde la sección 2 (2.9), isAdmin() solo aparece en el borrado, atado al marcador de eliminación.
+  it('R-7 ninguna regla de lectura, alta o edición de tasks menciona isAdmin()', () => {
     const rules = readFileSync(resolve(import.meta.dirname, '..', 'firestore.rules'), 'utf-8');
-    const tasksRules = rules.slice(rules.indexOf('match /tasks/'), rules.indexOf('match /allowedUsers/'));
-    expect(tasksRules).toContain('allow read');
-    expect(tasksRules).not.toMatch(/isAdmin/);
+    const tasksRules = rules.slice(rules.indexOf('match /tasks/'), rules.indexOf('match /taskIndex/'));
+    const statements = tasksRules.split('allow ').slice(1);
+    expect(statements.map((statement) => statement.split(':')[0])).toEqual(['read', 'delete', 'create', 'update']);
+    statements
+      .filter((statement) => !statement.startsWith('delete'))
+      .forEach((statement) => expect(statement).not.toMatch(/isAdmin/));
+    expect(statements.find((statement) => statement.startsWith('delete'))).toMatch(
+      /isAdmin\(\) && isDeletingOwner\(resource\.data\.ownerId\)/,
+    );
   });
 
   it('R-8 el administrador trabaja con sus propias tareas', async () => {
@@ -196,7 +203,7 @@ describe('R-11 y R-12 nadie más escribe en allowedUsers', () => {
     await assertFails(deleteDoc(doc(signedIn(env, ANA), 'allowedUsers/ana@example.com')));
   });
 
-  it('R-12 el administrador no crea, edita ni borra documentos (hasta la sección 2)', async () => {
+  it('R-12 el administrador no crea, edita ni borra documentos sin su entrada del registro', async () => {
     const db = signedIn(env, ADMIN);
     await assertFails(setDoc(doc(db, 'allowedUsers/carla@example.com'), { name: 'Carla' }));
     await assertFails(updateDoc(doc(db, 'allowedUsers/beto@example.com'), { role: 'admin' }));
@@ -215,13 +222,12 @@ describe('R-13 denegación por defecto', () => {
   it.each([
     ['administrador', ADMIN],
     ['miembro', ANA],
-  ])('%s: config, taskIndex y colecciones no definidas están denegadas', async (_, person) => {
-    await seed(env, { 'config/general': { valor: 1 }, 'taskIndex/ana-1': { ownerId: ANA.uid } });
+  ])('%s: config y colecciones no definidas están denegadas', async (_, person) => {
+    // taskIndex tiene reglas propias desde la sección 2 (casos P-9 y P-10 de usuarios.rules.test.js).
+    await seed(env, { 'config/general': { valor: 1 } });
     const db = signedIn(env, person);
     await assertFails(getDoc(doc(db, 'config/general')));
-    await assertFails(getDoc(doc(db, 'taskIndex/ana-1')));
-    await assertFails(getDocs(collection(db, 'taskIndex')));
-    await assertFails(setDoc(doc(db, 'taskIndex/x'), { ownerId: person.uid }));
+    await assertFails(setDoc(doc(db, 'config/general'), { valor: 2 }));
     await assertFails(setDoc(doc(db, 'otraColeccion/x'), { valor: 1 }));
   });
 });

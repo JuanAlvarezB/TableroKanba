@@ -122,6 +122,7 @@ describe('authorizeUser y SessionStore', () => {
       tasks: 'tareas-dev-u1',
       migrated: 'tareas-migradas-dev-u1',
       authorized: 'lucas-autorizado-dev-u1',
+      index: 'lucas-indice-dev-u1',
     });
   });
 

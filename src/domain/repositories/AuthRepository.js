@@ -26,7 +26,8 @@
  *   (solo ese campo). Lanza RepositoryError si las reglas lo rechazan o no hay conexión.
  *
  * @typedef {object} SessionStore Lo que el navegador recuerda de cada persona (data/repositories/SessionStore.js).
- * @property {(uid: string) => { tasks: string, migrated: string, authorized: string }} keysFor Claves de localStorage.
+ * @property {(uid: string) => { tasks: string, migrated: string, authorized: string, index: string }} keysFor
+ *   Claves de localStorage.
  * @property {(uid: string) => { name: string, at?: number } | null} remembered Última autorización confirmada
  *   y su hora (las guardadas antes de los roles no tienen `at`). Nunca guarda el rol.
  * @property {(uid: string, name: string, at: number) => void} remember

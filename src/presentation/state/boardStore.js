@@ -15,6 +15,7 @@ import { missingDates } from '../../domain/entities/Task.js';
 import { sortTasks } from '../../domain/rules/board.js';
 import { historyEventsFor, planHistoryWrite } from '../../domain/rules/history.js';
 import { addTask } from '../../domain/usecases/AddTask.js';
+import { completeTaskIndex } from '../../domain/usecases/CompleteTaskIndex.js';
 import { clearCompleted, deleteTask } from '../../domain/usecases/DeleteTasks.js';
 import { migrateLocalTasks } from '../../domain/usecases/MigrateLocalTasks.js';
 import { moveTask } from '../../domain/usecases/MoveTask.js';
@@ -139,6 +140,18 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
     );
     const edited = changed.filter((t) => previous.get(t.id).text !== t.text);
     if (edited.length > 0) emit('edited', edited);
+  }
+
+  // Completa el índice de las tareas existentes con los datos del servidor
+  // (domain/usecases/CompleteTaskIndex.js). Es mantenimiento: si falla no se avisa a la persona,
+  // y se reintenta en la siguiente sesión.
+  function completeIndex() {
+    completeTaskIndex({ currentTasks: () => tasks, cache, repository, now: now() }).catch((error) =>
+      console.warn(
+        'No se pudo completar el índice de tareas; se reintenta en la siguiente sesión:',
+        error.cause ?? error,
+      ),
+    );
   }
 
   /* ---------- Historial ---------- */
@@ -292,6 +305,8 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
 
         // Las tareas creadas en este navegador ya se anunciaron al crearlas.
         if (!firstSnapshot && snapshot.added.length > 0) emit('added', snapshot.added);
+        // El primer snapshot que llega aquí es del servidor: con él se completa el índice.
+        if (firstSnapshot) completeIndex();
         firstSnapshot = false;
       }, handleSyncError);
     },
