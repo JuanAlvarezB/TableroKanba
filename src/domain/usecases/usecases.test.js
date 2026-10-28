@@ -4,6 +4,7 @@ import { addTask } from './AddTask.js';
 import { OFFLINE_GRACE_MS, authorizeUser } from './AuthorizeUser.js';
 import { checkReminder } from './CheckReminder.js';
 import { claimUid } from './ClaimUid.js';
+import { completeTaskIndex } from './CompleteTaskIndex.js';
 import { clearCompleted, deleteTask } from './DeleteTasks.js';
 import { migrateLocalTasks } from './MigrateLocalTasks.js';
 import { adjacentStatus, moveTask } from './MoveTask.js';
@@ -127,6 +128,72 @@ describe('migrateLocalTasks', () => {
     const repository = { saveAll: vi.fn().mockRejectedValue(new Error('sin red')) };
     await expect(migrateLocalTasks({ tasks: board(), cache, repository })).rejects.toThrow('sin red');
     expect(cache.markMigrated).not.toHaveBeenCalled();
+  });
+});
+
+describe('completeTaskIndex', () => {
+  const fakeCache = (complete) => ({ isIndexComplete: () => complete, markIndexComplete: vi.fn() });
+  const fakeRepository = (indexed) => ({
+    indexedIds: vi.fn().mockResolvedValue(indexed),
+    addToIndex: vi.fn().mockResolvedValue(),
+    removeFromIndex: vi.fn().mockResolvedValue(),
+  });
+
+  it('crea los índices que faltan, borra los huérfanos y lo marca con la hora', async () => {
+    const cache = fakeCache(false);
+    const repository = fakeRepository(['a', 'huerfano']);
+    const result = await completeTaskIndex({ currentTasks: board, cache, repository, now: NOW });
+    expect(result).toEqual({ created: 2, removed: 1 });
+    expect(repository.addToIndex).toHaveBeenCalledWith(['b', 'c']);
+    expect(repository.removeFromIndex).toHaveBeenCalledWith(['huerfano']);
+    expect(cache.markIndexComplete).toHaveBeenCalledWith(NOW);
+  });
+
+  it('con el índice al día no escribe nada, pero lo marca', async () => {
+    const cache = fakeCache(false);
+    const repository = fakeRepository(['a', 'b', 'c']);
+    expect(await completeTaskIndex({ currentTasks: board, cache, repository, now: NOW })).toEqual({
+      created: 0,
+      removed: 0,
+    });
+    expect(repository.addToIndex).toHaveBeenCalledWith([]);
+    expect(repository.removeFromIndex).toHaveBeenCalledWith([]);
+    expect(cache.markIndexComplete).toHaveBeenCalled();
+  });
+
+  it('si ya estaba completo no lee ni escribe nada', async () => {
+    const repository = fakeRepository([]);
+    const currentTasks = vi.fn(board);
+    expect(await completeTaskIndex({ currentTasks, cache: fakeCache(true), repository, now: NOW })).toBeNull();
+    expect(repository.indexedIds).not.toHaveBeenCalled();
+    expect(currentTasks).not.toHaveBeenCalled();
+  });
+
+  it('compara con las tareas de después de leer el índice', async () => {
+    let tasks = [task('a')];
+    const repository = fakeRepository([]);
+    repository.indexedIds.mockImplementation(async () => {
+      tasks = [task('a'), task('nueva')];
+      return ['nueva'];
+    });
+    await completeTaskIndex({ currentTasks: () => tasks, cache: fakeCache(false), repository, now: NOW });
+    expect(repository.addToIndex).toHaveBeenCalledWith(['a']);
+    expect(repository.removeFromIndex).toHaveBeenCalledWith([]);
+  });
+
+  it('si falla no lo marca, para reintentarlo en la siguiente sesión', async () => {
+    const cache = fakeCache(false);
+    const repository = fakeRepository([]);
+    repository.addToIndex.mockRejectedValue(new RepositoryError('unavailable'));
+    await expect(completeTaskIndex({ currentTasks: board, cache, repository, now: NOW })).rejects.toMatchObject({
+      reason: 'unavailable',
+    });
+    expect(cache.markIndexComplete).not.toHaveBeenCalled();
+
+    repository.indexedIds.mockRejectedValue(new RepositoryError('permission-denied'));
+    await expect(completeTaskIndex({ currentTasks: board, cache, repository, now: NOW })).rejects.toMatchObject({
+      reason: 'permission-denied',
+    });
   });
 });
 
