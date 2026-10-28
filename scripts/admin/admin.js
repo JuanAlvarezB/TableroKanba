@@ -9,6 +9,8 @@
 //   completar-indice   Crea los índices que faltan y borra los huérfanos.
 //   limpiar-usuario    Borra las tareas e índices que queden de una persona eliminada.
 //   cuentas-huerfanas  Cuentas de Authentication sin documento en allowedUsers.
+//   purgar-registro    Borra las entradas de adminLog de más de 12 meses.
+//   limpiar-respaldos  Borra los respaldos locales de más de 30 días.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -19,7 +21,9 @@ import { completeIndex } from './completar-indice.js';
 import { Refusal } from './context.js';
 import { cleanOrphanAccounts } from './cuentas-huerfanas.js';
 import { connect } from './firebase.js';
+import { purgeBackups } from './limpiar-respaldos.js';
 import { purgeUser } from './limpiar-usuario.js';
+import { purgeLog } from './purgar-registro.js';
 import { backupUser } from './respaldar.js';
 import { createStore } from './store.js';
 import { createTerminal } from './terminal.js';
@@ -39,6 +43,8 @@ const COMMANDS = {
   'completar-indice': { required: ['admin'], optional: ['uid'], writes: true, run: completeIndex },
   'limpiar-usuario': { required: ['admin', 'uid'], writes: true, run: purgeUser },
   'cuentas-huerfanas': { required: ['admin'], writes: true, run: cleanOrphanAccounts },
+  'purgar-registro': { required: ['admin'], writes: true, run: purgeLog },
+  'limpiar-respaldos': { writes: true, local: true, run: purgeBackups },
 };
 
 async function main(argv) {

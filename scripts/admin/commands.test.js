@@ -1,6 +1,6 @@
 // Comandos del script contra un almacén y una terminal simulados en memoria: sin Firebase, sin red y sin
 // datos reales. Los respaldos se escriben en una carpeta temporal.
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -8,7 +8,9 @@ import { BackupError, decryptBackup, parseBackup } from './backup.js';
 import { completeIndex } from './completar-indice.js';
 import { Refusal } from './context.js';
 import { cleanOrphanAccounts } from './cuentas-huerfanas.js';
+import { purgeBackups } from './limpiar-respaldos.js';
 import { purgeUser } from './limpiar-usuario.js';
+import { purgeLog } from './purgar-registro.js';
 import { backupUser } from './respaldar.js';
 import { fingerprint } from './rules.js';
 import { verifyIndex } from './verificar-indice.js';
@@ -449,5 +451,52 @@ describe('cuentas-huerfanas', () => {
     await expect(cleanOrphanAccounts(setup({ authError: denied() }).context)).rejects.toThrow(
       /La limpieza es manual \(A-19\)/,
     );
+  });
+});
+
+describe('purgar-registro', () => {
+  it('borra las entradas de más de 12 meses y registra la purga', async () => {
+    const simulation = setup();
+    expect(await purgeLog(simulation.context)).toBe(0);
+    expect(simulation.store.commits).toEqual([]);
+
+    const { context, store, output } = setup({ aplicar: true });
+    expect(await purgeLog(context)).toBe(0);
+    expect(output()).toContain('anteriores al 2025-10-27 (más de 12 meses): 1');
+    expect(store.doc('adminLog', 'viejo')).toBeUndefined();
+    expect(store.doc('adminLog', 'reciente')).toBeDefined();
+    expect(lastEntry(store)).toEqual({
+      action: 'purge-log',
+      actorUid: 'admin-uid',
+      targetUid: null,
+      detail: { deleted: 1, before: '2025-10-27' },
+    });
+  });
+});
+
+describe('limpiar-respaldos', () => {
+  const names = ['respaldo-dev-2026-09-01T10-00-00Z.cifrado', 'respaldo-dev-2026-10-26T10-00-00Z.cifrado', 'notas.txt'];
+  beforeEach(async () => {
+    await mkdir(join(dir, 'dev'));
+    for (const name of names) await writeFile(join(dir, 'dev', name), 'x');
+  });
+  const local = (options) => setup({ data: {}, ...options });
+
+  it('en simulación no borra nada', async () => {
+    const { context, output } = local();
+    expect(await purgeBackups(context)).toBe(0);
+    expect(output()).toContain('Respaldos con más de 30 días: 1');
+    expect((await backupFiles()).sort()).toEqual([...names].sort());
+  });
+
+  it('con --aplicar borra solo los respaldos vencidos de su ambiente', async () => {
+    expect(await purgeBackups(local({ aplicar: true }).context)).toBe(0);
+    expect((await backupFiles()).sort()).toEqual(['notas.txt', 'respaldo-dev-2026-10-26T10-00-00Z.cifrado']);
+  });
+
+  it('sin carpeta de respaldos no hace nada', async () => {
+    const { context, output } = local({ ambiente: 'pdn', aplicar: true });
+    expect(await purgeBackups(context)).toBe(0);
+    expect(output()).toContain('No hay respaldos de este ambiente');
   });
 });
