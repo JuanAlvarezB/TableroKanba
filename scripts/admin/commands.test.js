@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BackupError, decryptBackup, parseBackup } from './backup.js';
+import { completeIndex } from './completar-indice.js';
 import { Refusal } from './context.js';
 import { backupUser } from './respaldar.js';
 import { fingerprint } from './rules.js';
+import { verifyIndex } from './verificar-indice.js';
 
 const NOW = Date.UTC(2026, 9, 27, 15);
 const FAST = { N: 2 ** 10, r: 8, p: 1 };
@@ -305,5 +307,39 @@ describe('respaldar', () => {
       action: 'backup',
       detail: { completed: false, indexCreated: 1, indexRemoved: 1, uidRegistered: false },
     });
+  });
+});
+
+describe('verificar-indice y completar-indice', () => {
+  it('verificar-indice da cantidades e identificadores y termina con 1 si el índice no está completo', async () => {
+    const { context, store, output } = setup();
+    expect(await verifyIndex(context)).toBe(1);
+    expect(output()).toContain('Tareas: 3 · documentos de taskIndex: 3');
+    expect(output()).toContain('Tareas sin índice: 1\n  t2');
+    expect(output()).toContain('Índices huérfanos (sin tarea): 1\n  huerfano');
+    expect(output()).not.toContain(PRIVATE_TEXT);
+    expect(store.commits).toEqual([]);
+  });
+
+  it('con --uid mira solo a esa persona', async () => {
+    expect(await verifyIndex(setup({ uid: 'u2' }).context)).toBe(0);
+  });
+
+  it('completar-indice simula y, con --aplicar, deja el índice completo con su entrada', async () => {
+    const simulation = setup();
+    expect(await completeIndex(simulation.context)).toBe(0);
+    expect(simulation.store.commits).toEqual([]);
+
+    const { context, store } = setup({ aplicar: true });
+    expect(await completeIndex(context)).toBe(0);
+    expect(store.commits).toHaveLength(1);
+    expect(lastEntry(store)).toEqual({
+      action: 'backfill-index',
+      actorUid: 'admin-uid',
+      targetUid: null,
+      detail: { created: 1, fixed: 0, removed: 1 },
+    });
+    const check = setup({ data: { ...seed(), taskIndex: store.docs('taskIndex') } });
+    expect(await verifyIndex(check.context)).toBe(0);
   });
 });

@@ -5,17 +5,21 @@
 // Comandos (los que escriben solo simulan sin --aplicar; en PDN piden además el identificador del proyecto):
 //   verificar-reglas   Compara las reglas de Firestore publicadas con firestore.rules (solo lee).
 //   respaldar          Respaldo cifrado y verificado antes de eliminar a una persona; crea su marcador.
+//   verificar-indice   Tareas sin índice e índices huérfanos (solo lee).
+//   completar-indice   Crea los índices que faltan y borra los huérfanos.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { getSecurityRules } from 'firebase-admin/security-rules';
 import { BackupError } from './backup.js';
 import { UsageError, explainError, parseCommand, projectIdFor, usage } from './cli.js';
+import { completeIndex } from './completar-indice.js';
 import { Refusal } from './context.js';
 import { connect } from './firebase.js';
 import { backupUser } from './respaldar.js';
 import { createStore } from './store.js';
 import { createTerminal } from './terminal.js';
+import { verifyIndex } from './verificar-indice.js';
 import { verifyRules } from './verificar-reglas.js';
 
 const ROOT = resolve(import.meta.dirname, '..', '..');
@@ -27,6 +31,8 @@ const BACKUP_DIR = join(homedir(), 'Documents', 'lucas-respaldos');
 const COMMANDS = {
   'verificar-reglas': {},
   respaldar: { required: ['admin', 'correo'], writes: true, run: backupUser },
+  'verificar-indice': { required: ['admin'], optional: ['uid'], run: verifyIndex },
+  'completar-indice': { required: ['admin'], optional: ['uid'], writes: true, run: completeIndex },
 };
 
 async function main(argv) {
