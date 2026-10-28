@@ -4,6 +4,7 @@
 //
 // Comandos (los que escriben solo simulan sin --aplicar; en PDN piden además el identificador del proyecto):
 //   verificar-reglas   Compara las reglas de Firestore publicadas con firestore.rules (solo lee).
+//   respaldar          Respaldo cifrado y verificado antes de eliminar a una persona; crea su marcador.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -12,6 +13,7 @@ import { BackupError } from './backup.js';
 import { UsageError, explainError, parseCommand, projectIdFor, usage } from './cli.js';
 import { Refusal } from './context.js';
 import { connect } from './firebase.js';
+import { backupUser } from './respaldar.js';
 import { createStore } from './store.js';
 import { createTerminal } from './terminal.js';
 import { verifyRules } from './verificar-reglas.js';
@@ -24,6 +26,7 @@ const BACKUP_DIR = join(homedir(), 'Documents', 'lucas-respaldos');
 /** @type {Record<string, import('./cli.js').CommandSpec & { run?: Function, local?: boolean }>} */
 const COMMANDS = {
   'verificar-reglas': {},
+  respaldar: { required: ['admin', 'correo'], writes: true, run: backupUser },
 };
 
 async function main(argv) {
