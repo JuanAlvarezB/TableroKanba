@@ -1,6 +1,7 @@
 // Lo que el navegador recuerda de cada persona: sus claves de localStorage (llevan el ambiente
 // y su uid, así dos personas en el mismo navegador nunca ven la copia local de la otra, ni por
-// un instante) y su última autorización confirmada, para entrar sin conexión.
+// un instante), su última autorización confirmada, para entrar sin conexión, y la marca de su
+// índice de tareas ya completo (docs/PLAN_USUARIOS.md, 2.6).
 import { readStorage, removeStorage, writeStorage } from '../datasources/browserStorage.js';
 
 /**
@@ -13,6 +14,7 @@ export function createSessionStore(env) {
       tasks: `${env.storageKey}-${uid}`,
       migrated: `${env.migratedKey}-${uid}`,
       authorized: `lucas-autorizado-${env.name}-${uid}`,
+      index: `lucas-indice-${env.name}-${uid}`,
     };
   }
 

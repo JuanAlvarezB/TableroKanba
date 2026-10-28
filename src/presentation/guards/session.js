@@ -256,6 +256,7 @@ export async function requireSession({ role } = {}) {
     offline: Boolean(result.offline),
     storageKey: keys.tasks,
     migratedKey: keys.migrated,
+    indexKey: keys.index,
   };
 }
 

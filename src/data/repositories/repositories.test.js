@@ -388,7 +388,7 @@ describe('almacenamiento local', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  const keys = { tasksKey: 'tareas-dev-u1', migratedKey: 'tareas-migradas-dev-u1' };
+  const keys = { tasksKey: 'tareas-dev-u1', migratedKey: 'tareas-migradas-dev-u1', indexKey: 'lucas-indice-dev-u1' };
 
   it('LocalTaskCache guarda y lee las tareas, migrando formatos antiguos', () => {
     store.set(keys.tasksKey, JSON.stringify([{ id: 1, text: 'vieja', completed: true }, { basura: true }]));
@@ -443,6 +443,14 @@ describe('almacenamiento local', () => {
     expect(cache.isMigrated()).toBe(true);
   });
 
+  it('LocalTaskCache recuerda cuándo se completó el índice de tareas', () => {
+    const cache = createLocalTaskCache(keys);
+    expect(cache.isIndexComplete()).toBe(false);
+    cache.markIndexComplete(1_790_000_000_000);
+    expect(cache.isIndexComplete()).toBe(true);
+    expect(store.get(keys.indexKey)).toBe('1790000000000');
+  });
+
   it('sin localStorage no falla: no guarda y no migra', () => {
     vi.stubGlobal('localStorage', {
       getItem: () => {
@@ -456,6 +464,9 @@ describe('almacenamiento local', () => {
     expect(cache.load()).toEqual([]);
     expect(cache.save([task('a')])).toBe(false);
     expect(cache.isMigrated()).toBe(true);
+    // Sin marca el índice se vuelve a comprobar; no pasa nada si se repite.
+    expect(cache.isIndexComplete()).toBe(false);
+    expect(() => cache.markIndexComplete(1)).not.toThrow();
 
     const reminders = createReminderStore();
     reminders.markShown('2026-10-7@10');

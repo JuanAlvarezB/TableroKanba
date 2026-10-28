@@ -8,9 +8,9 @@ import { readStorage, writeStorage } from '../datasources/browserStorage.js';
 export const SAVED_WITHOUT_HISTORY = 'without-history';
 
 /**
- * @param {{ tasksKey: string, migratedKey: string }} keys
+ * @param {{ tasksKey: string, migratedKey: string, indexKey: string }} keys
  */
-export function createLocalTaskCache({ tasksKey, migratedKey }) {
+export function createLocalTaskCache({ tasksKey, migratedKey, indexKey }) {
   return {
     // Clave de las tareas, para reconocer los cambios de otras pestañas (evento storage).
     tasksKey,
@@ -51,6 +51,17 @@ export function createLocalTaskCache({ tasksKey, migratedKey }) {
     // Sin almacenamiento no hay forma de recordar la migración; no pasa nada si se repite.
     markMigrated() {
       writeStorage(migratedKey, '1');
+    },
+
+    // Si el índice de las tareas (taskIndex) ya se completó desde este navegador. Sin
+    // localStorage se responde false: repetirlo solo cuesta leer el índice.
+    isIndexComplete() {
+      return Boolean(readStorage(indexKey));
+    },
+
+    // Guarda cuándo se completó, como dato de diagnóstico.
+    markIndexComplete(at) {
+      writeStorage(indexKey, String(at));
     },
   };
 }

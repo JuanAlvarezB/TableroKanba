@@ -31,7 +31,13 @@ async function startBoard() {
   const session = await requireSession();
   mountAccountMenu(session, document.getElementById('account'));
 
-  store.loadLocal(createLocalTaskCache({ tasksKey: session.storageKey, migratedKey: session.migratedKey }));
+  store.loadLocal(
+    createLocalTaskCache({
+      tasksKey: session.storageKey,
+      migratedKey: session.migratedKey,
+      indexKey: session.indexKey,
+    }),
+  );
   store.connect(createFirestoreTaskRepository(session.firebase, session.uid), { offline: session.offline });
   // Al cerrar la sesión se deja de escuchar y de escribir antes de borrar la copia local.
   onSignOut(() => store.disconnect());
