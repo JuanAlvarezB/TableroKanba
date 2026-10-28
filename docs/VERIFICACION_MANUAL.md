@@ -88,7 +88,7 @@ cuentas: la del administrador y una de miembro.
 - [ ] Volver a `active: true`: la persona entra y ve todas sus tareas.
 - [ ] El administrador (con `role: 'admin'`) entra y mantiene su tablero. Sin rol, entra como miembro.
 - [ ] Una cuenta de miembro no puede abrir una página de administración escribiendo la URL (va al
-      inicio). Se comprueba cuando exista la primera página de administración (sección 2 del plan).
+      inicio). Se comprueba con `usuarios.html` (7.2).
 - [ ] El mensaje del login antes de autenticarse sigue siendo genérico ("Correo o contraseña incorrectos.").
 - [ ] Con dos cuentas, el administrador no ve las tareas del miembro en ningún lugar.
 - [ ] Las reglas publicadas coinciden con `firestore.rules`: `npm run admin -- verificar-reglas
@@ -115,6 +115,75 @@ revisan en la consola de Firebase (Firestore), solo con tareas de prueba propias
       pantalla para hacerlo; lo cubren las pruebas P-2, P-4, P-7 y P-8 del emulador).
 - [ ] Las reglas publicadas coinciden con `firestore.rules` (`verificar-reglas` termina en "✔ Coinciden").
 - [ ] Después del merge, en PDN siguen las mismas tareas por columna que antes de publicar.
+
+### 7.2 Página de gestión de usuarios (`usuarios.html`)
+
+Diseño en `docs/PLAN_USUARIOS.md`, sección 2 (2.3, 2.4 y 2.10). Se necesitan la cuenta del administrador
+y una segunda cuenta de prueba propia (sin datos de personas reales en Desarrollo). Eliminar a una
+persona todavía no está en la página (llega con el PR 4b y el script administrativo).
+
+Acceso:
+- [ ] Una cuenta de miembro que escribe `usuarios.html` va al inicio sin ver nada de la página (ni
+      siquiera un instante: solo la pantalla de carga).
+- [ ] Sin conexión, el administrador que abre `usuarios.html` va al inicio (sin red no hay privilegios).
+- [ ] La tarjeta "Gestión de usuarios" del inicio solo aparece al administrador; un miembro no la ve.
+- [ ] La página se ve como el inicio (cabecera, marca, menú de cuenta) y "Volver al inicio" funciona.
+- [ ] El aviso sobre Authentication se ve y su enlace abre la consola de Authentication del ambiente
+      correcto (Desarrollo en local, PDN en `juanalvarezb.github.io`) en otra pestaña.
+
+Lista:
+- [ ] Se ven correo, nombre, rol y estado de cada persona, y "Nunca ha entrado" en quien no tiene `uid`;
+      nunca tareas, historial ni `uid`.
+- [ ] La fila propia dice "Tú" y no tiene botón de acciones.
+- [ ] Los filtros (Todos, Activos, Inactivos, En eliminación, Administradores) y la búsqueda por nombre
+      o correo (sin importar tildes ni mayúsculas) funcionan, y el contador de personas cambia.
+- [ ] Con la página abierta en dos navegadores con la misma cuenta, un cambio en uno aparece en el otro
+      sin recargar.
+
+Autorizar un correo:
+- [ ] Autorizar un correo con mayúsculas o espacios: aparece en la lista en minúsculas, como miembro
+      activo y "Nunca ha entrado"; el aviso recuerda crear su cuenta en Authentication.
+- [ ] En la consola, el documento nuevo solo tiene `name`, `role`, `active` y `lastChange`, y en
+      `adminLog` hay una entrada `authorize` con ese ID, `actorUid` del administrador, `targetUid` vacío
+      (null), la hora del servidor y ningún correo ni nombre.
+- [ ] Un correo ya autorizado se rechaza con "Ese correo ya está autorizado." y su documento no cambia.
+- [ ] Correo mal escrito, nombre vacío o de más de 100 caracteres: el mensaje aparece en el diálogo y
+      el foco va al campo que hay que corregir.
+- [ ] Elegir "Administrador" muestra la advertencia; sin marcar la casilla no se autoriza.
+- [ ] Con correo y contraseña: tras crear su cuenta en Authentication, la persona entra; con Google entra
+      sola.
+
+Desactivar y reactivar (con la segunda cuenta conectada en otro navegador):
+- [ ] Desactivar pide confirmación con el foco en Cancelar; al aceptar, "Acceso desactivado." y la fila
+      pasa a Inactivo.
+- [ ] La persona desactivada, al volver a su pestaña o al intentar guardar, sale al login con el aviso
+      de cuenta desactivada, sin pantallas a medias.
+- [ ] Reactivar: "Acceso reactivado." y la persona vuelve a entrar con todas sus tareas.
+- [ ] Desactivar a otra persona administradora muestra la advertencia de que pierde también ese rol.
+
+Promover y degradar:
+- [ ] "Dar rol de administrador" muestra la advertencia de que no verá tareas de nadie; al aceptar, la
+      fila dice Administrador. La persona, al recargar o volver a su pestaña, ve la tarjeta de usuarios.
+- [ ] "Quitar rol de administrador" la devuelve a Miembro; si tenía `usuarios.html` abierta, vuelve al
+      inicio al volver a su pestaña (pasado un minuto) o al intentar un cambio.
+- [ ] Una persona inactiva que es administradora ofrece "Quitar rol de administrador" además de
+      "Reactivar".
+- [ ] Cada cambio deja su entrada en `adminLog` (`deactivate`, `reactivate`, `promote`, `demote`; las de
+      rol con `detail` = rol anterior y nuevo) y no se puede editar ni borrar desde la app.
+
+Errores y accesibilidad:
+- [ ] Sin conexión, un cambio muestra "Sin conexión. Revisa tu internet e inténtalo de nuevo." dentro del
+      diálogo, que sigue abierto.
+- [ ] Si otro administrador te quita el rol mientras tienes la página abierta, el siguiente cambio no se
+      escribe y vuelves al inicio.
+- [ ] Todo se puede hacer con teclado: Tab llega a filtros, búsqueda, "Autorizar correo" y cada botón
+      "Acciones"; las flechas recorren el menú, Esc lo cierra y devuelve el foco al botón.
+- [ ] En los diálogos, Esc o Cancelar cierran y el foco vuelve al botón que los abrió; mientras se
+      guarda no se cierran.
+- [ ] Con VoiceOver (o NVDA), cada fila se lee con nombre, correo, "Rol: …" y "Estado: …", y los avisos
+      ("Correo autorizado.", errores) se anuncian.
+- [ ] A 320 px de ancho no hay desplazamiento horizontal y la lista se ve como tarjetas.
+- [ ] El administrador no ve tareas ni historial de nadie en esta página.
 
 ## 8. Historial de tareas
 

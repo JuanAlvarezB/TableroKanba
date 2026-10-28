@@ -80,8 +80,11 @@ página se queda en "Cargando…".
 No hay registro público: el administrador autoriza a cada persona **en cada ambiente** (las
 cuentas no se comparten entre Desarrollo y PDN).
 
-1. Firestore → colección `allowedUsers` → documento cuyo ID es el correo **en minúsculas**,
-   con el campo `name` (texto) que LUCAS mostrará.
+1. En LUCAS, inicio → **Gestión de usuarios** (`usuarios.html`, solo para administradores) →
+   **Autorizar correo**, con su nombre y su rol. La misma página desactiva, reactiva y da o quita el
+   rol de administrador, y cada cambio queda en el registro `adminLog`. Sin la página (o para el
+   primer administrador), a mano: Firestore → colección `allowedUsers` → documento cuyo ID es el
+   correo **en minúsculas**, con el campo `name` (texto) que LUCAS mostrará.
 2. Correo y contraseña: Authentication → Usuarios → Agregar usuario, con una contraseña
    temporal que no se comparte; la persona crea la suya con **¿Olvidaste tu contraseña?**
    y verifica su correo desde el login. Con Google no hay que crear nada: basta el paso 1.
