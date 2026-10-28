@@ -3,6 +3,9 @@ rules_version = '2';
 // Reglas de seguridad de Firestore de LUCAS (tablero de tareas).
 // Solo entran las personas activas de allowedUsers, y cada una solo lee y escribe sus propias
 // tareas; el rol de administrador no da acceso a tareas ajenas (docs/PLAN_USUARIOS.md, 1.7).
+// Gestión de usuarios (2.9), reglas de transición: el administrador escribe allowedUsers siempre
+// con su entrada en adminLog, y solo borra tareas ajenas (sin leerlas) de quien está en
+// eliminación. Las tareas se aceptan todavía con o sin su documento de taskIndex.
 // Se publican con `firebase deploy --only firestore:rules --project dev|pdn`; este archivo no
 // se despliega con GitHub Pages. Se prueban con npm run test:rules (rules-tests/).
 service cloud.firestore {
@@ -54,6 +57,85 @@ service cloud.firestore {
       return data.ownerId == request.auth.uid;
     }
 
+    // Entrada de adminLog escrita en esta misma petición por quien escribe, con una de esas
+    // acciones. adminLog solo acepta at == request.time, así que una entrada con esa hora no puede
+    // ser de otra petición: cada cambio trae una entrada nueva.
+    function isNewLogEntry(entryId, actions) {
+      let entry = getAfter(/databases/$(database)/documents/adminLog/$(entryId));
+      return entryId is string
+        && entry != null
+        && entry.data.actorUid == request.auth.uid
+        && entry.data.at == request.time
+        && entry.data.action in actions;
+    }
+
+    // Marcador de eliminación de una persona (lo crea solo el script, tras el respaldo) en estado
+    // 'deleting': únicamente entonces el administrador puede borrar sus tareas e índices.
+    function isDeletingOwner(ownerId) {
+      return get(/databases/$(database)/documents/deletions/$(ownerId)).data.state == 'deleting';
+    }
+
+    // Clave del marcador: el uid de la persona o, si nunca ha entrado, su correo (2.2). Las reglas
+    // no tienen operador ternario, así que cada comprobación cubre los dos casos.
+    function isFreshDeletingMarker(key) {
+      let marker = getAfter(/databases/$(database)/documents/deletions/$(key));
+      return marker != null
+        && marker.data.state == 'deleting'
+        && marker.data.backupAt is number
+        && marker.data.backupAt <= request.time.toMillis()
+        && request.time.toMillis() - marker.data.backupAt < 24 * 60 * 60 * 1000;
+    }
+
+    function hasFreshDeletingMarker(user, email) {
+      return (hasNoUid(user) && isFreshDeletingMarker(email))
+        || (!hasNoUid(user) && isFreshDeletingMarker(user.uid));
+    }
+
+    function isMarkerRemoved(user, email) {
+      return (hasNoUid(user) && !existsAfter(/databases/$(database)/documents/deletions/$(email)))
+        || (!hasNoUid(user) && !existsAfter(/databases/$(database)/documents/deletions/$(user.uid)));
+    }
+
+    // Confirmar la eliminación (2.5, paso 4): la persona queda desactivada y sin rol de
+    // administrador, con su marca { at, doneLogId } y el marcador en 'deleting' con un respaldo de
+    // menos de 24 horas.
+    function isDeletionStart(before, after, email) {
+      return after.deleting is map
+        && after.deleting.keys().hasOnly(['at', 'doneLogId'])
+        && after.deleting.keys().hasAll(['at', 'doneLogId'])
+        && after.deleting.at == request.time
+        && after.deleting.doneLogId is string
+        && after.deleting.doneLogId != after.lastChange
+        && after.get('active', true) == false
+        && after.get('role', 'member') != 'admin'
+        && hasFreshDeletingMarker(before, email);
+    }
+
+    // Cambio del administrador sobre otra persona (2.9): solo rol, estado, permisos, la marca de
+    // eliminación y lastChange, que cambia siempre y apunta a la entrada nueva del registro. Una
+    // persona en eliminación ya no admite cambios: solo terminarla (delete).
+    function isAdminUpdate(email) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let changed = after.diff(before).affectedKeys();
+      return isAdmin()
+        && email != normalizedEmail()
+        && !('deleting' in before)
+        && changed.hasOnly(['role', 'active', 'permissions', 'deleting', 'lastChange'])
+        && changed.hasAny(['lastChange'])
+        && isNewLogEntry(after.get('lastChange', null),
+          ['deactivate', 'reactivate', 'promote', 'demote', 'delete-start', 'set-permissions'])
+        && (!changed.hasAny(['role']) || after.get('role', null) in ['admin', 'member'])
+        && (!changed.hasAny(['active']) || after.get('active', null) is bool)
+        && (!changed.hasAny(['permissions']) || after.get('permissions', null) is map)
+        && (!changed.hasAny(['deleting']) || isDeletionStart(before, after, email));
+    }
+
+    // Entrada del índice de tareas: solo el dueño, nada más (ni texto, ni estado, ni fechas).
+    function isIndexEntry(data) {
+      return data.keys().hasOnly(['ownerId']) && data.ownerId is string;
+    }
+
     // Fecha del historial de estados: milisegundos desde 1970, o null si la tarea
     // aún no ha pasado por ese estado. Los documentos antiguos pueden no tener el campo.
     function isDate(data, field) {
@@ -95,23 +177,69 @@ service cloud.firestore {
         && isHistory(data);
     }
 
-    // Nadie ve ni toca tareas ajenas, tampoco el administrador: aquí no hay ninguna regla con
-    // isAdmin(). Al actualizar se comprueba el dueño antes y después, para que nadie pueda
-    // reasignar una tarea a otro ownerId.
+    // Nadie ve ni edita tareas ajenas, tampoco el administrador: isAdmin() solo aparece en el
+    // borrado, y solo con el marcador de eliminación de su dueño. Al actualizar se comprueba el
+    // dueño antes y después, para que nadie pueda reasignar una tarea a otro ownerId.
     match /tasks/{taskId} {
       allow read: if isAuthorized() && isOwner(resource.data);
       // Borrar una tarea que otro dispositivo ya borró no es un error (resource == null).
-      allow delete: if isAuthorized() && (resource == null || isOwner(resource.data));
+      allow delete: if (isAuthorized() && (resource == null || isOwner(resource.data)))
+        || (isAdmin() && isDeletingOwner(resource.data.ownerId));
       allow create: if isAuthorized() && isValidTask(request.resource.data)
         && isOwner(request.resource.data);
       allow update: if isAuthorized() && isValidTask(request.resource.data)
         && isOwner(resource.data) && isOwner(request.resource.data);
     }
 
+    // Índice de tareas (2.6): un documento por tarea, con el mismo ID, que solo guarda ownerId. Lo
+    // lee el dueño y el administrador, que así borra los datos de alguien sin leer sus tareas.
+    // Reglas de transición: las tareas se aceptan con o sin índice.
+    match /taskIndex/{taskId} {
+      allow read: if isAuthorized() && (isOwner(resource.data) || isAdmin());
+      allow create: if isAuthorized() && isIndexEntry(request.resource.data)
+        && isOwner(request.resource.data);
+      // Reescribir el mismo contenido (un lote repetido, dos pestañas que completan el índice a la
+      // vez): el documento queda igual, con el mismo dueño. Nada más se puede cambiar.
+      allow update: if isAuthorized() && isIndexEntry(request.resource.data)
+        && isOwner(resource.data) && isOwner(request.resource.data);
+      allow delete: if (isAuthorized() && (resource == null || isOwner(resource.data)))
+        || (isAdmin() && isDeletingOwner(resource.data.ownerId));
+    }
+
+    // Marcador de eliminación (2.5): lo crea solo el script administrativo (Admin SDK) tras un
+    // respaldo verificado; ningún cliente puede crearlo. La app solo lo confirma o lo quita.
+    match /deletions/{key} {
+      allow read: if isAdmin();
+      allow update: if isAdmin()
+        && resource.data.state == 'backup-ready'
+        && request.resource.data.state == 'deleting'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'confirmedAt'])
+        && request.resource.data.confirmedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    // Registro de acciones administrativas (2.7): inmutable frente a la app. Solo uids, nunca
+    // correos, nombres ni tareas. Las acciones del script las escribe el Admin SDK, que no pasa
+    // por estas reglas.
+    match /adminLog/{entryId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['action', 'actorUid', 'targetUid', 'at', 'detail'])
+        && request.resource.data.keys().hasAll(['action', 'actorUid', 'targetUid', 'at'])
+        && request.resource.data.action in ['authorize', 'deactivate', 'reactivate', 'promote', 'demote',
+          'delete-start', 'delete-cancel', 'delete-done', 'set-permissions']
+        && request.resource.data.actorUid == request.auth.uid
+        && (request.resource.data.targetUid == null || request.resource.data.targetUid is string)
+        && request.resource.data.at == request.time
+        && (!('detail' in request.resource.data)
+          || (request.resource.data.detail is map && request.resource.data.detail.size() <= 5));
+      allow update, delete: if false;
+    }
+
     // Cada persona lee su propio documento (para saber si está autorizada, activa y su nombre),
     // aunque no haya verificado el correo o esté desactivada. Solo un administrador activo lee
-    // y lista los de los demás. Altas, cambios de rol o estado y bajas se hacen desde la consola
-    // hasta la sección 2 del plan.
+    // y lista los de los demás, y escribe los de los demás (nunca el suyo), siempre con su
+    // entrada del registro en el mismo lote.
     match /allowedUsers/{email} {
       allow get: if (request.auth != null && normalizedEmail() == email) || isAdmin();
       allow list: if isAdmin();
@@ -124,6 +252,31 @@ service cloud.firestore {
         && hasNoUid(resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid'])
         && request.resource.data.uid == request.auth.uid;
+
+      // Autorizar un correo: un documento nuevo y mínimo (sin uid, permisos ni marca de
+      // eliminación), así reautorizar un correo eliminado empieza limpio.
+      allow create: if isAdmin()
+        && email == email.lower()
+        && email != normalizedEmail()
+        && request.resource.data.keys().hasOnly(['name', 'role', 'active', 'lastChange'])
+        && request.resource.data.keys().hasAll(['name', 'role', 'active', 'lastChange'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.role in ['admin', 'member']
+        && request.resource.data.active == true
+        && isNewLogEntry(request.resource.data.lastChange, ['authorize']);
+
+      allow update: if isAdminUpdate(email);
+
+      // Terminar la eliminación (2.5, paso 6): el documento, el marcador y la entrada delete-done
+      // guardada al confirmar, los tres en el mismo lote. Nunca a un administrador ni a sí mismo.
+      allow delete: if isAdmin()
+        && email != normalizedEmail()
+        && 'deleting' in resource.data
+        && resource.data.get('role', 'member') != 'admin'
+        && isNewLogEntry(resource.data.deleting.doneLogId, ['delete-done'])
+        && isMarkerRemoved(resource.data, email);
     }
   }
 }
