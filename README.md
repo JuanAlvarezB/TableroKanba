@@ -204,16 +204,8 @@ reglas vigentes del proyecto (el de ese alias en `.firebaserc`) y compara su hue
 coinciden (muestra la primera línea distinta) y 2 si no pudo comprobarlo. Si solo cambian espacios al
 final de línea, lo indica y cuenta como coincidencia.
 
-Usa tus credenciales de Google, nunca archivos de llave (si existe `GOOGLE_APPLICATION_CREDENTIALS`
-se niega a correr). La primera vez:
-
-```bash
-brew install --cask gcloud-cli              # Google Cloud CLI (gratis)
-gcloud auth application-default login      # con la cuenta de Google que tiene rol en Firebase
-```
-
-Si pide un proyecto de cuota: `gcloud auth application-default set-quota-project <proyecto>`.
-El script vive en `scripts/admin/` (fuera de `src/`): no se empaqueta con el sitio ni se despliega.
+Usa tus credenciales de Google, nunca archivos de llave; la preparación (una sola vez) está en
+[Script administrativo](#script-administrativo-scriptsadmin).
 
 ### Pull Requests que cambian las reglas: orden y borrador
 
@@ -257,6 +249,128 @@ npm run test:rules   # arranca el emulador (puerto 8180), corre las pruebas y lo
 
 `npm test` no las corre, para no depender de Java. En cada Pull Request las corre el trabajo
 `reglas` de `ci.yml`. Cada regla nueva lleva su prueba, también la que comprueba lo que se niega.
+
+## Script administrativo (`scripts/admin/`)
+
+Herramienta local del administrador responsable (`docs/PLAN_USUARIOS.md`, 2.11). Es la **única pieza que
+usa el Admin SDK** de Firebase, que se salta las reglas, y la **única excepción** a "el administrador no ve
+tareas": el respaldo lee el ambiente completo, por eso solo se guarda cifrado. Se ejecuta en tu equipo con
+tus credenciales de Google; vive fuera de `src/`, no se empaqueta con el sitio ni se despliega. Cada
+comando se prueba primero en Desarrollo.
+
+### Preparación (una sola vez)
+
+1. Node 22 o superior y `npm install` (instala `firebase-admin`, versión exacta, como dependencia de
+   desarrollo).
+2. Google Cloud CLI (gratis) y tus credenciales, con la cuenta de Google que tiene un rol en el proyecto de
+   Firebase (Configuración del proyecto → Usuarios y permisos):
+
+   ```bash
+   brew install --cask gcloud-cli
+   gcloud auth application-default login
+   gcloud auth application-default set-quota-project <proyecto>   # tablero-kanban-dev o el de PDN
+   ```
+
+   El proyecto de cuota lo exigen las operaciones de Authentication con credenciales de usuario.
+
+3. **Sin llaves:** no descargues archivos de cuenta de servicio. Si existe la variable
+   `GOOGLE_APPLICATION_CREDENTIALS`, el script se niega a correr.
+4. macOS puede pedir permiso para que la Terminal use la carpeta Documentos (ahí van los respaldos).
+
+### Cómo se usa
+
+```bash
+npm run admin -- <comando> --ambiente dev|pdn --admin <tu correo de LUCAS> [opciones] [--aplicar]
+npm run admin    # sin argumentos: la ayuda con cada comando y sus opciones
+```
+
+- **`--admin`** es tu correo de LUCAS en ese ambiente. El script comprueba que eres administrador activo
+  con `uid` registrado y firma con ese `uid` sus entradas de `adminLog` (2.7).
+- **Simulación por defecto.** Sin `--aplicar`, los comandos que escriben solo informan qué harían. Con
+  `--aplicar` en PDN, además, hay que teclear el identificador del proyecto.
+- **Nunca imprime contenido de tareas:** solo cantidades e identificadores. Los correos de otras personas
+  salen enmascarados (`pe***@e***.com`).
+- **Cada ejecución que escribe deja su entrada** en `adminLog` (`backup`, `backfill-index`,
+  `purge-leftovers`, `purge-log`, `clean-auth`, `restore`), con `uid` y nunca correos. Si falla a mitad,
+  deja otra con `completed: false`. La app no puede editar ni borrar el registro; el script y la consola
+  sí (el Admin SDK se salta las reglas, alarma A-20).
+- La frase de cifrado y la confirmación de PDN se teclean en la terminal: no se aceptan por argumento ni
+  por tubería.
+- Termina con código 0 si todo está bien, 1 si encontró diferencias o se negó por una condición de
+  seguridad (no escribe nada más) y 2 si hubo un error de uso o de conexión.
+
+| Comando                                                      | Qué hace                                                                                                                                                                                                                                                                                           | Escribe                   |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `verificar-reglas`                                           | Compara las reglas publicadas con `firestore.rules` (ver arriba)                                                                                                                                                                                                                                   | No                        |
+| `respaldar --correo <correo>`                                | Prepara la eliminación de una persona **desactivada** que no es administradora: resuelve su `uid` (en Authentication si su documento no lo tiene), completa su índice, hace el respaldo completo cifrado, lo verifica y crea su marcador en `deletions` en estado `backup-ready` (válido 24 horas) | Sí                        |
+| `verificar-indice [--uid <uid>]`                             | Tareas sin índice e índices huérfanos del ambiente (o de un `uid`); termina con 1 si no está completo                                                                                                                                                                                              | No                        |
+| `completar-indice [--uid <uid>]`                             | Crea los índices que faltan, corrige el dueño y borra los huérfanos                                                                                                                                                                                                                                | Sí                        |
+| `limpiar-usuario --uid <uid>`                                | Borra las tareas e índices que queden de una persona eliminada o con la eliminación confirmada. Se niega si alguien autorizado tiene ese `uid`                                                                                                                                                     | Sí                        |
+| `cuentas-huerfanas`                                          | Lista las cuentas de Authentication sin documento en `allowedUsers`; con `--aplicar` borra las que confirmes una por una escribiendo `borrar`                                                                                                                                                      | Sí                        |
+| `purgar-registro`                                            | Borra las entradas de `adminLog` de más de 12 meses                                                                                                                                                                                                                                                | Sí                        |
+| `limpiar-respaldos`                                          | Borra de tu equipo los respaldos del ambiente de más de 30 días (no se conecta a Firebase ni usa `--admin`)                                                                                                                                                                                        | Sí, solo archivos locales |
+| `restaurar --correo <correo> --archivo <ruta> [--uid <uid>]` | Vuelve a crear a una persona eliminada desde un respaldo (ver más abajo)                                                                                                                                                                                                                           | Sí                        |
+
+Los plazos de 12 meses y 30 días son propuestas pendientes de la revisión legal (PBI-2.13); se cambian en
+`scripts/admin/retention.js`.
+
+### El respaldo cifrado
+
+- **Dónde:** `~/Documents/lucas-respaldos/<ambiente>/respaldo-<ambiente>-AAAA-MM-DDTHH-MM-SSZ.cifrado`
+  (hora UTC), fuera del repositorio; la carpeta con permisos `0700` y el archivo con `0600`. El nombre no
+  lleva el correo de nadie. Nunca lo copies dentro del repositorio (`.gitignore` lo ignora por si acaso).
+- **Qué contiene:** todas las colecciones del ambiente, con el historial de cada tarea (alarmas A-18 y
+  A-47): son datos de todas las personas, no solo de quien se va a eliminar.
+- **Cómo se cifra:** AES-256-GCM con una clave derivada con scrypt de una frase de al menos 12
+  caracteres, con sal e IV aleatorios en cada archivo; la cabecera va autenticada.
+- **La frase:** genérala en el gestor de contraseñas, guárdala solo allí y tecléala (dos veces) cuando el
+  script la pida. **Si se pierde, el respaldo no se puede leer.**
+- **Verificación:** antes de crear el marcador, el script descifra el archivo escrito y comprueba que la
+  huella SHA-256 y el número de documentos coinciden con lo leído de Firestore. La huella queda en el
+  marcador (`backupHash`) y en la salida.
+- **Conservación:** 30 días (`limpiar-respaldos`). Las copias que salgan de esa carpeta (Time Machine,
+  iCloud si sincroniza Documentos, discos externos) no las borra el script: siguen cifradas, pero conservan
+  los datos más tiempo; bórralas a mano (A-21).
+- **Coste:** el respaldo lee el ambiente completo (una lectura por documento del plan gratuito). Elimina
+  de una persona a la vez y fuera de horas de uso (A-24).
+
+### Restaurar a una persona eliminada (PBI-2.12)
+
+`restaurar` vuelve a crear, desde un respaldo, el documento de `allowedUsers` de una persona (desactivado
+y sin la marca de eliminación), sus tareas con su historial y sus índices, con la entrada `restore`. No toca
+nada más del ambiente. Se niega si el correo ya está autorizado, si queda un marcador de eliminación, si
+otra persona tiene ese `uid` o si alguna tarea del respaldo existe con otro dueño. Si falla a mitad, se
+repite el mismo comando (el documento se escribe al final, así que la persona no entra con tareas a medias).
+
+Procedimiento, **siempre primero en Desarrollo**:
+
+1. Elige el respaldo hecho antes de la eliminación (su nombre lleva la fecha y la hora UTC).
+2. Si la cuenta de Authentication de la persona ya se borró, tiene que volver a existir (crearla o que la
+   persona entre una vez con Google) y su `uid` será otro: cópialo de Authentication → Users y pásalo con
+   `--uid`. Si la cuenta sigue existiendo, no hace falta.
+3. Simula y revisa el número de tareas:
+
+   ```bash
+   npm run admin -- restaurar --ambiente dev --admin <tu correo> --correo <su correo> \
+     --archivo ~/Documents/lucas-respaldos/dev/<archivo>.cifrado
+   ```
+
+4. Repite con `--aplicar` (en PDN, teclea el identificador del proyecto).
+5. En la página **Usuarios**, la persona aparece **Inactiva**: **Reactivar** (deja la entrada
+   `reactivate`).
+6. `npm run admin -- verificar-indice --ambiente dev --admin <tu correo> --uid <su uid>` termina en
+   "✔ Índice completo".
+7. La persona entra y ve sus tareas con su historial. Anota la restauración en el registro privado.
+
+No se restauran las entradas de `adminLog` (son evidencia, no estado) ni la copia local de su navegador.
+
+### Authentication con tus credenciales (alarma A-19)
+
+`respaldar` (para quien no tiene `uid` registrado), `limpiar-usuario` y `cuentas-huerfanas` consultan
+Authentication con tus credenciales de Google. Si no alcanzan: `respaldar` se niega con quien no tiene
+`uid` (hay que reactivarla, pedirle que entre una vez y desactivarla de nuevo), `limpiar-usuario` se niega
+mientras haya personas autorizadas sin `uid` y la limpieza de cuentas huérfanas se hace a mano en la
+consola. El resultado de la prueba en Desarrollo se anota en `docs/PLAN_USUARIOS.md` (A-19).
 
 ## Cómo hacer un cambio
 

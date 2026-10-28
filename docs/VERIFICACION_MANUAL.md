@@ -185,6 +185,68 @@ Errores y accesibilidad:
 - [ ] A 320 px de ancho no hay desplazamiento horizontal y la lista se ve como tarjetas.
 - [ ] El administrador no ve tareas ni historial de nadie en esta página.
 
+### 7.3 Script administrativo (`scripts/admin/`)
+
+Diseño en `docs/PLAN_USUARIOS.md`, sección 2 (2.5 y 2.11); uso en el README, "Script administrativo". Todo
+**primero en Desarrollo**, con la cuenta del administrador y una cuenta de prueba propia con algunas
+tareas (alguna movida de columna, para que tenga historial). En los comandos, `<yo>` es tu correo de LUCAS.
+Los resultados se revisan en la consola de Firebase (Firestore y Authentication).
+
+Condiciones de seguridad:
+- [ ] `npm run admin` sin argumentos muestra la ayuda; un comando sin `--admin` o con una opción que no usa
+      se rechaza sin conectarse.
+- [ ] Con `GOOGLE_APPLICATION_CREDENTIALS` definida, el script se niega a correr.
+- [ ] `--admin` con el correo de un miembro: "no es un administrador activo" y no escribe nada.
+- [ ] Cada comando que escribe, sin `--aplicar`, termina en "Simulación: no se escribió nada" y la consola
+      no cambia.
+- [ ] En PDN, con `--aplicar`, pide el identificador del proyecto; con uno distinto no escribe nada.
+- [ ] Ninguna salida muestra el texto de una tarea ni el correo completo de otra persona.
+- [ ] Cada ejecución con `--aplicar` que escribe en Firestore deja su entrada en `adminLog` con tu `uid`
+      como `actorUid` y sin correos ni nombres.
+
+Índice:
+- [ ] `verificar-indice` informa cantidades e identificadores; si hay faltantes, `completar-indice
+      --aplicar` (entrada `backfill-index`) y `verificar-indice` vuelve a terminar en "✔ Índice completo".
+
+Respaldo (`respaldar`):
+- [ ] Con una persona activa o administradora se niega con el motivo.
+- [ ] Con la cuenta de prueba desactivada: pide la frase dos veces (no se ve al teclearla) y crea el
+      archivo en `~/Documents/lucas-respaldos/dev/`; `ls -l` muestra `-rw-------` y la carpeta `drwx------`.
+- [ ] El archivo no se puede leer como texto (`grep` con el texto de una tarea no lo encuentra) y con otra
+      frase `restaurar` dice "la frase no es correcta".
+- [ ] `deletions/<uid>` queda en `backup-ready` con `taskCount` = sus tareas, `backupAt` y `backupHash` igual
+      a la huella que imprimió; en `adminLog`, la entrada `backup` en el mismo momento.
+- [ ] La página Usuarios sigue igual (el flujo de eliminar llega con el PR 4b); el marcador se borra a mano
+      en la consola si no se va a eliminar.
+
+Authentication con tus credenciales (A-19), anotando el resultado:
+- [ ] `cuentas-huerfanas` lista las cuentas sin documento en `allowedUsers` (correo enmascarado), o explica
+      que la limpieza es manual.
+- [ ] `respaldar` con una persona sin `uid` en su documento pero con cuenta en Authentication: registra su
+      `uid` antes del respaldo (o se niega explicando A-19).
+- [ ] `cuentas-huerfanas --aplicar` sobre una cuenta de prueba sin autorizar: pide escribir `borrar`, la
+      borra y deja `clean-auth`; Enter la salta.
+
+Limpieza y purgas:
+- [ ] `limpiar-usuario` con el `uid` de una persona autorizada se niega.
+- [ ] `purgar-registro` y `limpiar-respaldos` informan la cantidad vencida (en Desarrollo lo normal es 0).
+
+Ensayo de restauración (PBI-2.12). Mientras no exista el flujo de eliminar de la página (PR 4b), la
+eliminación se simula a mano:
+- [ ] Con la cuenta de prueba desactivada, `respaldar --aplicar`.
+- [ ] En la consola, borrar `allowedUsers/<correo de prueba>` y `deletions/<uid>`; después
+      `limpiar-usuario --uid <uid> --aplicar` borra sus tareas e índices (entrada `purge-leftovers`) y
+      `verificar-indice --uid <uid>` informa 0 tareas y 0 índices.
+- [ ] `restaurar` (simulación) informa sus tareas; con `--aplicar` vuelve a crear su documento desactivado,
+      sus tareas y sus índices, con la entrada `restore`.
+- [ ] En la página Usuarios aparece Inactiva; al reactivarla, la cuenta de prueba entra y ve todas sus
+      tareas en su columna, con su historial.
+- [ ] `verificar-indice --uid <uid>` termina en "✔ Índice completo".
+
+En PDN, después del merge:
+- [ ] `verificar-indice` y, si hay faltantes, `completar-indice --aplicar` hasta "✔ Índice completo" (requisito
+      del PR 6).
+
 ## 8. Historial de tareas
 
 Diseño en `docs/PLAN_USUARIOS.md`, sección 4. Los eventos guardados se revisan en la consola de Firebase
