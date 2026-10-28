@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Usuarios · LUCAS</title>
+  <link rel="icon" href="/assets/husky.svg" type="image/svg+xml">
+  <!-- Mismas fuentes que el inicio (sustitutos libres de las de docs/DESIGN.md) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=Manrope:wght@400;500;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;1,8..60,700&display=swap">
+  <link rel="stylesheet" href="/src/styles/variables.css">
+  <link rel="stylesheet" href="/src/styles/lucas.css">
+  <link rel="stylesheet" href="/src/styles/inicio.css">
+  <link rel="stylesheet" href="/src/styles/usuarios.css">
+</head>
+<!-- Gestión de usuarios (docs/PLAN_USUARIOS.md, 2.10): solo para administradores. Usa el marco del
+     inicio (lucas-home). Nada se muestra hasta confirmar la sesión y el rol; las reglas de
+     Firestore son la barrera real. -->
+<body class="lucas-home lucas-users auth-pending">
+  <div id="auth-screen" class="auth-screen" role="status" aria-live="polite">
+    <p>Cargando…</p>
+  </div>
+
+  <div class="app-content">
+    <header class="topbar">
+      <a class="brand" href="index.html" aria-label="LUCAS, inicio">
+        <span class="brand-mark" aria-hidden="true"><img src="/assets/husky.svg" alt=""></span>
+        <span class="brand-name">LUCAS</span>
+      </a>
+      <div class="topbar-end">
+        <span id="env-badge" class="env-badge" hidden>Desarrollo</span>
+        <div id="account"></div>
+      </div>
+    </header>
+
+    <main class="home-main users-main">
+      <section class="page-head">
+        <a class="back-link" href="index.html"><span aria-hidden="true">←</span> Volver al inicio</a>
+        <div>
+          <p class="eyebrow">Administración</p>
+          <h1>Usuarios</h1>
+        </div>
+        <p class="home-intro">Autoriza correos, desactiva o reactiva accesos y gestiona quién es administrador.</p>
+      </section>
+
+      <aside class="users-notice" aria-label="Cuentas de acceso">
+        <span class="notice-icon" aria-hidden="true">i</span>
+        <p>Para entrar con <strong>correo y contraseña</strong>, la persona necesita también una cuenta en
+          Firebase Authentication (Authentication → Users → Add user). Con <strong>Google</strong> no hace
+          falta: entra sola, siempre que su correo esté autorizado aquí.
+          <a id="auth-console-link" href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer">Abrir
+            Authentication de este ambiente<span aria-hidden="true"> ↗</span><span class="visually-hidden"> (se abre en otra pestaña)</span></a></p>
+      </aside>
+
+      <div class="users-toolbar">
+        <div class="user-filters" role="group" aria-label="Filtrar por estado o rol">
+          <button type="button" class="chip-filter" aria-pressed="true" data-filter="all">Todos</button>
+          <button type="button" class="chip-filter" aria-pressed="false" data-filter="active">Activos</button>
+          <button type="button" class="chip-filter" aria-pressed="false" data-filter="inactive">Inactivos</button>
+          <button type="button" class="chip-filter" aria-pressed="false" data-filter="deleting">En eliminación</button>
+          <button type="button" class="chip-filter" aria-pressed="false" data-filter="admin">Administradores</button>
+        </div>
+        <div class="users-search">
+          <label class="visually-hidden" for="users-search">Buscar por nombre o correo</label>
+          <input id="users-search" type="search" placeholder="Buscar por nombre o correo" autocomplete="off" spellcheck="false">
+        </div>
+        <button type="button" id="authorize-open" class="pill-btn primary"><span aria-hidden="true">+</span> Autorizar correo</button>
+      </div>
+
+      <p id="users-status" class="users-status" role="status" aria-live="polite">Cargando personas…</p>
+
+      <section class="users" aria-labelledby="users-title">
+        <h2 id="users-title" class="visually-hidden">Personas autorizadas</h2>
+        <div class="users-head" aria-hidden="true">
+          <span>Persona</span><span>Rol</span><span>Estado</span><span>Acciones</span>
+        </div>
+        <ul id="user-rows" class="user-rows"></ul>
+      </section>
+
+      <p class="users-footnote">Aquí no se muestran tareas ni su historial.</p>
+    </main>
+
+    <footer class="footer">LUCAS · Organiza tu día a día</footer>
+  </div>
+
+  <p id="users-toast" class="lucas-toast" role="status"></p>
+
+  <script type="module" src="/src/presentation/pages/users/main.js"></script>
+</body>
+</html>

@@ -10,6 +10,7 @@ describe('userFromData', () => {
       active: true,
       uid: null,
       permissions: {},
+      deleting: false,
     });
   });
 
@@ -37,6 +38,11 @@ describe('userFromData', () => {
 
   it.each([['todo'], [['tablero']], [null]])('permissions = %j que no es un mapa queda vacío', (permissions) => {
     expect(userFromData('a@x.com', { name: 'A', permissions }).permissions).toEqual({});
+  });
+
+  it('solo un mapa en deleting marca a la persona en eliminación', () => {
+    expect(userFromData('a@x.com', { name: 'A', deleting: { at: 1, doneLogId: 'l1' } }).deleting).toBe(true);
+    expect(userFromData('a@x.com', { name: 'A', deleting: true }).deleting).toBe(false);
   });
 
   it('un nombre que no es texto queda vacío', () => {

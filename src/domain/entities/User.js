@@ -12,6 +12,7 @@ export const ROLES = ['admin', 'member'];
  * @property {boolean} active
  * @property {string | null} uid null si la persona nunca ha entrado.
  * @property {Record<string, unknown>} permissions Permisos por función (sección 3 del plan); vacío si no hay.
+ * @property {boolean} deleting true si la persona está en eliminación (marca deleting, sección 2.2).
  */
 
 const isMap = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -31,5 +32,6 @@ export function userFromData(email, data) {
     active: !('active' in data) || data.active === true,
     uid: typeof data.uid === 'string' && data.uid !== '' ? data.uid : null,
     permissions: isMap(data.permissions) ? data.permissions : {},
+    deleting: isMap(data.deleting),
   };
 }

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RepositoryError } from '../../domain/repositories/RepositoryError.js';
+import { createAdminUsersRepository } from './AdminUsersRepository.js';
 import { createAllowedUsersRepository } from './AllowedUsersRepository.js';
 import { createFirebaseAuthRepository } from './FirebaseAuthRepository.js';
 import { TASK_CHUNK_SIZE, createFirestoreTaskRepository, toDocument } from './FirestoreTaskRepository.js';
@@ -287,6 +288,139 @@ describe('FirestoreTaskRepository', () => {
   });
 });
 
+describe('AdminUsersRepository', () => {
+  const entry = { id: 'log-1', action: 'deactivate', actorUid: 'u-admin', targetUid: 'u-ana' };
+
+  // SDK falso con lo que usa la gestión de usuarios: lotes, transacciones, escucha y hora del servidor.
+  function fakeAdminFirestore({ existing = [] } = {}) {
+    const calls = [];
+    const fs = {
+      failWith: null,
+      doc: (db, collection, id) => `${collection}/${id}`,
+      collection: (db, name) => name,
+      serverTimestamp: () => 'SERVER_TIME',
+      writeBatch: () => {
+        const ops = [];
+        return {
+          set: (ref, data) => ops.push(['set', ref, data]),
+          update: (ref, data) => ops.push(['update', ref, data]),
+          commit: async () => {
+            calls.push(['batch', ops]);
+            if (fs.failWith) throw fs.failWith;
+          },
+        };
+      },
+      runTransaction: async (db, run) => {
+        const ops = [];
+        const transaction = {
+          get: async (ref) => ({ exists: () => existing.includes(ref) }),
+          set: (ref, data) => ops.push(['set', ref, data]),
+        };
+        await run(transaction);
+        if (fs.failWith) throw fs.failWith;
+        calls.push(['transaction', ops]);
+      },
+      onSnapshot: (ref, next, error) => {
+        fs.listener = { ref, next, error };
+        return () => calls.push(['unsubscribe']);
+      },
+    };
+    return { db: 'db', fs, calls };
+  }
+
+  it('update escribe el cambio, lastChange y la entrada con la hora del servidor en el mismo lote', async () => {
+    const { db, fs, calls } = fakeAdminFirestore();
+    await createAdminUsersRepository({ db, fs }).update('ana@x.com', { active: false }, entry);
+    expect(calls).toEqual([
+      [
+        'batch',
+        [
+          ['update', 'allowedUsers/ana@x.com', { active: false, lastChange: 'log-1' }],
+          [
+            'set',
+            'adminLog/log-1',
+            { action: 'deactivate', actorUid: 'u-admin', targetUid: 'u-ana', at: 'SERVER_TIME' },
+          ],
+        ],
+      ],
+    ]);
+  });
+
+  it('create escribe un documento mínimo y su entrada en la misma transacción', async () => {
+    const { db, fs, calls } = fakeAdminFirestore();
+    const authorize = { ...entry, action: 'authorize', targetUid: null, detail: { role: 'member' } };
+    await createAdminUsersRepository({ db, fs }).create({ email: 'ana@x.com', name: 'Ana', role: 'member' }, authorize);
+    expect(calls).toEqual([
+      [
+        'transaction',
+        [
+          ['set', 'allowedUsers/ana@x.com', { name: 'Ana', role: 'member', active: true, lastChange: 'log-1' }],
+          [
+            'set',
+            'adminLog/log-1',
+            {
+              action: 'authorize',
+              actorUid: 'u-admin',
+              targetUid: null,
+              detail: { role: 'member' },
+              at: 'SERVER_TIME',
+            },
+          ],
+        ],
+      ],
+    ]);
+  });
+
+  it('create falla con already-exists si el correo ya está autorizado, sin escribir nada', async () => {
+    const { db, fs, calls } = fakeAdminFirestore({ existing: ['allowedUsers/ana@x.com'] });
+    const create = createAdminUsersRepository({ db, fs }).create(
+      { email: 'ana@x.com', name: 'Ana', role: 'admin' },
+      entry,
+    );
+    await expect(create).rejects.toMatchObject({ name: 'RepositoryError', reason: 'already-exists' });
+    expect(calls).toEqual([]);
+  });
+
+  it('traduce los errores de Firestore a RepositoryError', async () => {
+    const { db, fs } = fakeAdminFirestore();
+    fs.failWith = firebaseError('permission-denied');
+    const repository = createAdminUsersRepository({ db, fs });
+    await expect(repository.update('ana@x.com', { role: 'admin' }, entry)).rejects.toMatchObject({
+      reason: 'permission-denied',
+    });
+    fs.failWith = firebaseError('unavailable');
+    await expect(repository.create({ email: 'b@x.com', name: 'B', role: 'member' }, entry)).rejects.toMatchObject({
+      reason: 'unavailable',
+    });
+  });
+
+  it('watch entrega las personas como AllowedUser y traduce los errores', () => {
+    const { db, fs, calls } = fakeAdminFirestore();
+    const onChange = vi.fn();
+    const onError = vi.fn();
+    const stop = createAdminUsersRepository({ db, fs }).watch(onChange, onError);
+    expect(fs.listener.ref).toBe('allowedUsers');
+
+    fs.listener.next({
+      docs: [
+        { id: 'ana@x.com', data: () => ({ name: 'Ana' }) },
+        { id: 'admin@x.com', data: () => ({ name: 'Admin', role: 'admin', active: true, uid: 'u1' }) },
+      ],
+    });
+    expect(onChange.mock.calls[0][0]).toMatchObject([
+      { email: 'ana@x.com', role: 'member', active: true, uid: null, deleting: false },
+      { email: 'admin@x.com', role: 'admin', uid: 'u1' },
+    ]);
+
+    fs.listener.error(firebaseError('permission-denied'));
+    expect(onError.mock.calls[0][0]).toBeInstanceOf(RepositoryError);
+    expect(onError.mock.calls[0][0].reason).toBe('permission-denied');
+
+    stop();
+    expect(calls).toEqual([['unsubscribe']]);
+  });
+});
+
 describe('AllowedUsersRepository', () => {
   const repo = (getDoc) => createAllowedUsersRepository({ db: 'db', fs: { doc: (db, c, id) => `${c}/${id}`, getDoc } });
 
@@ -299,6 +433,7 @@ describe('AllowedUsersRepository', () => {
       active: true,
       uid: null,
       permissions: {},
+      deleting: false,
     });
 
     const missing = repo(async () => ({ exists: () => false }));

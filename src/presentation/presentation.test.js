@@ -4,6 +4,7 @@ import { RepositoryError } from '../domain/repositories/RepositoryError.js';
 import { authorizeUser } from '../domain/usecases/AuthorizeUser.js';
 import { deriveHistory } from '../domain/rules/history.js';
 import { newestFirst, stepLabel } from './components/TaskHistory.js';
+import { actionsFor, displayedName } from './components/UserList.js';
 import { dueInfo, formatDate, historyEventText } from './format/dates.js';
 import { HISTORY_TEXTS, plural } from './format/labels.js';
 
@@ -204,5 +205,41 @@ describe('authorizeUser y SessionStore', () => {
     expect(await authorizeUser(user(), { allowedUsers: denied, sessionStore: createSessionStore(env) })).toEqual({
       status: 'denied',
     });
+  });
+});
+
+describe('acciones de cada fila de la página de usuarios', () => {
+  const row = (fields, lifecycle = 'active', self = false) => ({
+    user: {
+      email: 'a@x.com',
+      name: 'A',
+      role: 'member',
+      active: true,
+      uid: 'u',
+      permissions: {},
+      deleting: false,
+      ...fields,
+    },
+    lifecycle,
+    self,
+  });
+
+  it('la fila propia y la de una persona en eliminación no tienen acciones', () => {
+    expect(actionsFor(row({ role: 'admin' }, 'active', true))).toEqual([]);
+    expect(actionsFor(row({ active: false, deleting: true }, 'deleting'))).toEqual([]);
+  });
+
+  it('activos: dar o quitar el rol y desactivar', () => {
+    expect(actionsFor(row({}))).toEqual(['promote', 'deactivate']);
+    expect(actionsFor(row({ role: 'admin' }))).toEqual(['demote', 'deactivate']);
+  });
+
+  it('inactivos: reactivar y, si es administrador, quitarle el rol', () => {
+    expect(actionsFor(row({ active: false }, 'inactive'))).toEqual(['reactivate']);
+    expect(actionsFor(row({ active: false, role: 'admin' }, 'inactive'))).toEqual(['reactivate', 'demote']);
+  });
+
+  it('sin nombre se muestra el correo', () => {
+    expect(displayedName({ name: '', email: 'a@x.com' })).toBe('a@x.com');
   });
 });

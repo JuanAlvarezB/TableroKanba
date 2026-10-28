@@ -1,7 +1,10 @@
 // Error de cualquier repositorio, independiente de Firebase. La interfaz decide qué mensaje
 // mostrar según `reason`; el error original queda en `cause` para la consola.
 
-/** @typedef {'permission-denied' | 'not-found' | 'unavailable'} RepositoryErrorReason */
+// already-exists: se intentó crear un documento que ya existe (por ejemplo, autorizar un correo
+// que ya está en allowedUsers).
+
+/** @typedef {'permission-denied' | 'not-found' | 'already-exists' | 'unavailable'} RepositoryErrorReason */
 
 export class RepositoryError extends Error {
   /**

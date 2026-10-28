@@ -9,6 +9,7 @@ async function startHome() {
 
   document.getElementById('user-name').textContent = session.name;
   mountAccountMenu(session, document.getElementById('account'));
+  document.getElementById('users-card').hidden = session.role !== 'admin';
 
   // Fuera de PDN se marca la página como Desarrollo.
   if (APP_ENV.name === 'dev') {

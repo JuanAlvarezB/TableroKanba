@@ -102,6 +102,33 @@
             <a class="open-function" href="tablero.html">Abrir tablero <span aria-hidden="true">→</span></a>
           </div>
         </article>
+
+        <!-- Solo para administradores: home/main.js la muestra según el rol. Ocultarla no es
+             seguridad; la página exige el rol y las reglas de Firestore son la barrera real. -->
+        <article id="users-card" class="function-card" hidden>
+          <!-- Miniatura de la lista de personas con su rol y su estado -->
+          <div class="mockup" aria-hidden="true">
+            <div class="mockup-bar"><i></i><i></i><i></i></div>
+            <div class="mock-people">
+              <div class="mock-person"><span class="mock-avatar"></span><div class="mock-line"></div><span class="chip high">Admin</span></div>
+              <div class="mock-person"><span class="mock-avatar"></span><div class="mock-line"></div><span class="chip done">● Activo</span></div>
+              <div class="mock-person"><span class="mock-avatar"></span><div class="mock-line"></div><span class="chip done">● Activo</span></div>
+              <div class="mock-person"><span class="mock-avatar"></span><div class="mock-line"></div><span class="chip urgent">○ Inactivo</span></div>
+            </div>
+          </div>
+
+          <div class="function-copy">
+            <p class="eyebrow">Administración</p>
+            <h3>Gestión de usuarios</h3>
+            <p>Decide quién entra en LUCAS, sin ver las tareas de nadie.</p>
+            <ul class="checklist">
+              <li>Autoriza correos con su nombre y su rol</li>
+              <li>Desactiva o reactiva accesos sin perder datos</li>
+              <li>Da o quita el rol de administrador</li>
+            </ul>
+            <a class="open-function" href="usuarios.html">Abrir usuarios <span aria-hidden="true">→</span></a>
+          </div>
+        </article>
       </section>
     </main>
 

@@ -56,7 +56,8 @@ jobs:
         run: npm ci
 
       - name: Construir el sitio
-        # vite build genera dist/ con index.html (inicio de LUCAS), tablero.html y login.html.
+        # vite build genera dist/ con index.html (inicio de LUCAS), tablero.html, login.html y
+        # usuarios.html (gestión de usuarios).
         # Los .js y .css llevan un hash de su contenido en el nombre (script-abc123.js), así
         # los navegadores como Safari nunca siguen usando una versión anterior de su caché.
         # La configuración de Firebase sale de las variables del repositorio (Settings →
@@ -78,10 +79,10 @@ jobs:
         run: npm run build
 
       - name: Comprobar el sitio
-        # Las tres páginas existen, cada recurso que piden está en el sitio (si no, daría 404
+        # Las cuatro páginas existen, cada recurso que piden está en el sitio (si no, daría 404
         # en PDN) y el bundle lleva el proyecto de Firebase de PDN.
         run: |
-          for page in index.html tablero.html login.html; do
+          for page in index.html tablero.html login.html usuarios.html; do
             test -f "dist/${page}" || { echo "Falta ${page}"; exit 1; }
           done
           for ref in $(grep -ohE "(src|href)=\"\./[^\"]+\"" dist/*.html | sed -E 's/.*"\.\/(.*)"/\1/' | sort -u); do

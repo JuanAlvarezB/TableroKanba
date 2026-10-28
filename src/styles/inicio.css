@@ -417,6 +417,15 @@
   background: var(--color-card-mint);
 }
 
+.function-card + .function-card {
+  margin-top: 24px;
+}
+
+/* display: grid anularía el atributo hidden de la tarjeta de usuarios */
+.function-card[hidden] {
+  display: none;
+}
+
 .function-copy h3 {
   margin: 0 0 8px;
   font: 400 30px/1.2 var(--font-serif);
@@ -580,6 +589,34 @@
 .chip.done {
   background: var(--color-sage);
   color: var(--color-illustration-ink);
+}
+
+/* Miniatura de la lista de usuarios */
+.mock-people {
+  display: grid;
+  gap: 8px;
+}
+
+.mock-person {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--color-sea-foam);
+  border-radius: 8px;
+  background: var(--color-field);
+}
+
+.mock-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-sage);
+}
+
+.mock-person .chip {
+  margin-top: 0;
 }
 
 /* ---------- Pie ---------- */
