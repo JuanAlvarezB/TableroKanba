@@ -12,6 +12,7 @@ import { purgeBackups } from './limpiar-respaldos.js';
 import { purgeUser } from './limpiar-usuario.js';
 import { purgeLog } from './purgar-registro.js';
 import { backupUser } from './respaldar.js';
+import { restoreUser } from './restaurar.js';
 import { fingerprint } from './rules.js';
 import { verifyIndex } from './verificar-indice.js';
 
@@ -498,5 +499,93 @@ describe('limpiar-respaldos', () => {
     const { context, output } = local({ ambiente: 'pdn', aplicar: true });
     expect(await purgeBackups(context)).toBe(0);
     expect(output()).toContain('No hay respaldos de este ambiente');
+  });
+});
+
+describe('restaurar', () => {
+  // Respaldo real del script y, después, lo que borra la eliminación de la página: el documento de la
+  // persona, sus tareas, sus índices y el marcador.
+  async function backupThenDelete() {
+    const { context, store } = setup({ correo: PERSONA, aplicar: true, answers: [PASSPHRASE, PASSPHRASE] });
+    await backupUser(context);
+    const [name] = await backupFiles();
+    const without = (docs, keep) => Object.fromEntries(Object.entries(docs).filter(([id, doc]) => keep(id, doc)));
+    const data = {
+      allowedUsers: without(store.docs('allowedUsers'), (id) => id !== PERSONA),
+      tasks: without(store.docs('tasks'), (_, doc) => doc.ownerId !== 'u1'),
+      taskIndex: without(store.docs('taskIndex'), (_, doc) => doc.ownerId !== 'u1'),
+      adminLog: store.docs('adminLog'),
+    };
+    return { archivo: join(dir, 'dev', name), data };
+  }
+  const restore = (options) => setup({ correo: PERSONA, answers: [PASSPHRASE], ...options });
+
+  it('en simulación descifra e informa sin escribir', async () => {
+    const { archivo, data } = await backupThenDelete();
+    const { context, store, output } = restore({ data, archivo });
+    expect(await restoreUser(context)).toBe(0);
+    expect(store.commits).toEqual([]);
+    expect(output()).toContain('Tareas: 2 (con historial: 1)');
+    expect(output()).not.toContain(PRIVATE_TEXT);
+  });
+
+  it('con --aplicar vuelve a crear a la persona desactivada, sus tareas con su historial y sus índices', async () => {
+    const { archivo, data } = await backupThenDelete();
+    const { context, store, output } = restore({ data, archivo, aplicar: true });
+    expect(await restoreUser(context)).toBe(0);
+    expect(store.doc('allowedUsers', PERSONA)).toEqual(seed().allowedUsers[PERSONA]);
+    expect(store.doc('tasks', 't1')).toEqual(seed().tasks.t1);
+    expect(store.doc('tasks', 't2')).toEqual(seed().tasks.t2);
+    expect(store.docs('taskIndex')).toEqual({ t1: { ownerId: 'u1' }, t2: { ownerId: 'u1' }, t3: { ownerId: 'u2' } });
+    expect(store.commits).toHaveLength(1);
+    expect(store.commits[0].at(-2)).toMatchObject({ collection: 'allowedUsers', id: PERSONA });
+    expect(lastEntry(store)).toEqual({
+      action: 'restore',
+      actorUid: 'admin-uid',
+      targetUid: 'u1',
+      detail: { taskCount: 2, backupAt: NOW },
+    });
+    expect(output()).not.toContain(PRIVATE_TEXT);
+  });
+
+  it('con --uid usa el uid nuevo de una cuenta que se volvió a crear', async () => {
+    const { archivo, data } = await backupThenDelete();
+    const { context, store } = restore({ data, archivo, uid: 'u1-nuevo', aplicar: true });
+    await restoreUser(context);
+    expect(store.doc('allowedUsers', PERSONA).uid).toBe('u1-nuevo');
+    expect(store.doc('tasks', 't1').ownerId).toBe('u1-nuevo');
+    expect(store.doc('taskIndex', 't2')).toEqual({ ownerId: 'u1-nuevo' });
+  });
+
+  it('se puede repetir si un intento anterior dejó tareas sin el documento', async () => {
+    const { archivo, data } = await backupThenDelete();
+    data.tasks.t1 = seed().tasks.t1;
+    expect(await restoreUser(restore({ data, archivo, aplicar: true }).context)).toBe(0);
+  });
+
+  it.each([
+    [
+      'la persona sigue autorizada',
+      (data) => (data.allowedUsers[PERSONA] = seed().allowedUsers[PERSONA]),
+      'no sobrescribe',
+    ],
+    ['una tarea existe con otro dueño', (data) => (data.tasks.t1 = { ...seed().tasks.t3 }), 'otro dueño'],
+    ['queda un marcador de eliminación', (data) => (data.deletions = { u1: { state: 'deleting' } }), 'marcador'],
+  ])('se niega si %s', async (_, change, message) => {
+    const { archivo, data } = await backupThenDelete();
+    change(data);
+    const { context, store } = restore({ data, archivo, aplicar: true });
+    await expect(restoreUser(context)).rejects.toThrow(message);
+    expect(store.commits).toEqual([]);
+  });
+
+  it('se niega con un respaldo de otro proyecto o una frase incorrecta', async () => {
+    const { archivo, data } = await backupThenDelete();
+    const other = restore({ data, archivo });
+    other.context.projectId = 'otro-proyecto';
+    await expect(restoreUser(other.context)).rejects.toThrow('otro proyecto');
+    await expect(restoreUser(restore({ data, archivo, answers: ['frase incorrecta larga'] }).context)).rejects.toThrow(
+      BackupError,
+    );
   });
 });

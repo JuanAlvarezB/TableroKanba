@@ -11,6 +11,7 @@
 //   cuentas-huerfanas  Cuentas de Authentication sin documento en allowedUsers.
 //   purgar-registro    Borra las entradas de adminLog de más de 12 meses.
 //   limpiar-respaldos  Borra los respaldos locales de más de 30 días.
+//   restaurar          Vuelve a crear a una persona eliminada desde un respaldo.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -25,6 +26,7 @@ import { purgeBackups } from './limpiar-respaldos.js';
 import { purgeUser } from './limpiar-usuario.js';
 import { purgeLog } from './purgar-registro.js';
 import { backupUser } from './respaldar.js';
+import { restoreUser } from './restaurar.js';
 import { createStore } from './store.js';
 import { createTerminal } from './terminal.js';
 import { verifyIndex } from './verificar-indice.js';
@@ -45,6 +47,7 @@ const COMMANDS = {
   'cuentas-huerfanas': { required: ['admin'], writes: true, run: cleanOrphanAccounts },
   'purgar-registro': { required: ['admin'], writes: true, run: purgeLog },
   'limpiar-respaldos': { writes: true, local: true, run: purgeBackups },
+  restaurar: { required: ['admin', 'correo', 'archivo'], optional: ['uid'], writes: true, run: restoreUser },
 };
 
 async function main(argv) {
