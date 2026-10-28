@@ -3,6 +3,7 @@
 // adminLog es inmutable, el marcador de eliminación solo lo crea el script, y las tareas se aceptan
 // con o sin su documento de taskIndex. La invariante de siempre: el administrador no lee tareas.
 import { assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
+import * as firestore from 'firebase/firestore';
 import {
   arrayUnion,
   collection,
@@ -19,6 +20,13 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createAdminUsersRepository } from '../src/data/repositories/AdminUsersRepository.js';
+import { userFromData } from '../src/domain/entities/User.js';
+import { authorizeEmail as authorizeEmailUseCase } from '../src/domain/usecases/admin/AuthorizeEmail.js';
+import { deactivateUser } from '../src/domain/usecases/admin/DeactivateUser.js';
+import { demoteUser } from '../src/domain/usecases/admin/DemoteUser.js';
+import { promoteUser } from '../src/domain/usecases/admin/PromoteUser.js';
+import { reactivateUser } from '../src/domain/usecases/admin/ReactivateUser.js';
 import { ANA, BETO, createTestEnvironment, seed, signedIn, task } from './helpers.js';
 
 const ADMIN = { uid: 'uid-admin', email: 'admin@example.com' };
@@ -740,5 +748,56 @@ describe('P-20 tamaño del trozo: 8 tareas con su índice por lote', () => {
       ),
     });
     await assertSucceeds(writeTasks(signedIn(env, ADMIN), owned, INES, { remove: true }));
+  });
+});
+
+// La página de usuarios (PR 4) escribe con AdminUsersRepository y los casos de uso del dominio: se
+// comprueba que lo que escriben de verdad (transacción al autorizar, detalle en la entrada) cumple
+// estas reglas, no solo los lotes escritos a mano de arriba.
+describe('AdminUsersRepository y los casos de uso contra las reglas', () => {
+  const actor = { ...userFromData(ADMIN.email, { name: 'Admin', role: 'admin', active: true }), uid: ADMIN.uid };
+  const deps = (who = ADMIN) => ({
+    adminUsers: createAdminUsersRepository({ db: signedIn(env, who), fs: firestore }),
+    newId: newEntryId,
+  });
+
+  async function stored(email) {
+    let data = null;
+    await env.withSecurityRulesDisabled(async (context) => {
+      data = (await getDoc(doc(context.firestore(), `allowedUsers/${email}`))).data();
+    });
+    return data;
+  }
+
+  it('autoriza un correo en una transacción con su entrada y no sobrescribe uno ya autorizado', async () => {
+    const input = { email: ' Carla@Example.com ', name: 'Carla', role: 'admin' };
+    expect(await authorizeEmailUseCase(actor, input, deps())).toEqual({ ok: true, email: CARLA.email });
+    const created = await stored(CARLA.email);
+    expect(Object.keys(created).sort()).toEqual(['active', 'lastChange', 'name', 'role']);
+    expect(created).toMatchObject({ name: 'Carla', role: 'admin', active: true });
+
+    const again = await authorizeEmailUseCase(actor, { ...input, name: 'Otra', role: 'member' }, deps());
+    expect(again).toEqual({ ok: false, reason: 'already-authorized' });
+    expect(await stored(CARLA.email)).toEqual(created);
+  });
+
+  it('desactiva, reactiva, promueve y degrada a otra persona con su entrada', async () => {
+    let beto = userFromData(BETO.email, await stored(BETO.email));
+    for (const run of [deactivateUser, reactivateUser, promoteUser, demoteUser]) {
+      expect(await run(actor, beto, deps())).toEqual({ ok: true });
+      beto = userFromData(BETO.email, await stored(BETO.email));
+    }
+    expect(beto).toMatchObject({ role: 'member', active: true });
+
+    const log = await getDocs(collection(signedIn(env, ADMIN), 'adminLog'));
+    const entries = log.docs.map((entry) => entry.data());
+    expect(entries.map((entry) => entry.action).sort()).toEqual(['deactivate', 'demote', 'promote', 'reactivate']);
+    expect(JSON.stringify(entries)).not.toMatch(/@/);
+  });
+
+  it('un miembro que usa el repositorio recibe permission-denied', async () => {
+    const member = { ...userFromData(BETO.email, { name: 'Beto', role: 'admin', active: true }), uid: BETO.uid };
+    const ana = userFromData(ANA.email, { name: 'Ana' });
+    await expect(deactivateUser(member, ana, deps(BETO))).rejects.toMatchObject({ reason: 'permission-denied' });
   });
 });
