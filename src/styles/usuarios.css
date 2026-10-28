@@ -1,0 +1,460 @@
+/* Gestión de usuarios (usuarios.html), según el boceto docs/propuestas/propuestas-usuarios/
+   gestion-usuarios.html y DESIGN.md. Se carga después de inicio.css y reutiliza su marco
+   (cabecera, marca, menú de cuenta y diálogos); aquí solo va lo propio de la página. */
+
+.lucas-users {
+  --color-active-bg: #dcefe7;
+  --color-active-fg: #155a45; /* AA sobre su fondo */
+  --color-inactive-bg: #eef2f2;
+}
+
+/* ---------- Encabezado ---------- */
+
+.lucas-users .page-head {
+  display: grid;
+  gap: 16px;
+  margin-top: 40px;
+}
+
+.lucas-users .page-head h1 {
+  margin: 0;
+  font: 400 34px/1.16 var(--font-serif);
+}
+
+.back-link {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--color-pine-shadow);
+  font-weight: 500;
+}
+
+/* Aviso fijo sobre las cuentas de Authentication */
+.users-notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 24px;
+  padding: 16px 20px;
+  border: 1px solid var(--color-mint-mist);
+  border-radius: var(--radius-cards);
+  background: var(--color-card-mint);
+}
+
+.users-notice p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.users-notice a {
+  color: var(--color-pine-shadow);
+  font-weight: 600;
+}
+
+.notice-icon {
+  color: var(--color-deep-teal);
+  font: 600 15px/1.5 var(--font-mono);
+}
+
+/* ---------- Botones en píldora ---------- */
+
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 1px solid var(--color-pine-shadow);
+  border-radius: var(--radius-buttons);
+  background: transparent;
+  color: var(--color-pine-shadow);
+  font: 500 15px/1.2 var(--font-sans);
+  cursor: pointer;
+}
+
+.pill-btn:hover {
+  background: var(--color-sea-foam);
+}
+
+.pill-btn.primary {
+  border-color: var(--color-deep-teal);
+  background: var(--color-deep-teal);
+  color: #fff;
+}
+
+.pill-btn.primary:hover {
+  background: var(--color-forest-floor);
+}
+
+/* ---------- Filtros, búsqueda y autorizar ---------- */
+
+.users-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 32px 0 12px;
+}
+
+.user-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip-filter {
+  min-height: 44px;
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pills);
+  background: var(--color-card-mint);
+  color: var(--color-charcoal-navy);
+  font: 500 14px/1 var(--font-sans);
+  cursor: pointer;
+}
+
+.chip-filter:hover {
+  border-color: var(--color-mint-mist);
+}
+
+.chip-filter[aria-pressed='true'] {
+  background: var(--color-deep-teal);
+  color: #fff;
+}
+
+.users-search {
+  display: flex;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.users-search input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-mint-mist);
+  border-radius: var(--radius-pills);
+  background: var(--color-field);
+  color: inherit;
+  font: 400 16px/1 var(--font-sans); /* con menos, Safari del iPhone hace zoom al enfocar */
+}
+
+#authorize-open {
+  width: 100%;
+}
+
+.users-status {
+  margin: 0 0 12px;
+  color: var(--color-muted);
+  font: 500 13px/1.5 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ---------- Lista: tarjetas en celular, tabla desde 760 px ---------- */
+
+.users {
+  border: 1px solid var(--color-sea-foam);
+  border-radius: var(--radius-cards);
+  background: var(--color-field);
+}
+
+.users-head {
+  display: none;
+}
+
+.user-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.user-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'person actions'
+    'role role'
+    'state state';
+  gap: 10px;
+  align-items: center;
+  padding: 14px 16px;
+}
+
+.user-row + .user-row {
+  border-top: 1px solid var(--color-sea-foam);
+}
+
+.person {
+  grid-area: person;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.person-text {
+  min-width: 0;
+}
+
+.person-name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.person-email {
+  color: var(--color-muted);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.you {
+  padding: 2px 8px;
+  border-radius: var(--radius-pills);
+  background: var(--color-sea-foam);
+  font: 600 11px/1.4 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.user-role {
+  grid-area: role;
+}
+
+.user-state {
+  grid-area: state;
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pills);
+  font: 600 12px/1.2 var(--font-mono);
+  letter-spacing: 0.038em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tag.admin {
+  background: var(--color-deep-teal);
+  color: #fff;
+}
+
+.tag.member {
+  border: 1px solid var(--color-mint-mist);
+  background: var(--color-card-mint);
+  color: var(--color-pine-shadow);
+}
+
+.tag.active {
+  background: var(--color-active-bg);
+  color: var(--color-active-fg);
+}
+
+.tag.inactive {
+  border: 1px solid var(--color-mint-mist);
+  background: var(--color-inactive-bg);
+  color: var(--color-muted);
+}
+
+.tag.deleting {
+  border: 1px solid var(--color-dusty-rose);
+  background: var(--color-blush-sand);
+  color: var(--color-error);
+}
+
+.state-note {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.row-actions {
+  grid-area: actions;
+  position: relative;
+  align-self: start;
+  justify-self: end;
+}
+
+.row-toggle .caret {
+  font-size: 12px;
+}
+
+.row-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 15;
+  display: grid;
+  gap: 4px;
+  width: max-content;
+  min-width: 240px;
+  max-width: calc(100vw - 32px);
+  padding: 8px;
+  border: 1px solid var(--color-mint-mist);
+  border-radius: var(--radius-cards);
+  background: var(--color-card-mint);
+}
+
+.row-menu[hidden] {
+  display: none;
+}
+
+.row-menu button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: 500 15px/1.2 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-menu button:hover,
+.row-menu button:focus-visible {
+  background: var(--color-sea-foam);
+}
+
+.row-menu button.danger {
+  color: var(--color-error);
+}
+
+.self-note {
+  display: block;
+  max-width: 14em;
+  color: var(--color-muted);
+  font-size: 13px;
+  text-align: right;
+}
+
+.users-footnote {
+  margin: 16px 0 64px;
+  color: var(--color-muted);
+  font: 400 12px/1.5 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ---------- Diálogos (autorizar y confirmaciones) ---------- */
+
+.lucas-users .users-dialog {
+  width: min(100% - 32px, 480px);
+}
+
+.lucas-users .dialog-form label {
+  display: block;
+  margin: 14px 0 6px;
+}
+
+.lucas-users .dialog-form input:not([type='checkbox']),
+.lucas-users .dialog-form select {
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-mint-mist);
+  border-radius: var(--radius-cards);
+  background: var(--color-field);
+  color: var(--color-charcoal-navy);
+  font: 400 16px/1.2 var(--font-sans);
+}
+
+.lucas-users .dialog-form [aria-invalid='true'] {
+  border-color: var(--color-error);
+}
+
+.lucas-users .users-dialog .form-error {
+  margin-top: 12px;
+}
+
+.users-warn {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--color-dusty-rose);
+  border-radius: var(--radius-cards);
+  background: var(--color-blush-sand);
+  color: var(--color-error);
+  font-size: 14px;
+}
+
+.users-warn[hidden] {
+  display: none;
+}
+
+.users-warn p {
+  margin: 0;
+}
+
+.lucas-users .dialog-form .check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  margin: 12px 0 0;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.check input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+}
+
+.users-hint {
+  margin-top: 14px;
+  font-size: 14px;
+}
+
+/* ---------- Tableta y escritorio ---------- */
+
+@media (min-width: 600px) {
+  .lucas-users .page-head h1 {
+    font-size: 40px;
+  }
+
+  #authorize-open {
+    width: auto;
+    margin-left: auto;
+  }
+}
+
+@media (min-width: 760px) {
+  .users-head,
+  .user-row {
+    grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.6fr) auto;
+    grid-template-areas: 'person role state actions';
+    gap: 16px;
+    padding: 14px 20px;
+  }
+
+  .users-head {
+    display: grid;
+    border-bottom: 1px solid var(--color-sea-foam);
+    color: var(--color-pine-shadow);
+    font: 600 12px/1.3 var(--font-mono);
+    letter-spacing: 0.059em;
+    text-transform: uppercase;
+  }
+
+  .row-actions {
+    align-self: center;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pill-btn,
+  .chip-filter {
+    transition: background-color 0.15s ease;
+  }
+}

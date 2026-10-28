@@ -34,6 +34,7 @@ export default defineConfig(({ command, mode }) => {
           inicio: resolve(import.meta.dirname, 'index.html'),
           login: resolve(import.meta.dirname, 'login.html'),
           tablero: resolve(import.meta.dirname, 'tablero.html'),
+          usuarios: resolve(import.meta.dirname, 'usuarios.html'),
         },
       },
     },
