@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RepositoryError } from '../../domain/repositories/RepositoryError.js';
 import { createAllowedUsersRepository } from './AllowedUsersRepository.js';
 import { createFirebaseAuthRepository } from './FirebaseAuthRepository.js';
-import { createFirestoreTaskRepository, toDocument } from './FirestoreTaskRepository.js';
+import { TASK_CHUNK_SIZE, createFirestoreTaskRepository, toDocument } from './FirestoreTaskRepository.js';
 import { SAVED_WITHOUT_HISTORY, createLocalTaskCache } from './LocalTaskCache.js';
 import { createReminderStore } from './ReminderStore.js';
 
@@ -30,6 +30,11 @@ function fakeFirestore() {
     collection: (db, name) => name,
     where: (field, op, value) => ({ field, op, value }),
     query: (collection, filter) => ({ collection, filter }),
+    getDocsFromServer: async (query) => {
+      calls.push(['getFromServer', query]);
+      if (fs.failWith) throw fs.failWith;
+      return { docs: (fs.serverDocs ?? []).map((id) => ({ id })) };
+    },
     arrayUnion: (...elements) => ({ arrayUnion: elements }),
     setDoc: async (ref, data) => {
       calls.push(['set', ref, data]);
@@ -59,14 +64,28 @@ function fakeFirestore() {
 }
 
 describe('FirestoreTaskRepository', () => {
-  it('guarda la tarea con su dueño y sin el id ni las etiquetas vacías', async () => {
+  it('guarda la tarea con su dueño, sin el id ni las etiquetas vacías, y su índice en el mismo lote', async () => {
     const { db, fs, calls } = fakeFirestore();
     await createFirestoreTaskRepository({ db, fs }, 'uid-1').save(task('t1'));
     expect(calls).toEqual([
       [
-        'set',
-        'tasks/t1',
-        { text: 't1', status: 'pending', order: 0, createdAt: 1, startedAt: null, completedAt: null, ownerId: 'uid-1' },
+        'batch',
+        [
+          [
+            'set',
+            'tasks/t1',
+            {
+              text: 't1',
+              status: 'pending',
+              order: 0,
+              createdAt: 1,
+              startedAt: null,
+              completedAt: null,
+              ownerId: 'uid-1',
+            },
+          ],
+          ['set', 'taskIndex/t1', { ownerId: 'uid-1' }],
+        ],
       ],
     ]);
   });
@@ -92,7 +111,7 @@ describe('FirestoreTaskRepository', () => {
     const repository = createFirestoreTaskRepository({ db, fs }, 'u');
     await repository.save(task('a', { history: [event('e1')] }));
     await repository.saveAll([task('b', { history: [event('e2')] })]);
-    expect(calls[0][2].history).toEqual([event('e1')]);
+    expect(calls[0][1][0][2].history).toEqual([event('e1')]);
     expect(calls[1][1][0][2].history).toEqual([event('e2')]);
   });
 
@@ -138,7 +157,7 @@ describe('FirestoreTaskRepository', () => {
     expect(error.cause.code).toBe('unavailable');
   });
 
-  it('remove y saveAll usan una sola escritura en lote', async () => {
+  it('remove borra cada tarea con su índice, y saveAll las sube con el suyo, en el mismo lote', async () => {
     const { db, fs, calls } = fakeFirestore();
     const repository = createFirestoreTaskRepository({ db, fs }, 'u');
     await repository.remove([]);
@@ -149,11 +168,85 @@ describe('FirestoreTaskRepository', () => {
         'batch',
         [
           ['delete', 'tasks/a'],
+          ['delete', 'taskIndex/a'],
           ['delete', 'tasks/b'],
+          ['delete', 'taskIndex/b'],
         ],
       ],
-      ['batch', [['set', 'tasks/c', expect.objectContaining({ ownerId: 'u' })]]],
+      [
+        'batch',
+        [
+          ['set', 'tasks/c', expect.objectContaining({ ownerId: 'u' })],
+          ['set', 'taskIndex/c', { ownerId: 'u' }],
+        ],
+      ],
     ]);
+  });
+
+  it('parte remove y saveAll en trozos de 8 tareas (16 documentos por lote)', async () => {
+    const { db, fs, calls } = fakeFirestore();
+    const repository = createFirestoreTaskRepository({ db, fs }, 'u');
+    const ids = Array.from({ length: 17 }, (_, i) => `t${i}`);
+    await repository.remove(ids);
+    await repository.saveAll(ids.map((id) => task(id)));
+    expect(TASK_CHUNK_SIZE).toBe(8);
+    expect(calls.map(([, ops]) => ops.length)).toEqual([16, 16, 2, 16, 16, 2]);
+    expect(calls[1][1][0]).toEqual(['delete', 'tasks/t8']);
+    expect(calls[5][1]).toEqual([
+      ['set', 'tasks/t16', expect.objectContaining({ ownerId: 'u' })],
+      ['set', 'taskIndex/t16', { ownerId: 'u' }],
+    ]);
+  });
+
+  it('si falla un trozo se detiene, y los anteriores quedan escritos', async () => {
+    const { db, fs, calls } = fakeFirestore();
+    const repository = createFirestoreTaskRepository({ db, fs }, 'u');
+    let commits = 0;
+    const writeBatch = fs.writeBatch;
+    fs.writeBatch = () => {
+      const batch = writeBatch();
+      const commit = batch.commit;
+      batch.commit = async () => {
+        await commit();
+        if (++commits === 2) throw firebaseError('unavailable');
+      };
+      return batch;
+    };
+    const ids = Array.from({ length: 20 }, (_, i) => `t${i}`);
+    await expect(repository.remove(ids)).rejects.toMatchObject({ reason: 'unavailable' });
+    expect(calls).toHaveLength(2);
+  });
+
+  it('editar o mover no toca el índice', async () => {
+    const { db, fs, calls } = fakeFirestore();
+    const repository = createFirestoreTaskRepository({ db, fs }, 'u');
+    await repository.update('t1', { text: 'x' });
+    await repository.update('t1', { status: 'completed', completedAt: 3 }, { mode: 'append', events: [event('e1')] });
+    expect(calls.every(([kind, ref]) => kind === 'update' && ref === 'tasks/t1')).toBe(true);
+  });
+
+  it('lee del servidor los IDs de su índice y lo completa o limpia en trozos', async () => {
+    const { db, fs, calls } = fakeFirestore();
+    const repository = createFirestoreTaskRepository({ db, fs }, 'u');
+    fs.serverDocs = ['a', 'b'];
+    await expect(repository.indexedIds()).resolves.toEqual(['a', 'b']);
+    expect(calls[0]).toEqual([
+      'getFromServer',
+      { collection: 'taskIndex', filter: { field: 'ownerId', op: '==', value: 'u' } },
+    ]);
+
+    const ids = Array.from({ length: 9 }, (_, i) => `t${i}`);
+    await repository.addToIndex(ids);
+    await repository.removeFromIndex(['z']);
+    await repository.addToIndex([]);
+    expect(calls.slice(1)).toEqual([
+      ['batch', ids.slice(0, 8).map((id) => ['set', `taskIndex/${id}`, { ownerId: 'u' }])],
+      ['batch', [['set', 'taskIndex/t8', { ownerId: 'u' }]]],
+      ['batch', [['delete', 'taskIndex/z']]],
+    ]);
+
+    fs.failWith = firebaseError('permission-denied');
+    await expect(repository.indexedIds()).rejects.toMatchObject({ reason: 'permission-denied' });
   });
 
   it('subscribe filtra por dueño y separa las tareas creadas en otro dispositivo', () => {
