@@ -13,7 +13,19 @@ import {
   planHistoryWrite,
   truncateText,
 } from './history.js';
-import { ACCESS_STATES, ACTIONS, accessChanged, accessState, can, canChangeUser } from './permissions.js';
+import {
+  ACCESS_STATES,
+  ACTIONS,
+  NAME_MAX_LENGTH,
+  accessChanged,
+  accessState,
+  can,
+  canChangeUser,
+  isValidEmail,
+  lifecycleOf,
+  normalizeEmail,
+  validateNewUser,
+} from './permissions.js';
 import { priorityRank, sortByPriority } from './priority.js';
 import { attentionIds, currentReminderSlot } from './reminders.js';
 import { stalledDays } from './stalledTasks.js';
@@ -181,7 +193,7 @@ describe('matriz de permisos', () => {
     'users.claimUid': [true, true, false, false],
     'users.changeOwn': [false, false, false, false],
     'users.readOthers': [true, false, false, false],
-    'users.writeOthers': [false, false, false, false],
+    'users.writeOthers': [true, false, false, false],
     'users.delete': [false, false, false, false],
   };
 
@@ -224,34 +236,102 @@ describe('canChangeUser', () => {
     active: true,
     uid: null,
     permissions: {},
+    deleting: false,
     ...fields,
   });
   const admin = person('admin@x.com', { role: 'admin' });
   const ana = person('ana@x.com');
 
-  it.each([[{ role: 'member' }], [{ active: false }], [{ remove: true }]])(
-    'un administrador no se cambia a sí mismo: %j',
-    (change) => {
-      expect(canChangeUser(admin, admin, change)).toEqual({ ok: false, reason: 'self' });
-    },
-  );
+  it.each([
+    [{ type: 'demote', role: 'member' }],
+    [{ type: 'deactivate' }],
+    [{ type: 'reactivate' }],
+    [{ type: 'delete' }],
+  ])('un administrador no se cambia a sí mismo: %j', (change) => {
+    expect(canChangeUser(admin, admin, change)).toEqual({ ok: false, reason: 'self' });
+  });
 
   it('un miembro (o un administrador inactivo) no cambia a nadie', () => {
-    expect(canChangeUser(ana, admin, { role: 'member' })).toEqual({ ok: false, reason: 'not-admin' });
-    expect(canChangeUser(person('otro@x.com', { role: 'admin', active: false }), ana, { active: false })).toEqual({
-      ok: false,
-      reason: 'not-admin',
-    });
+    expect(canChangeUser(ana, admin, { type: 'demote', role: 'member' })).toEqual({ ok: false, reason: 'not-admin' });
+    const inactiveAdmin = person('otro@x.com', { role: 'admin', active: false });
+    expect(canChangeUser(inactiveAdmin, ana, { type: 'deactivate' })).toEqual({ ok: false, reason: 'not-admin' });
   });
 
   it('un administrador sí cambia el rol o el estado de otra persona', () => {
-    expect(canChangeUser(admin, ana, { role: 'admin' })).toEqual({ ok: true });
-    expect(canChangeUser(admin, ana, { active: false })).toEqual({ ok: true });
-    expect(canChangeUser(admin, person('otro@x.com', { role: 'admin' }), { role: 'member' })).toEqual({ ok: true });
+    expect(canChangeUser(admin, ana, { type: 'promote', role: 'admin' })).toEqual({ ok: true });
+    expect(canChangeUser(admin, ana, { type: 'deactivate' })).toEqual({ ok: true });
+    expect(canChangeUser(admin, person('otro@x.com', { role: 'admin' }), { type: 'demote', role: 'member' })).toEqual({
+      ok: true,
+    });
+    expect(canChangeUser(admin, person('b@x.com', { active: false }), { type: 'reactivate' })).toEqual({ ok: true });
   });
 
   it('rechaza un rol desconocido', () => {
-    expect(canChangeUser(admin, ana, { role: 'root' })).toEqual({ ok: false, reason: 'unknown-role' });
+    expect(canChangeUser(admin, ana, { type: 'promote', role: 'root' })).toEqual({ ok: false, reason: 'unknown-role' });
+  });
+
+  it.each([['deactivate'], ['reactivate'], ['promote'], ['demote'], ['delete']])(
+    'una persona en eliminación no admite %s',
+    (type) => {
+      const deleting = person('e@x.com', { active: false, deleting: true });
+      expect(canChangeUser(admin, deleting, { type })).toEqual({ ok: false, reason: 'in-deletion' });
+    },
+  );
+
+  it('para eliminar, la persona debe estar desactivada y sin rol de administrador', () => {
+    expect(canChangeUser(admin, person('c@x.com', { role: 'admin', active: false }), { type: 'delete' })).toEqual({
+      ok: false,
+      reason: 'target-is-admin',
+    });
+    expect(canChangeUser(admin, ana, { type: 'delete' })).toEqual({ ok: false, reason: 'target-active' });
+    expect(canChangeUser(admin, person('b@x.com', { active: false }), { type: 'delete' })).toEqual({ ok: true });
+  });
+});
+
+describe('lifecycleOf', () => {
+  it('activo, inactivo o en eliminación; la marca de eliminación manda', () => {
+    expect(lifecycleOf({ active: true, deleting: false })).toBe('active');
+    expect(lifecycleOf({ active: false, deleting: false })).toBe('inactive');
+    expect(lifecycleOf({ active: true, deleting: true })).toBe('deleting');
+  });
+});
+
+describe('autorizar un correo', () => {
+  it('normalizeEmail recorta y pasa a minúsculas', () => {
+    expect(normalizeEmail('  Ana.Perez@Ejemplo.TEST ')).toBe('ana.perez@ejemplo.test');
+    expect(normalizeEmail(undefined)).toBe('');
+  });
+
+  it.each([
+    ['ana@ejemplo.test', true],
+    ['a.b+c@sub.ejemplo.test', true],
+    ['ana', false],
+    ['ana@ejemplo', false],
+    ['ana @ejemplo.test', false],
+    ['ana@ejemplo/x.test', false],
+    ['', false],
+  ])('isValidEmail(%j) → %s', (email, ok) => {
+    expect(isValidEmail(email)).toBe(ok);
+  });
+
+  it('validateNewUser normaliza el correo y el nombre', () => {
+    expect(validateNewUser({ email: ' Ana@Ejemplo.TEST', name: '  Ana  ', role: 'member' })).toEqual({
+      ok: true,
+      value: { email: 'ana@ejemplo.test', name: 'Ana', role: 'member' },
+    });
+  });
+
+  it.each([
+    [{ email: 'ana', name: 'Ana', role: 'member' }, 'invalid-email'],
+    [{ email: 'ana@ejemplo.test', name: '   ', role: 'member' }, 'missing-name'],
+    [{ email: 'ana@ejemplo.test', name: 'a'.repeat(NAME_MAX_LENGTH + 1), role: 'member' }, 'name-too-long'],
+    [{ email: 'ana@ejemplo.test', name: 'Ana', role: 'root' }, 'unknown-role'],
+  ])('validateNewUser rechaza %j: %s', (input, reason) => {
+    expect(validateNewUser(input)).toEqual({ ok: false, reason });
+  });
+
+  it('acepta un nombre de exactamente 100 caracteres', () => {
+    expect(validateNewUser({ email: 'a@b.co', name: 'a'.repeat(NAME_MAX_LENGTH), role: 'admin' }).ok).toBe(true);
   });
 });
 

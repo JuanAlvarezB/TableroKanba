@@ -299,6 +299,7 @@ describe('AllowedUsersRepository', () => {
       active: true,
       uid: null,
       permissions: {},
+      deleting: false,
     });
 
     const missing = repo(async () => ({ exists: () => false }));
