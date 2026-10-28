@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BackupError, decryptBackup, parseBackup } from './backup.js';
 import { completeIndex } from './completar-indice.js';
 import { Refusal } from './context.js';
+import { cleanOrphanAccounts } from './cuentas-huerfanas.js';
 import { purgeUser } from './limpiar-usuario.js';
 import { backupUser } from './respaldar.js';
 import { fingerprint } from './rules.js';
@@ -407,5 +408,46 @@ describe('limpiar-usuario', () => {
 
   it('nunca limpia el uid de quien lo ejecuta', async () => {
     await expect(purgeUser(setup({ uid: 'admin-uid', aplicar: true }).context)).rejects.toThrow('es el tuyo');
+  });
+});
+
+describe('cuentas-huerfanas', () => {
+  const accounts = [
+    account('admin-uid', ADMIN),
+    account('u1', PERSONA),
+    account('h1', 'huerfana.uno@ejemplo.test'),
+    account('h2', 'huerfana.dos@ejemplo.test'),
+  ];
+
+  it('lista las huérfanas con el correo enmascarado y en simulación no borra', async () => {
+    const { context, store, output } = setup({ accounts });
+    expect(await cleanOrphanAccounts(context)).toBe(0);
+    expect(output()).toContain('Cuentas en Authentication: 4 · huérfanas (sin documento en allowedUsers): 2');
+    expect(output()).toContain('hu***@e***.test · uid h1');
+    expect(output()).not.toContain('huerfana.uno@');
+    expect(store.accounts).toHaveLength(4);
+    expect(store.commits).toEqual([]);
+  });
+
+  it('con --aplicar borra solo las confirmadas, cada una con su entrada', async () => {
+    const { context, store } = setup({ accounts, aplicar: true, answers: ['borrar', ''] });
+    expect(await cleanOrphanAccounts(context)).toBe(0);
+    expect(store.accounts.map((a) => a.uid)).toEqual(['admin-uid', 'u1', 'h2']);
+    expect(store.commits).toHaveLength(1);
+    expect(lastEntry(store)).toEqual({ action: 'clean-auth', actorUid: 'admin-uid', targetUid: 'h1' });
+  });
+
+  it('avisa si una cuenta huérfana todavía tiene tareas', async () => {
+    const data = seed();
+    data.tasks.t9 = { text: 'x', status: 'pending', order: 1, ownerId: 'h1' };
+    const { context, output } = setup({ data, accounts });
+    await cleanOrphanAccounts(context);
+    expect(output()).toContain('uid h1 · creada nunca · último acceso nunca · ⚠ 1 tareas (limpiar-usuario)');
+  });
+
+  it('si Authentication no responde con tus credenciales (A-19), indica la limpieza manual', async () => {
+    await expect(cleanOrphanAccounts(setup({ authError: denied() }).context)).rejects.toThrow(
+      /La limpieza es manual \(A-19\)/,
+    );
   });
 });

@@ -8,6 +8,7 @@
 //   verificar-indice   Tareas sin índice e índices huérfanos (solo lee).
 //   completar-indice   Crea los índices que faltan y borra los huérfanos.
 //   limpiar-usuario    Borra las tareas e índices que queden de una persona eliminada.
+//   cuentas-huerfanas  Cuentas de Authentication sin documento en allowedUsers.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -16,6 +17,7 @@ import { BackupError } from './backup.js';
 import { UsageError, explainError, parseCommand, projectIdFor, usage } from './cli.js';
 import { completeIndex } from './completar-indice.js';
 import { Refusal } from './context.js';
+import { cleanOrphanAccounts } from './cuentas-huerfanas.js';
 import { connect } from './firebase.js';
 import { purgeUser } from './limpiar-usuario.js';
 import { backupUser } from './respaldar.js';
@@ -36,6 +38,7 @@ const COMMANDS = {
   'verificar-indice': { required: ['admin'], optional: ['uid'], run: verifyIndex },
   'completar-indice': { required: ['admin'], optional: ['uid'], writes: true, run: completeIndex },
   'limpiar-usuario': { required: ['admin', 'uid'], writes: true, run: purgeUser },
+  'cuentas-huerfanas': { required: ['admin'], writes: true, run: cleanOrphanAccounts },
 };
 
 async function main(argv) {
