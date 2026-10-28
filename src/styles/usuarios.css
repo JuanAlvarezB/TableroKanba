@@ -176,9 +176,10 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
-    'person actions'
-    'role role'
-    'state state';
+    'person person'
+    'role actions'
+    'state actions'
+    'note note';
   gap: 10px;
   align-items: center;
   padding: 14px 16px;
@@ -280,8 +281,14 @@
 .row-actions {
   grid-area: actions;
   position: relative;
-  align-self: start;
+  align-self: center;
   justify-self: end;
+}
+
+/* Fila sin acciones (la propia o en eliminación): solo una nota, en su propia línea en celular. */
+.row-note {
+  grid-area: note;
+  justify-self: start;
 }
 
 .row-toggle .caret {
@@ -331,10 +338,8 @@
 
 .self-note {
   display: block;
-  max-width: 14em;
   color: var(--color-muted);
   font-size: 13px;
-  text-align: right;
 }
 
 .users-footnote {
@@ -416,6 +421,13 @@
   font-size: 14px;
 }
 
+/* En celular los diálogos de esta página dejan más ancho a los campos (como el boceto). */
+@media (max-width: 599px) {
+  .lucas-users .users-dialog .dialog-body {
+    padding: 24px;
+  }
+}
+
 /* ---------- Tableta y escritorio ---------- */
 
 @media (min-width: 600px) {
@@ -449,6 +461,16 @@
 
   .row-actions {
     align-self: center;
+  }
+
+  .row-note {
+    justify-self: end;
+    grid-area: actions;
+  }
+
+  .self-note {
+    max-width: 14em;
+    text-align: right;
   }
 }
 

@@ -183,10 +183,10 @@ export function createUserList(container, { onAction }) {
     const actions = actionsFor(row);
     let cell;
     if (self) {
-      cell = element('div', 'row-actions');
+      cell = element('div', 'row-actions row-note');
       cell.append(element('span', 'self-note', 'No puedes cambiar tu propio rol ni estado.'));
     } else if (actions.length === 0) {
-      cell = element('div', 'row-actions');
+      cell = element('div', 'row-actions row-note');
       cell.append(element('span', 'self-note', 'Sin acciones mientras está en eliminación.'));
     } else {
       cell = createMenu(row, actions);
