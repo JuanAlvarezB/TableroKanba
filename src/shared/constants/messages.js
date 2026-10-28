@@ -1,4 +1,5 @@
-// Textos en español de los errores de autenticación y autorización, y avisos del tablero.
+// Textos en español de los errores de autenticación y autorización, y avisos del tablero y de la
+// gestión de usuarios.
 
 const WRONG_CREDENTIALS = 'Correo o contraseña incorrectos.';
 
@@ -14,6 +15,38 @@ export const BOARD_MESSAGES = {
   // La copia local no cupo con el historial (docs/PLAN_USUARIOS.md, A-42).
   historyNotStored:
     'Este navegador no tiene espacio para el historial de las tareas: la copia local se guardó sin él. El historial sigue guardado en el servidor.',
+};
+
+// Gestión de usuarios (presentation/state/usersStore.js; docs/PLAN_USUARIOS.md, 2.4). Neutros en
+// género. Solo los ve un administrador autenticado, así que "ya autorizado" no revela correos a
+// terceros.
+export const USERS_MESSAGES = {
+  // Motivo de rechazo de los casos de uso → texto.
+  reasons: {
+    'invalid-email': 'Escribe un correo válido.',
+    'missing-name': 'Escribe el nombre que LUCAS mostrará.',
+    'name-too-long': 'El nombre es demasiado largo (máximo 100 caracteres).',
+    'unknown-role': 'Elige un rol: Miembro o Administrador.',
+    'admin-not-confirmed': 'Marca la casilla para confirmar el rol de administrador.',
+    'already-authorized': 'Ese correo ya está autorizado.',
+    'in-deletion': 'Esa persona está en eliminación. Termina o cancela la eliminación primero.',
+    self: 'No puedes cambiar tu propio rol ni tu estado, ni eliminarte.',
+    'not-admin': 'Solo un administrador activo puede hacer este cambio.',
+    'not-found': 'Esa persona ya no está en la lista.',
+    'target-is-admin': 'No se puede eliminar a un administrador. Quítale primero el rol de administrador.',
+    'target-active': 'Desactiva a la persona antes de eliminarla.',
+  },
+  permissionDenied: 'El servidor rechazó el cambio. Comprueba que sigues siendo administrador e inténtalo de nuevo.',
+  unavailable: 'Sin conexión. Revisa tu internet e inténtalo de nuevo.',
+  failed: 'No se pudo completar la operación. Inténtalo de nuevo.',
+  // Aviso de cada acción terminada.
+  done: {
+    authorize: 'Correo autorizado. Si entrará con correo y contraseña, crea también su cuenta en Authentication.',
+    deactivate: 'Acceso desactivado.',
+    reactivate: 'Acceso reactivado.',
+    promote: 'Rol de administrador concedido.',
+    demote: 'Rol de administrador retirado.',
+  },
 };
 
 // Códigos de Firebase → texto en español. Los vacíos no muestran nada (la persona cerró la
