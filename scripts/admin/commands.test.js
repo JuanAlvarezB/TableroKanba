@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BackupError, decryptBackup, parseBackup } from './backup.js';
 import { completeIndex } from './completar-indice.js';
 import { Refusal } from './context.js';
+import { purgeUser } from './limpiar-usuario.js';
 import { backupUser } from './respaldar.js';
 import { fingerprint } from './rules.js';
 import { verifyIndex } from './verificar-indice.js';
@@ -341,5 +342,70 @@ describe('verificar-indice y completar-indice', () => {
     });
     const check = setup({ data: { ...seed(), taskIndex: store.docs('taskIndex') } });
     expect(await verifyIndex(check.context)).toBe(0);
+  });
+});
+
+describe('limpiar-usuario', () => {
+  const inDeletion = (state = 'deleting') => {
+    const data = seed();
+    data.allowedUsers[PERSONA].deleting = { at: 1, doneLogId: 'fin' };
+    data.deletions = { u1: { state, taskCount: 2 } };
+    return data;
+  };
+
+  it('se niega si una persona autorizada tiene ese uid', async () => {
+    const { context, store } = setup({ uid: 'u1', aplicar: true });
+    await expect(purgeUser(context)).rejects.toThrow('no está en eliminación');
+    expect(store.commits).toEqual([]);
+  });
+
+  it('se niega si la eliminación de esa persona no está confirmada', async () => {
+    await expect(purgeUser(setup({ data: inDeletion('backup-ready'), uid: 'u1' }).context)).rejects.toThrow(
+      'confirmada',
+    );
+  });
+
+  it('durante una eliminación confirmada borra sus tareas e índices con su entrada', async () => {
+    const simulation = setup({ data: inDeletion(), uid: 'u1' });
+    expect(await purgeUser(simulation.context)).toBe(0);
+    expect(simulation.store.commits).toEqual([]);
+
+    const { context, store, output } = setup({ data: inDeletion(), uid: 'u1', aplicar: true });
+    expect(await purgeUser(context)).toBe(0);
+    expect(Object.keys(store.docs('tasks'))).toEqual(['t3']);
+    expect(Object.keys(store.docs('taskIndex'))).toEqual(['t3']);
+    expect(lastEntry(store)).toEqual({
+      action: 'purge-leftovers',
+      actorUid: 'admin-uid',
+      targetUid: 'u1',
+      detail: { tasks: 2, index: 2 },
+    });
+    expect(output()).not.toContain(PRIVATE_TEXT);
+  });
+
+  it('después de la eliminación (sin documento) también limpia', async () => {
+    const data = seed();
+    delete data.allowedUsers[PERSONA];
+    const { context, store } = setup({ data, uid: 'u1', aplicar: true });
+    expect(await purgeUser(context)).toBe(0);
+    expect(Object.keys(store.docs('tasks'))).toEqual(['t3']);
+  });
+
+  it('se niega si ese uid es la cuenta de alguien autorizado sin uid registrado (A-30)', async () => {
+    const data = seed();
+    delete data.allowedUsers['activa@ejemplo.test'].uid;
+    const { context } = setup({ data, accounts: [account('u2', 'activa@ejemplo.test')], uid: 'u2', aplicar: true });
+    await expect(purgeUser(context)).rejects.toThrow('cuenta de una persona autorizada');
+  });
+
+  it('sin Authentication (A-19) se niega si hay personas autorizadas sin uid', async () => {
+    const data = seed();
+    delete data.allowedUsers['activa@ejemplo.test'].uid;
+    const { context } = setup({ data, authError: denied(), uid: 'u9', aplicar: true });
+    await expect(purgeUser(context)).rejects.toThrow('A-19');
+  });
+
+  it('nunca limpia el uid de quien lo ejecuta', async () => {
+    await expect(purgeUser(setup({ uid: 'admin-uid', aplicar: true }).context)).rejects.toThrow('es el tuyo');
   });
 });

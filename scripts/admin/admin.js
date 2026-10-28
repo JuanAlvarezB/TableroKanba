@@ -7,6 +7,7 @@
 //   respaldar          Respaldo cifrado y verificado antes de eliminar a una persona; crea su marcador.
 //   verificar-indice   Tareas sin índice e índices huérfanos (solo lee).
 //   completar-indice   Crea los índices que faltan y borra los huérfanos.
+//   limpiar-usuario    Borra las tareas e índices que queden de una persona eliminada.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -16,6 +17,7 @@ import { UsageError, explainError, parseCommand, projectIdFor, usage } from './c
 import { completeIndex } from './completar-indice.js';
 import { Refusal } from './context.js';
 import { connect } from './firebase.js';
+import { purgeUser } from './limpiar-usuario.js';
 import { backupUser } from './respaldar.js';
 import { createStore } from './store.js';
 import { createTerminal } from './terminal.js';
@@ -33,6 +35,7 @@ const COMMANDS = {
   respaldar: { required: ['admin', 'correo'], writes: true, run: backupUser },
   'verificar-indice': { required: ['admin'], optional: ['uid'], run: verifyIndex },
   'completar-indice': { required: ['admin'], optional: ['uid'], writes: true, run: completeIndex },
+  'limpiar-usuario': { required: ['admin', 'uid'], writes: true, run: purgeUser },
 };
 
 async function main(argv) {
