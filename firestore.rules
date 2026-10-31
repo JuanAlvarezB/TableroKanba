@@ -8,6 +8,8 @@ rules_version = '2';
 // del índice (2.6, paso 3): cada tarea se crea y se borra junto con su documento de taskIndex.
 // Permisos por función (3.4): sin el tablero no se usan tasks ni taskIndex, y con priorities o
 // dueDates apagadas no se cambia su campo; el administrador valida y registra cada cambio.
+// Subtareas (docs/PLAN_SUBTAREAS.md, 2.3): viven dentro de la tarea con su contador de pendientes, y
+// una tarea completada no puede tener ninguna pendiente.
 // Se publican con `firebase deploy --only firestore:rules --project dev|pdn`; este archivo no
 // se despliega con GitHub Pages. Se prueban con npm run test:rules (rules-tests/).
 service cloud.firestore {
@@ -225,8 +227,25 @@ service cloud.firestore {
       return !('history' in data) || (data.history is list && data.history.size() <= 100);
     }
 
+    // Subtareas (docs/PLAN_SUBTAREAS.md, 2.3): opcionales; la lista y su contador de pendientes llegan
+    // siempre juntos, con 20 subtareas como máximo y el contador entre 0 y el tamaño de la lista. Las reglas
+    // no pueden recorrer la lista (cada subtarea la valida el cliente al leerla), pero sí impedir que una
+    // tarea completada tenga subtareas pendientes: eso frena también a un cliente viejo que la complete.
+    // Al revertir, 'subtasks' y 'openSubtasks' nunca salen de hasOnly: las tareas que ya los tienen dejarían
+    // de poder editarse (como 'history', A-41; ver README, "Volver a las reglas anteriores").
+    function isSubtasks(data) {
+      return ('subtasks' in data) == ('openSubtasks' in data)
+        && (!('subtasks' in data)
+          || (data.subtasks is list
+            && data.subtasks.size() <= 20
+            && data.openSubtasks is int
+            && data.openSubtasks >= 0
+            && data.openSubtasks <= data.subtasks.size()))
+        && (data.status != 'completed' || data.get('openSubtasks', 0) == 0);
+    }
+
     function isValidTask(data) {
-      return data.keys().hasOnly(['text', 'status', 'order', 'createdAt', 'startedAt', 'completedAt', 'priority', 'dueDate', 'ownerId', 'history'])
+      return data.keys().hasOnly(['text', 'status', 'order', 'createdAt', 'startedAt', 'completedAt', 'priority', 'dueDate', 'ownerId', 'history', 'subtasks', 'openSubtasks'])
         && data.ownerId is string
         && data.text is string
         && data.text.size() > 0
@@ -238,7 +257,8 @@ service cloud.firestore {
         && isDate(data, 'completedAt')
         && isPriority(data)
         && isDueDate(data)
-        && isHistory(data);
+        && isHistory(data)
+        && isSubtasks(data);
     }
 
     // Hijas con datos (3.4): con priorities o dueDates apagadas, su campo no se puede poner ni cambiar.
