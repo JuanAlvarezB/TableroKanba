@@ -12,10 +12,7 @@ import { autoResize, getEditorCard } from '../../components/TaskEditor.js';
 import { dueInfo } from '../../format/dates.js';
 import { currentFeatures } from '../../state/features.js';
 import { createBoardNotices } from './boardNotices.js';
-
-// Tarjetas resaltadas tras un cambio (id → momento de inicio), para que el resaltado no se
-// reinicie aunque el tablero se vuelva a dibujar mientras dura la animación.
-const HIGHLIGHT_DURATION = 1600;
+import { createHighlights } from './highlights.js';
 
 /**
  * @param {object} deps
@@ -52,30 +49,13 @@ export function createBoardPage({ store, reminders }) {
   let labelMenuId = null;
   let activeFilter = 'all';
   let draggedId = null;
-  const highlights = new Map();
+  const highlights = createHighlights();
   // Firma de las alertas dibujadas; si cambia (pasa un día, una tarea supera el límite) hay
   // que volver a dibujar el tablero.
   let lastOverdueSignature = '';
 
   const tasks = () => store.tasks;
   const { showNotice } = notices;
-
-  /* ---------- Resaltados ---------- */
-
-  function highlight(ids) {
-    const now = performance.now();
-    ids.forEach((id) => highlights.set(id, now));
-  }
-
-  // ms desde que empezó el resaltado de la tarjeta, o null si no tiene (o ya terminó).
-  function highlightElapsed(id) {
-    const start = highlights.get(id);
-    if (start === undefined) return null;
-    const elapsed = performance.now() - start;
-    if (elapsed < HIGHLIGHT_DURATION) return elapsed;
-    highlights.delete(id);
-    return null;
-  }
 
   /* ---------- Filtro y menú de etiquetas ---------- */
 
@@ -129,7 +109,7 @@ export function createBoardPage({ store, reminders }) {
   // Lleva a las tareas indicadas y las resalta; si el filtro las oculta, se muestran todas.
   function showTasks(ids) {
     if (ids.length === 0) return;
-    highlight(ids);
+    highlights.highlight(ids);
     const visible = tasks()
       .filter((t) => ids.includes(t.id))
       .every(filtersFor(currentFeatures())[activeFilter]);
@@ -257,7 +237,7 @@ export function createBoardPage({ store, reminders }) {
     if (editing && editing.id === task.id) return getEditorCard(task, editing, editorHandlers);
     return createTaskCard(task, {
       menuOpen: labelMenuId === task.id,
-      highlightElapsed: highlightElapsed(task.id),
+      highlightElapsed: highlights.elapsed(task.id),
       actions: cardActions,
     });
   }
@@ -335,7 +315,7 @@ export function createBoardPage({ store, reminders }) {
 
   store.on('change', render);
   store.on('notice', showNotice);
-  store.on('highlight', highlight);
+  store.on('highlight', highlights.highlight);
   store.on('added', notices.announceNewTasks);
   store.on('edited', notices.announceEditedTasks);
   store.on('sync', notices.setSyncStatus);
