@@ -21,12 +21,16 @@ import {
 } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createAdminUsersRepository } from '../src/data/repositories/AdminUsersRepository.js';
-import { userFromData } from '../src/domain/entities/User.js';
+import { markerFromData, userFromData } from '../src/domain/entities/User.js';
+import { RepositoryError } from '../src/domain/repositories/RepositoryError.js';
 import { authorizeEmail as authorizeEmailUseCase } from '../src/domain/usecases/admin/AuthorizeEmail.js';
+import { cancelUserDeletion } from '../src/domain/usecases/admin/CancelUserDeletion.js';
 import { deactivateUser } from '../src/domain/usecases/admin/DeactivateUser.js';
 import { demoteUser } from '../src/domain/usecases/admin/DemoteUser.js';
 import { promoteUser } from '../src/domain/usecases/admin/PromoteUser.js';
 import { reactivateUser } from '../src/domain/usecases/admin/ReactivateUser.js';
+import { runUserDeletion } from '../src/domain/usecases/admin/RunUserDeletion.js';
+import { startUserDeletion } from '../src/domain/usecases/admin/StartUserDeletion.js';
 import { ANA, BETO, createTestEnvironment, seed, signedIn, task } from './helpers.js';
 
 const ADMIN = { uid: 'uid-admin', email: 'admin@example.com' };
@@ -799,5 +803,193 @@ describe('AdminUsersRepository y los casos de uso contra las reglas', () => {
     const member = { ...userFromData(BETO.email, { name: 'Beto', role: 'admin', active: true }), uid: BETO.uid };
     const ana = userFromData(ANA.email, { name: 'Ana' });
     await expect(deactivateUser(member, ana, deps(BETO))).rejects.toMatchObject({ reason: 'permission-denied' });
+  });
+});
+
+// Eliminación en dos fases (PR 4b): StartUserDeletion, RunUserDeletion y CancelUserDeletion con el
+// repositorio real, contra las reglas de transición ya publicadas (P-5, P-6, P-12 y P-14 de punta a punta).
+describe('eliminar a una persona con AdminUsersRepository y los casos de uso', () => {
+  const actor = { ...userFromData(ADMIN.email, { name: 'Admin', role: 'admin', active: true }), uid: ADMIN.uid };
+  const repository = () => createAdminUsersRepository({ db: signedIn(env, ADMIN), fs: firestore });
+  const deps = (adminUsers = repository()) => ({ adminUsers, newId: newEntryId, now: Date.now() });
+
+  async function read(path) {
+    let data = null;
+    await env.withSecurityRulesDisabled(async (context) => {
+      const snapshot = await getDoc(doc(context.firestore(), path));
+      data = snapshot.exists() ? snapshot.data() : null;
+    });
+    return data;
+  }
+
+  async function ownedBy(name, uid) {
+    let ids = [];
+    await env.withSecurityRulesDisabled(async (context) => {
+      const snapshot = await getDocs(query(collection(context.firestore(), name), where('ownerId', '==', uid)));
+      ids = snapshot.docs.map((entry) => entry.id);
+    });
+    return ids;
+  }
+
+  async function personAndMarker(person, key) {
+    const user = userFromData(person.email, await read(`allowedUsers/${person.email}`));
+    return { user, marker: markerFromData(key, await read(`deletions/${key}`)) };
+  }
+
+  async function adminLogActions() {
+    const log = await getDocs(collection(signedIn(env, ADMIN), 'adminLog'));
+    const entries = log.docs.map((entry) => entry.data());
+    expect(JSON.stringify(entries)).not.toMatch(/@/);
+    return entries.map((entry) => entry.action).sort();
+  }
+
+  // Inés con 21 tareas y su índice, y el marcador del respaldo con ese número.
+  async function seedInesTasks(count = 21) {
+    const extra = Array.from({ length: count - 1 }, (_, i) => `ines-extra-${i}`);
+    await seed(env, {
+      ...Object.fromEntries(
+        extra.flatMap((id) => [
+          [`tasks/${id}`, task(INES.uid)],
+          [`taskIndex/${id}`, { ownerId: INES.uid }],
+        ]),
+      ),
+      'deletions/uid-ines': { ...marker('backup-ready'), taskCount: count },
+    });
+  }
+
+  async function confirmInes(adminUsers = repository()) {
+    const { user, marker: ready } = await personAndMarker(INES, INES.uid);
+    const started = await startUserDeletion(
+      actor,
+      user,
+      { marker: ready, confirmation: ' INES@example.com ' },
+      deps(adminUsers),
+    );
+    expect(started).toMatchObject({ ok: true });
+    return personAndMarker(INES, INES.uid);
+  }
+
+  async function expectNothingLeft(person, key) {
+    expect(await read(`allowedUsers/${person.email}`)).toBeNull();
+    expect(await read(`deletions/${key}`)).toBeNull();
+    if (person.uid) {
+      expect(await ownedBy('tasks', person.uid)).toEqual([]);
+      expect(await ownedBy('taskIndex', person.uid)).toEqual([]);
+    }
+  }
+
+  it('watchDeletions entrega el marcador del respaldo al administrador', async () => {
+    const markers = await new Promise((resolve, reject) => {
+      const stop = repository().watchDeletions((list) => {
+        stop();
+        resolve(list);
+      }, reject);
+    });
+    expect(markers).toEqual([{ key: INES.uid, state: 'backup-ready', taskCount: 1, backupAt: expect.any(Number) }]);
+  });
+
+  it('de punta a punta: confirma, borra por trozos con su avance y cierra sin dejar datos suyos', async () => {
+    await seedInesTasks();
+    const { user, marker: confirmed } = await confirmInes();
+    expect(user).toMatchObject({ deleting: true, doneLogId: expect.any(String) });
+    expect(confirmed.state).toBe('deleting');
+
+    const progress = [];
+    const result = await runUserDeletion(actor, user, confirmed, {
+      adminUsers: repository(),
+      onProgress: ({ done }) => progress.push(done),
+    });
+    expect(result).toEqual({ ok: true, total: 21 });
+    expect(progress).toEqual([0, 8, 16, 21]);
+    await expectNothingLeft(INES, INES.uid);
+    expect(await read('tasks/ana-1')).not.toBeNull();
+    expect(await read('taskIndex/beto-1')).not.toBeNull();
+    expect(await adminLogActions()).toEqual(['delete-done', 'delete-start']);
+  });
+
+  it('si se interrumpe a mitad, reanudar termina la eliminación', async () => {
+    await seedInesTasks();
+    const { user, marker: confirmed } = await confirmInes();
+
+    const flaky = repository();
+    let chunks = 0;
+    const deleteTaskChunk = flaky.deleteTaskChunk;
+    flaky.deleteTaskChunk = (...args) => {
+      chunks += 1;
+      return chunks === 2 ? Promise.reject(new RepositoryError('unavailable')) : deleteTaskChunk(...args);
+    };
+    await expect(runUserDeletion(actor, user, confirmed, { adminUsers: flaky })).rejects.toMatchObject({
+      reason: 'unavailable',
+    });
+    expect(await ownedBy('taskIndex', INES.uid)).toHaveLength(13);
+    expect(await read('allowedUsers/ines@example.com')).toMatchObject({ deleting: expect.any(Object) });
+
+    // Reanudar en otra sesión: la persona y su marcador se vuelven a leer de Firestore.
+    const again = await personAndMarker(INES, INES.uid);
+    const progress = [];
+    const resumed = await runUserDeletion(actor, again.user, again.marker, {
+      adminUsers: repository(),
+      onProgress: ({ done }) => progress.push(done),
+    });
+    expect(resumed).toEqual({ ok: true, total: 21 });
+    expect(progress).toEqual([8, 16, 21]);
+    await expectNothingLeft(INES, INES.uid);
+  });
+
+  it('a quien nunca entró solo le borra su documento y su marcador', async () => {
+    await seed(env, { 'deletions/nunca@example.com': { ...marker('backup-ready'), taskCount: 0 } });
+    const { user, marker: ready } = await personAndMarker(NUNCA, NUNCA.email);
+    expect(user.uid).toBeNull();
+    expect(await startUserDeletion(actor, user, { marker: ready, confirmation: NUNCA.email }, deps())).toMatchObject({
+      ok: true,
+    });
+
+    const confirmed = await personAndMarker(NUNCA, NUNCA.email);
+    expect(await runUserDeletion(actor, confirmed.user, confirmed.marker, { adminUsers: repository() })).toEqual({
+      ok: true,
+      total: 0,
+    });
+    await expectNothingLeft(NUNCA, NUNCA.email);
+    expect(await read('allowedUsers/ines@example.com')).not.toBeNull();
+  });
+
+  it('cancelar quita el marcador con su entrada y no toca a la persona ni sus tareas', async () => {
+    const { user, marker: ready } = await personAndMarker(INES, INES.uid);
+    expect(await cancelUserDeletion(actor, user, ready, deps())).toEqual({ ok: true });
+    expect(await read('deletions/uid-ines')).toBeNull();
+    expect(await read('allowedUsers/ines@example.com')).toMatchObject({ active: false, uid: INES.uid });
+    expect(await ownedBy('tasks', INES.uid)).toEqual(['ines-1']);
+    expect(await adminLogActions()).toEqual(['delete-cancel']);
+  });
+
+  it('reautorizar el mismo correo después de eliminarla empieza limpio', async () => {
+    const { user, marker: confirmed } = await confirmInes();
+    expect(await runUserDeletion(actor, user, confirmed, { adminUsers: repository() })).toEqual({
+      ok: true,
+      total: 1,
+    });
+
+    const input = { email: INES.email, name: 'Inés', role: 'member' };
+    expect(await authorizeEmailUseCase(actor, input, deps())).toEqual({ ok: true, email: INES.email });
+    const data = await read('allowedUsers/ines@example.com');
+    expect(Object.keys(data).sort()).toEqual(['active', 'lastChange', 'name', 'role']);
+    expect(userFromData(INES.email, data)).toMatchObject({ uid: null, permissions: {}, deleting: false });
+
+    // En su siguiente acceso registra de nuevo su uid y no encuentra nada suyo.
+    const ines = signedIn(env, INES);
+    await assertSucceeds(updateDoc(doc(ines, 'allowedUsers/ines@example.com'), { uid: INES.uid }));
+    expect((await getDocs(query(collection(ines, 'tasks'), where('ownerId', '==', INES.uid)))).size).toBe(0);
+    expect((await getDocs(query(collection(ines, 'taskIndex'), where('ownerId', '==', INES.uid)))).size).toBe(0);
+  });
+
+  it('con el respaldo vencido no se confirma y el servidor tampoco deja borrar sus tareas', async () => {
+    await seed(env, { 'deletions/uid-ines': marker('backup-ready', { backupAt: Date.now() - 25 * HOUR }) });
+    const { user, marker: stale } = await personAndMarker(INES, INES.uid);
+    expect(await startUserDeletion(actor, user, { marker: stale, confirmation: INES.email }, deps())).toEqual({
+      ok: false,
+      reason: 'backup-stale',
+    });
+    await expect(repository().deleteTaskChunk(INES.uid, 8)).rejects.toMatchObject({ reason: 'permission-denied' });
+    expect(await ownedBy('tasks', INES.uid)).toEqual(['ines-1']);
   });
 });
