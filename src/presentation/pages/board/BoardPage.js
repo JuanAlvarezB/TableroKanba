@@ -1,7 +1,7 @@
 // Vista del tablero (tablero.html): dibuja las columnas a partir del store y traduce lo que hace
 // la persona (clic, arrastrar, teclado) en acciones del store. Guarda el estado propio de la
 // vista: tarea en edición, menú de etiquetas abierto, filtro, arrastre y resaltados.
-import { WIP_LIMITS, countByStatus, filtersFor, isColumnFull } from '../../../domain/rules/board.js';
+import { WIP_LIMITS, isColumnFull } from '../../../domain/rules/board.js';
 import { sortForView } from '../../../domain/rules/priority.js';
 import { adjacentStatus } from '../../../domain/usecases/MoveTask.js';
 import { createTaskCard } from '../../components/TaskCard.js';
@@ -12,6 +12,7 @@ import { createDragController } from './dragController.js';
 import { createEditingController } from './editingController.js';
 import { createHighlights } from './highlights.js';
 import { createLabelMenuController } from './labelMenuController.js';
+import { createToolbarController } from './toolbarController.js';
 
 /**
  * @param {object} deps
@@ -19,13 +20,9 @@ import { createLabelMenuController } from './labelMenuController.js';
  * @param {ReturnType<typeof import('../../../data/repositories/ReminderStore.js').createReminderStore>} deps.reminders
  */
 export function createBoardPage({ store, reminders }) {
-  const taskForm = document.getElementById('task-form');
-  const taskInput = document.getElementById('task-input');
   const taskCount = document.getElementById('task-count');
   const allDoneMessage = document.getElementById('all-done-message');
-  const clearCompletedBtn = document.getElementById('clear-completed');
   const lists = document.querySelectorAll('.task-list');
-  const filterButtons = document.querySelectorAll('.filter-btn');
 
   const notices = createBoardNotices({
     boardNotice: document.getElementById('board-notice'),
@@ -33,7 +30,6 @@ export function createBoardPage({ store, reminders }) {
     syncStatus: document.getElementById('sync-status'),
   });
 
-  let activeFilter = 'all';
   const highlights = createHighlights();
 
   const tasks = () => store.tasks;
@@ -45,6 +41,7 @@ export function createBoardPage({ store, reminders }) {
     },
   });
   const editor = createEditingController({ store, showNotice, render, beforeStart: () => labelMenu.forget() });
+  const toolbar = createToolbarController({ store, render, beforeClear: (ids) => editor.discard(ids) });
   const drag = createDragController({ store, lists });
   const alerts = createAlertsController({
     store,
@@ -52,16 +49,8 @@ export function createBoardPage({ store, reminders }) {
     highlights,
     render,
     isDragging: () => drag.isDragging,
-    filter: { current: () => activeFilter, showAll: () => setFilter('all') },
+    filter: { current: () => toolbar.activeFilter, showAll: () => toolbar.setFilter('all') },
   });
-
-  /* ---------- Filtro ---------- */
-
-  function setFilter(filter) {
-    activeFilter = filter;
-    filterButtons.forEach((btn) => btn.setAttribute('aria-pressed', String(btn.dataset.filter === filter)));
-    render();
-  }
 
   /* ---------- Acciones de la tarjeta ---------- */
 
@@ -76,14 +65,6 @@ export function createBoardPage({ store, reminders }) {
     editor.discard([id]);
     labelMenu.forget(id);
     store.delete(id);
-  }
-
-  function clearCompleted() {
-    const completedIds = tasks()
-      .filter((t) => t.status === 'completed')
-      .map((t) => t.id);
-    editor.discard(completedIds);
-    store.clearCompleted();
   }
 
   const cardActions = {
@@ -123,10 +104,7 @@ export function createBoardPage({ store, reminders }) {
       list.innerHTML = '';
 
       const columnTasks = all.filter((t) => t.status === status);
-      const visibleTasks = sortForView(
-        columnTasks.filter(filtersFor(currentFeatures())[activeFilter]),
-        currentFeatures(),
-      );
+      const visibleTasks = sortForView(columnTasks.filter(toolbar.visibleFilter()), currentFeatures());
       if (visibleTasks.length === 0) {
         const empty = document.createElement('li');
         empty.className = 'empty';
@@ -145,7 +123,7 @@ export function createBoardPage({ store, reminders }) {
     const openCount = all.filter((t) => t.status !== 'completed').length;
     taskCount.textContent = `${openCount} tarea${openCount === 1 ? '' : 's'} sin completar`;
 
-    clearCompletedBtn.disabled = countByStatus(all, 'completed') === 0;
+    toolbar.render(all);
     alerts.render();
 
     const allCompleted = all.length > 0 && openCount === 0;
@@ -166,18 +144,7 @@ export function createBoardPage({ store, reminders }) {
 
   drag.listen();
 
-  taskForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    const text = taskInput.value.trim();
-    if (text) {
-      store.add(text);
-      taskInput.value = '';
-      taskInput.focus();
-    }
-  });
-
-  clearCompletedBtn.addEventListener('click', clearCompleted);
-  filterButtons.forEach((btn) => btn.addEventListener('click', () => setFilter(btn.dataset.filter)));
+  toolbar.listen();
 
   labelMenu.listen();
 
