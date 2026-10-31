@@ -193,7 +193,7 @@ describe('P-2 autorizar: casos rechazados', () => {
 
   it.each([
     ['uid', { uid: CARLA.uid }],
-    ['permissions', { permissions: { tablero: true } }],
+    ['permissions', { permissions: { board: true } }],
     ['deleting', { deleting: { at: 1, doneLogId: 'x' } }],
     ['otro campo', { notas: 'x' }],
   ])('con %s', async (_, extra) => {
@@ -249,9 +249,7 @@ describe('P-3 cambios del administrador sobre otra persona', () => {
   it('cambia un documento legado (sin role ni active) y los permisos', async () => {
     const db = signedIn(env, ADMIN);
     await assertSucceeds(adminChange(db, ANA.email, { active: false }, { action: 'deactivate' }));
-    await assertSucceeds(
-      adminChange(db, ANA.email, { permissions: { tablero: false } }, { action: 'set-permissions' }),
-    );
+    await assertSucceeds(adminChange(db, ANA.email, { permissions: { board: false } }, { action: 'set-permissions' }));
   });
 
   it('la entrada puede llevar un detalle pequeño y targetUid', async () => {
@@ -734,7 +732,7 @@ describe('P-14 reautorizar un correo eliminado empieza limpio', () => {
   it('no se puede reautorizar heredando uid, permisos ni la marca de eliminación', async () => {
     const db = signedIn(env, ADMIN);
     await assertFails(authorizeEmail(db, 'ex@example.com', { uid: INES.uid }));
-    await assertFails(authorizeEmail(db, 'ex@example.com', { permissions: { tablero: false } }));
+    await assertFails(authorizeEmail(db, 'ex@example.com', { permissions: { board: false } }));
     await assertFails(authorizeEmail(db, 'ex@example.com', { deleting: { at: 1, doneLogId: 'x' } }));
   });
 });
