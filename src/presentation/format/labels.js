@@ -62,3 +62,12 @@ export const HISTORY_TEXTS = {
 export function plural(count, singular, pluralForm) {
   return `${count} ${count === 1 ? singular : pluralForm}`;
 }
+
+// Largo con el que los diálogos nombran una tarea (docs/PLAN_SUBTAREAS.md, 1.2).
+export const CLIP_LENGTH = 80;
+
+// Recorta un texto largo con … al final. Cuenta caracteres, no unidades UTF-16, para no partir un emoji.
+export function clipText(text, max = CLIP_LENGTH) {
+  const chars = Array.from(text);
+  return chars.length <= max ? text : chars.slice(0, max - 1).join('') + '…';
+}

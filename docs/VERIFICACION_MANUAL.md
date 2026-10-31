@@ -48,8 +48,8 @@ Tareas:
 - [ ] Editar el texto (botón editar, Enter guarda, Escape cancela).
 - [ ] Mover con los botones atrás y adelante entre Pendiente, En curso y Completada.
 - [ ] Arrastrar y soltar dentro de una columna y entre columnas.
-- [ ] Borrar una tarea.
-- [ ] "Limpiar completadas" borra solo las completadas.
+- [ ] Borrar una tarea (pide confirmación, ver la sección 9).
+- [ ] "Borrar completadas" borra solo las completadas (pide confirmación, ver la sección 9).
 - [ ] El historial de la tarjeta muestra las fechas de creada, iniciada y completada.
 
 Prioridad y vencimientos:
@@ -596,3 +596,25 @@ Pasos de `docs/PLAN_USUARIOS.md`, 4.7, más la etiqueta de B-4.1 y la accesibili
 - [ ] Lector de pantalla (VoiceOver): anuncia el botón con "contraído" o "expandido" y lee cada evento con
       su fecha; la flecha ▸ no se lee.
 - [ ] A 320 px de ancho, los eventos largos se parten en varias líneas sin desbordar la tarjeta.
+
+## 9. Confirmación de borrado
+
+Diseño en `docs/PLAN_SUBTAREAS.md`, parte 1. Usar solo tareas de prueba propias: el borrado es permanente.
+
+- [ ] 🗑️ abre "¿Borrar esta tarea?" con el texto de la tarea entre « »; uno muy largo aparece recortado con "…".
+- [ ] Cancelar, Escape y tocar fuera no borran nada; el foco vuelve al 🗑️ de esa tarea.
+- [ ] "Borrar tarea" la borra, cierra el diálogo, actualiza el contador y muestra "Se borró la tarea «…»"; el
+      foco pasa a la tarjeta siguiente (o al título de la columna si quedó vacía).
+- [ ] Doble clic rápido en "Borrar tarea" borra una sola tarea.
+- [ ] Sin completadas, "Borrar completadas" está deshabilitado.
+- [ ] Con 1 y con 4 completadas, el diálogo dice "1 tarea completada" y "4 tareas completadas".
+- [ ] Confirmar borra solo las completadas (Pendiente y En curso no cambian), avisa cuántas se borraron y el
+      foco va al título "Completada".
+- [ ] Teclado: Tab llega a 🗑️, Enter abre, el foco está en Cancelar, Tab pasa a "Borrar tarea", Escape cierra.
+- [ ] Lector de pantalla (VoiceOver): al abrir lee el título, el mensaje y "Esta acción no se puede deshacer";
+      el botón se anuncia "Borrar tarea, botón" (sin leer el ícono); al confirmar anuncia el aviso.
+- [ ] Móvil (iPhone o 360 px): los botones ocupan el ancho, Cancelar arriba, nada se corta.
+- [ ] Dos pestañas: con el diálogo abierto en una, borrar la tarea en la otra cierra el diálogo con "La tarea
+      ya no existe…"; cambiar su texto lo actualiza; completar otra tarea cambia el número del diálogo masivo.
+- [ ] Sin conexión: confirmar borra en local y al reconectar se sincroniza.
+- [ ] La página de usuarios conserva sus confirmaciones igual (desactivar, reactivar, rol).

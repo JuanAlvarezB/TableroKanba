@@ -16,6 +16,8 @@
   --lucas-error-bg: #fdeceb;
   --lucas-error-fg: #8a1f11;
   --lucas-error-border: #f3c6c0;
+  --lucas-warn-bg: #fff4e0;
+  --lucas-warn-fg: #7a4a00; /* contraste AA sobre su fondo */
 }
 
 /* ---------- Pantalla de carga: nada privado antes de confirmar la sesión ---------- */
@@ -317,6 +319,33 @@
 .dialog-btn:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* Advertencia de un diálogo de confirmación del tablero (BoardConfirm.js): con ícono, no solo color. */
+.dialog-warn {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--lucas-warn-bg);
+  color: var(--lucas-warn-fg);
+  font-size: 0.92rem;
+}
+
+.dialog-warn[hidden] {
+  display: none;
+}
+
+/* En pantallas estrechas los botones ocupan el ancho, con Cancelar arriba (lejos del pulgar). */
+@media (max-width: 480px) {
+  .board-confirm .dialog-actions {
+    flex-direction: column;
+  }
+
+  .board-confirm .dialog-btn {
+    width: 100%;
+  }
 }
 
 .password-field {

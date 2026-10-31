@@ -19,11 +19,31 @@ export const FEATURE_MESSAGES = {
   },
 };
 
-// Avisos del tablero (presentation/state/boardStore.js).
+// Avisos del tablero (presentation/state/boardStore.js y pages/board/).
 export const BOARD_MESSAGES = {
   // La copia local no cupo con el historial (docs/PLAN_USUARIOS.md, A-42).
   historyNotStored:
     'Este navegador no tiene espacio para el historial de las tareas: la copia local se guardó sin él. El historial sigue guardado en el servidor.',
+  // Confirmación de borrado (docs/PLAN_SUBTAREAS.md, 1.2). El texto de la tarea llega ya recortado.
+  irreversible: 'Esta acción no se puede deshacer.',
+  cancel: 'Cancelar',
+  deleteTask: {
+    title: '¿Borrar esta tarea?',
+    text: (name) => `«${name}» se borrará con su historial.`,
+    confirm: 'Borrar tarea',
+    done: (name) => `Se borró la tarea «${name}».`,
+    gone: 'La tarea ya no existe: se borró en otro dispositivo.',
+  },
+  clearCompleted: {
+    title: '¿Borrar las tareas completadas?',
+    text: (count) =>
+      count === 1
+        ? 'Se borrará 1 tarea completada con su historial. Las tareas pendientes y en curso no cambian.'
+        : `Se borrarán ${count} tareas completadas con su historial. Las tareas pendientes y en curso no cambian.`,
+    confirm: 'Borrar las completadas',
+    done: (count) => (count === 1 ? 'Se borró 1 tarea completada.' : `Se borraron ${count} tareas completadas.`),
+    gone: 'Ya no hay tareas completadas: se borraron o se movieron en otro dispositivo.',
+  },
 };
 
 // Gestión de usuarios (presentation/state/usersStore.js; docs/PLAN_USUARIOS.md, 2.4). Neutros en
