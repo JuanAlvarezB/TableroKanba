@@ -82,8 +82,9 @@ cuentas no se comparten entre Desarrollo y PDN).
 
 1. En LUCAS, inicio → **Gestión de usuarios** (`usuarios.html`, solo para administradores) →
    **Autorizar correo**, con su nombre y su rol. La misma página desactiva, reactiva, da o quita el
-   rol de administrador y elimina a una persona desactivada (tras el respaldo del script, ver «Script
-   administrativo»), y cada cambio queda en el registro `adminLog`. Sin la página (o para el
+   rol de administrador, enciende o apaga las funciones de un miembro (**Permisos…**) y elimina a una
+   persona desactivada (tras el respaldo del script, ver «Script administrativo»), y cada cambio queda
+   en el registro `adminLog`. Sin la página (o para el
    primer administrador), a mano: Firestore → colección `allowedUsers` → documento cuyo ID es el
    correo **en minúsculas**, con el campo `name` (texto) que LUCAS mostrará.
 2. Correo y contraseña: Authentication → Usuarios → Agregar usuario, con una contraseña
@@ -222,8 +223,9 @@ servidor (la pantalla las seguiría ocultando): antes de publicar una versión a
 grep -q "function boardOn" firestore.rules && echo "Con permisos" || echo "Sin permisos: el servidor no los cumple"
 ```
 
-Para devolver todas las funciones a una persona basta con borrar su campo `permissions` en la consola: vuelven
-los valores iniciales (todo activo).
+Los permisos se cambian en `usuarios.html` → **Acciones** → **Permisos…** (cada cambio deja una entrada
+`set-permissions` en `adminLog`). Para devolver todas las funciones a una persona también basta con borrar su
+campo `permissions` en la consola: vuelven los valores iniciales (todo activo).
 
 ### Comprobar con el script (`verificar-reglas`)
 

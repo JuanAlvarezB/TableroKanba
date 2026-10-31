@@ -491,6 +491,65 @@ Al terminar:
 - [ ] En PDN, después del merge: el inicio y el tablero se ven como antes para el administrador y para un
       miembro (nadie tiene `permissions`), sin errores en la consola.
 
+### 7.8 Panel de permisos (PR 9)
+
+Diseño en `docs/PLAN_USUARIOS.md`, 3.6 y 3.7 (boceto `permisos-usuario.html`): en `usuarios.html`, **Acciones →
+Permisos…** abre un diálogo con un interruptor por función y, al guardar, un resumen de los cambios. No cambia
+`firestore.rules` (las reglas del PR 7 ya están publicadas). Dos cuentas, como en 7.7: la del administrador (A)
+y la de prueba (B, miembro, nunca la de una persona real). Primero en Desarrollo; en PDN, solo los puntos de
+«Al terminar». Antes de empezar, B tiene tareas con prioridad, con fecha límite y con historial.
+
+Acceso y solo lectura:
+- [ ] En la fila de B, **Acciones** muestra **Permisos…** como primera opción; la fila de A ("Tú") no tiene
+      acciones y una persona en eliminación solo ofrece "Reanudar eliminación".
+- [ ] B (miembro) no ve la tarjeta "Gestión de usuarios" y, si escribe `usuarios.html`, vuelve al inicio sin
+      ver nada (7.2): no puede abrir el panel.
+- [ ] Con una segunda cuenta administradora (si existe), su panel dice "Los administradores tienen siempre
+      todas las funciones. Este panel es de solo lectura.", muestra todo "Activa", deshabilitado, y solo
+      tiene el botón Cerrar. Si no hay otra, darle el rol a B, comprobarlo y quitárselo.
+
+Cambiar y guardar:
+- [ ] El panel de B muestra el tablero arriba y sus cinco funciones debajo, cada una con "Se aplica en el
+      servidor" (tablero, prioridad, fecha límite) o "Solo en la pantalla" (detenidas, recordatorios,
+      historial), y su estado en texto ("Activa"/"Apagada"), no solo en color.
+- [ ] Apagar el tablero: las cinco funciones quedan deshabilitadas con su valor y aparece "Con el tablero
+      apagado, estas funciones tampoco están disponibles. Sus valores se conservan y vuelven al reactivar el
+      tablero." La función cambiada dice "Sin guardar".
+- [ ] **Descartar** vuelve a lo guardado y deja de haber cambios (Descartar y Guardar cambios… se deshabilitan).
+- [ ] **Guardar cambios…** muestra "¿Guardar los cambios?" con una línea por cambio ("Tablero de tareas:
+      activada → apagada"); **Volver** regresa a los interruptores sin perder lo elegido; **Guardar** cierra,
+      avisa "Permisos actualizados." y el foco vuelve al botón Acciones de B.
+- [ ] En la consola de Firebase: el documento de B tiene `permissions` con solo las claves cambiadas y
+      `lastChange`; `adminLog` tiene una entrada nueva `set-permissions` con el `uid` de A, el de B y `detail`
+      `{ off: […] }` o `{ on: […] }`, sin correos ni nombres.
+- [ ] Encender y apagar la misma función antes de guardar no deja nada pendiente (sin escritura ni entrada).
+- [ ] Sin conexión (DevTools → Network → Offline), Guardar muestra "Sin conexión. Revisa tu internet e
+      inténtalo de nuevo." dentro del diálogo y no lo cierra.
+
+Efecto en B y en los demás (criterios 3.13: 1, 5 y 6):
+- [ ] Con el tablero de B apagado desde el panel, B no ve la tarjeta del tablero; `tablero.html` lo lleva al
+      inicio con el aviso (como en 7.7). A sigue usando su tablero sin cambios.
+- [ ] Apagar `priorities` y `dueDates` a B desde el panel: B ya no ve sus etiquetas ni fechas; A sigue viendo
+      las suyas. Volver a encenderlas: las de B vuelven igual.
+- [ ] Apagar el tablero con `history` apagada y `reminders` encendida; reactivar el tablero: `history` sigue
+      apagada y `reminders` encendida, y las tareas, prioridades, fechas e historial de B vuelven igual.
+
+Accesibilidad (`docs/DESIGN.md`):
+- [ ] Solo con teclado: Tab llega al menú de Acciones, flecha abajo y Enter abren Permisos…; el foco empieza
+      en el interruptor del tablero; Espacio o Enter lo cambian; Tab salta las funciones deshabilitadas; Esc
+      cierra y el foco vuelve a Acciones.
+- [ ] Con VoiceOver (o NVDA): cada interruptor se anuncia como "Tablero de tareas, conmutador, activado" (o
+      equivalente) con su descripción y si se aplica en el servidor; al apagar el tablero se lee el aviso de
+      que las funciones se conservan; el resumen y los errores se leen.
+- [ ] A 320 px de ancho: sin desplazamiento horizontal; el interruptor baja debajo del texto y mide al menos
+      44 px de alto; el diálogo se desplaza por dentro.
+
+Al terminar:
+- [ ] En Desarrollo, borrar el campo `permissions` de B (vuelve a tener todo activo).
+- [ ] En PDN, después del merge: A abre el panel de una persona sin cambiar nada (Cerrar) y la página no
+      muestra errores en la consola. Ningún documento de PDN tiene `permissions` salvo que se haya decidido
+      apagar algo a alguien.
+
 ## 8. Historial de tareas
 
 Diseño en `docs/PLAN_USUARIOS.md`, sección 4. Los eventos guardados se revisan en la consola de Firebase
