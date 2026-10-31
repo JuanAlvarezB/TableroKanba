@@ -60,6 +60,8 @@ describe('historial de la tarjeta', () => {
     [{ type: 'priority', from: 'high', to: null }, 'Prioridad: Prioritaria → sin etiqueta'],
     [{ type: 'due', from: null, to: '2026-10-15' }, 'Fecha límite: sin fecha → 15 oct 2026'],
     [{ type: 'due', from: '2026-10-15', to: null }, 'Fecha límite: 15 oct 2026 → sin fecha'],
+    [{ type: 'subtask', text: 'Revisar cifras', to: 'done' }, 'Subtarea terminada: «Revisar cifras»'],
+    [{ type: 'subtask', text: 'Revisar cifras', to: 'pending' }, 'Subtarea pendiente otra vez: «Revisar cifras»'],
   ])('%o → %s', (fields, text) => {
     expect(historyEventText(event(fields))).toBe(text);
   });
