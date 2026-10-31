@@ -70,9 +70,9 @@ function fakeRepository() {
 const NOW = 1_800_000_000_000;
 const HOUR = 60 * 60 * 1000;
 
-function setup(list = [], { markers = null, newId = () => 'log-1' } = {}) {
+function setup(list = [], { markers = null, newId = () => 'log-1', defaults } = {}) {
   const repository = fakeRepository();
-  const store = createUsersStore({ newId, now: () => NOW });
+  const store = createUsersStore({ newId, now: () => NOW, defaults });
   const events = { change: 0, notice: [], error: [], 'access-lost': 0, progress: [] };
   store.on('change', () => events.change++);
   store.on('notice', (text) => events.notice.push(text));
@@ -276,6 +276,86 @@ describe('usersStore: acciones', () => {
     expect(await store.change('deactivate', 'ana@ejemplo.test')).toMatchObject({ message: USERS_MESSAGES.unavailable });
     expect(events['access-lost']).toBe(1);
     expect(events.notice).toEqual([]);
+  });
+});
+
+describe('usersStore: permisos', () => {
+  const ALL_ON = { board: true, priorities: true, dueDates: true, stalledAlerts: true, reminders: true, history: true };
+
+  it('el valor propio de cada función usa los valores iniciales del ambiente', () => {
+    const { store } = setup([admin], { defaults: { ...ALL_ON, reminders: false } });
+    expect(store.ownPermissions(person('ana@ejemplo.test', { permissions: { board: false } }))).toEqual({
+      ...ALL_ON,
+      board: false,
+      reminders: false,
+    });
+  });
+
+  it('guarda los cambios sobre el estado actual con su entrada set-permissions y avisa', async () => {
+    const ana = person('ana@ejemplo.test', { permissions: { history: false } });
+    const { store, repository, events } = setup([admin, ana]);
+    expect(await store.setPermissions('ana@ejemplo.test', { board: false })).toEqual({
+      ok: true,
+      message: 'Permisos actualizados.',
+    });
+    expect(repository.writes).toEqual([
+      [
+        'update',
+        'ana@ejemplo.test',
+        { permissions: { history: false, board: false } },
+        {
+          id: 'log-1',
+          action: 'set-permissions',
+          actorUid: 'u-admin',
+          targetUid: 'uid-ana@ejemplo.test',
+          detail: { off: ['board'] },
+        },
+      ],
+    ]);
+    expect(events.notice).toEqual(['Permisos actualizados.']);
+  });
+
+  it('sin diferencias no escribe y lo dice', async () => {
+    const { store, repository, events } = setup([admin, person('ana@ejemplo.test')]);
+    expect(await store.setPermissions('ana@ejemplo.test', { board: true })).toEqual({
+      ok: true,
+      message: USERS_MESSAGES.permissionsUnchanged,
+    });
+    expect(repository.writes).toEqual([]);
+    expect(events.notice).toEqual([USERS_MESSAGES.permissionsUnchanged]);
+  });
+
+  it('con los valores iniciales del ambiente, encender lo que estaba apagado por omisión es un cambio', async () => {
+    const { store, repository } = setup([admin, person('ana@ejemplo.test')], {
+      defaults: { ...ALL_ON, reminders: false },
+    });
+    await store.setPermissions('ana@ejemplo.test', { reminders: true });
+    expect(repository.writes[0][3].detail).toEqual({ on: ['reminders'] });
+  });
+
+  it('rechaza con los motivos propios de los permisos', async () => {
+    const { store, repository } = setup([admin, person('carla@ejemplo.test', { role: 'admin' })]);
+    expect(await store.setPermissions('carla@ejemplo.test', { board: false })).toEqual({
+      ok: false,
+      reason: 'target-is-admin',
+      message: 'Los administradores tienen siempre todas las funciones.',
+    });
+    expect(await store.setPermissions('admin@ejemplo.test', { board: false })).toMatchObject({
+      reason: 'self',
+      message: 'No puedes cambiar tus propios permisos.',
+    });
+    expect(await store.setPermissions('nadie@ejemplo.test', { board: false })).toMatchObject({ reason: 'not-found' });
+    expect(repository.writes).toEqual([]);
+  });
+
+  it('permission-denied del servidor pide revalidar la sesión', async () => {
+    const { store, repository, events } = setup([admin, person('ana@ejemplo.test')]);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    repository.failWith = new RepositoryError('permission-denied');
+    expect(await store.setPermissions('ana@ejemplo.test', { board: false })).toMatchObject({
+      reason: 'permission-denied',
+    });
+    expect(events['access-lost']).toBe(1);
   });
 });
 
