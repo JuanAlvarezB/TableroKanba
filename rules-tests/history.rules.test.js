@@ -213,7 +213,8 @@ describe('H-8 sin llamadas get() adicionales', () => {
     const rules = readRules();
     const isHistory = rules.slice(rules.indexOf('function isHistory'), rules.indexOf('function isValidTask'));
     expect(isHistory).toContain('data.history.size() <= 100');
-    expect(isHistory).not.toMatch(/\b(get|exists|getAfter|existsAfter)\(/);
+    // get() de las reglas lee un documento; data.get() es el método del mapa y no lee nada.
+    expect(isHistory).not.toMatch(/(?<![.\w])(get|exists|getAfter|existsAfter)\(/);
   });
 });
 
@@ -221,7 +222,7 @@ describe('H-8 sin llamadas get() adicionales', () => {
 // publicadas si se revirtieran sin seguir el procedimiento del README.
 function rulesWithoutHistory() {
   return readRules()
-    .replace("'ownerId', 'history'])", "'ownerId'])")
+    .replace("'ownerId', 'history'", "'ownerId'")
     .replace(/\n\s*&& isHistory\(data\)/, '');
 }
 
@@ -230,7 +231,8 @@ describe('H-9 con las reglas anteriores, las tareas con history dejan de poder e
 
   beforeAll(async () => {
     const rules = rulesWithoutHistory();
-    expect(rules).not.toContain("'history'])");
+    expect(rules).not.toContain("'ownerId', 'history'");
+    expect(rules).not.toMatch(/hasOnly\(\[[^\]]*'history'/);
     expect(rules).not.toContain('&& isHistory(data)');
     previous = await createTestEnvironment({ rules });
   });

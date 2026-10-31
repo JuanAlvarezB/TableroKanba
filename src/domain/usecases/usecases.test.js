@@ -2,15 +2,20 @@ import { describe, expect, it, vi } from 'vitest';
 import { RepositoryError } from '../repositories/RepositoryError.js';
 import { ALL_FEATURES, featureDefaults } from '../rules/features.js';
 import { addTask } from './AddTask.js';
+import { addSubtask } from './AddSubtask.js';
 import { OFFLINE_GRACE_MS, authorizeUser } from './AuthorizeUser.js';
 import { checkReminder } from './CheckReminder.js';
 import { claimUid } from './ClaimUid.js';
 import { completeTaskIndex } from './CompleteTaskIndex.js';
 import { clearCompleted, deleteTask } from './DeleteTasks.js';
+import { editSubtask } from './EditSubtask.js';
 import { migrateLocalTasks } from './MigrateLocalTasks.js';
 import { adjacentStatus, moveTask } from './MoveTask.js';
+import { removeSubtask } from './RemoveSubtask.js';
+import { reorderSubtask } from './ReorderSubtask.js';
 import { setDueDate } from './SetDueDate.js';
 import { setPriority } from './SetPriority.js';
+import { toggleSubtask } from './ToggleSubtask.js';
 
 const NOW = 1_790_000_000_000;
 
@@ -72,6 +77,190 @@ describe('moveTask', () => {
     expect(adjacentStatus(task('a'), 1)).toBe('in-progress');
     expect(adjacentStatus(task('a'), -1)).toBeNull();
     expect(adjacentStatus(task('a', { status: 'completed' }), 1)).toBeNull();
+  });
+});
+
+describe('moveTask con subtareas', () => {
+  const step = (id, done = false) => ({ id, text: `Paso ${id}`, done });
+  const withSteps = (status, subtasks) => [task('a', { status, order: 0, subtasks, openSubtasks: 0 }), task('b')];
+
+  it('no completa una tarea con pendientes y dice cuáles faltan, sin cambios', () => {
+    for (const status of ['pending', 'in-progress']) {
+      expect(moveTask(withSteps(status, [step('s1', true), step('s2')]), { id: 'a', status: 'completed' })).toEqual({
+        ok: false,
+        reason: 'open-subtasks',
+        open: 1,
+        total: 2,
+        pending: ['Paso s2'],
+      });
+    }
+  });
+
+  it('completa desde cualquier columna si todas están terminadas', () => {
+    for (const status of ['pending', 'in-progress']) {
+      const result = moveTask(withSteps(status, [step('s1', true)]), { id: 'a', status: 'completed', now: NOW });
+      expect(result.ok).toBe(true);
+      expect(result.changes).toMatchObject({ status: 'completed', completedAt: NOW });
+    }
+  });
+
+  it('Pendiente ↔ En curso y reordenar no se bloquean con pendientes', () => {
+    const open = [step('s1')];
+    expect(moveTask(withSteps('pending', open), { id: 'a', status: 'in-progress' }).ok).toBe(true);
+    expect(moveTask(withSteps('in-progress', open), { id: 'a', status: 'pending' }).ok).toBe(true);
+    expect(moveTask(withSteps('completed', open), { id: 'a', status: 'completed', beforeId: 'b' }).ok).toBe(true);
+  });
+
+  it('una tarea sin subtareas se completa igual que antes', () => {
+    expect(moveTask(board(), { id: 'c', status: 'completed', now: NOW })).toMatchObject({
+      ok: true,
+      changes: { status: 'completed', completedAt: NOW },
+    });
+  });
+});
+
+describe('subtareas', () => {
+  const step = (id, done = false, text = `Paso ${id}`) => ({ id, text, done });
+  const withSteps = (subtasks, fields = {}) => [task('a', { subtasks, openSubtasks: 0, ...fields }), task('b')];
+
+  it('addSubtask la agrega al final, pendiente, con el contador', () => {
+    expect(
+      addSubtask(withSteps([step('s1', true)]), { id: 'a', subtaskId: 's2', text: '  Llamar\nal proveedor ' }),
+    ).toEqual({
+      ok: true,
+      changes: { subtasks: [step('s1', true), step('s2', false, 'Llamar al proveedor')], openSubtasks: 1 },
+    });
+    expect(addSubtask([task('a')], { id: 'a', subtaskId: 's1', text: 'Primero' }).changes.subtasks).toHaveLength(1);
+  });
+
+  it('addSubtask rechaza vacía, larga, la 21 y en una completada', () => {
+    const list = withSteps([]);
+    expect(addSubtask(list, { id: 'a', subtaskId: 'x', text: '   ' })).toEqual({ ok: false, reason: 'empty' });
+    expect(addSubtask(list, { id: 'a', subtaskId: 'x', text: 'x'.repeat(201) })).toEqual({
+      ok: false,
+      reason: 'too-long',
+    });
+    const full = Array.from({ length: 20 }, (_, i) => step(`s${i}`));
+    expect(addSubtask(withSteps(full), { id: 'a', subtaskId: 'x', text: 'Otra' })).toEqual({
+      ok: false,
+      reason: 'limit',
+    });
+    expect(addSubtask(withSteps([], { status: 'completed' }), { id: 'a', subtaskId: 'x', text: 'Otra' })).toEqual({
+      ok: false,
+      reason: 'completed',
+    });
+    expect(addSubtask(list, { id: 'zzz', subtaskId: 'x', text: 'Otra' })).toEqual({ ok: false, reason: 'not-found' });
+  });
+
+  it('editSubtask cambia el texto y rechaza vacío, sin cambios y en una completada', () => {
+    const list = withSteps([step('s1'), step('s2', true)]);
+    expect(editSubtask(list, { id: 'a', subtaskId: 's2', text: 'Nuevo' })).toEqual({
+      ok: true,
+      changes: { subtasks: [step('s1'), step('s2', true, 'Nuevo')], openSubtasks: 1 },
+    });
+    expect(editSubtask(list, { id: 'a', subtaskId: 's1', text: '' })).toEqual({ ok: false, reason: 'empty' });
+    expect(editSubtask(list, { id: 'a', subtaskId: 's1', text: ' Paso s1 ' })).toEqual({
+      ok: false,
+      reason: 'unchanged',
+    });
+    expect(editSubtask(list, { id: 'a', subtaskId: 'zz', text: 'x' })).toEqual({ ok: false, reason: 'not-found' });
+    expect(
+      editSubtask(withSteps([step('s1', true)], { status: 'completed' }), { id: 'a', subtaskId: 's1', text: 'x' }),
+    ).toEqual({ ok: false, reason: 'completed' });
+  });
+
+  it('toggleSubtask marca y desmarca sin mover la tarea, ni siquiera al terminar la última', () => {
+    const list = withSteps([step('s1', true), step('s2')], { status: 'in-progress' });
+    expect(toggleSubtask(list, { id: 'a', subtaskId: 's2', done: true, now: NOW })).toEqual({
+      ok: true,
+      changes: { subtasks: [step('s1', true), step('s2', true)], openSubtasks: 0 },
+    });
+    expect(toggleSubtask(list, { id: 'a', subtaskId: 's1', done: false })).toEqual({
+      ok: true,
+      changes: { subtasks: [step('s1'), step('s2')], openSubtasks: 2 },
+    });
+    expect(toggleSubtask(list, { id: 'a', subtaskId: 's1', done: true })).toEqual({ ok: false, reason: 'unchanged' });
+    expect(toggleSubtask(list, { id: 'a', subtaskId: 'zz', done: true })).toEqual({ ok: false, reason: 'not-found' });
+  });
+
+  it('toggleSubtask en una completada pide reabrir y, al confirmar, la devuelve a En curso al final', () => {
+    const list = withSteps([step('s1', true), step('s2', true)], { status: 'completed', startedAt: 5, completedAt: 9 });
+    expect(toggleSubtask(list, { id: 'a', subtaskId: 's1', done: false })).toEqual({
+      ok: false,
+      reason: 'needs-reopen',
+    });
+    expect(toggleSubtask(list, { id: 'a', subtaskId: 's1', done: false, reopen: true, now: NOW })).toEqual({
+      ok: true,
+      changes: {
+        subtasks: [step('s1'), step('s2', true)],
+        openSubtasks: 1,
+        status: 'in-progress',
+        order: 1,
+        startedAt: NOW,
+        completedAt: null,
+      },
+    });
+  });
+
+  it('toggleSubtask no reabre si En curso está lleno (P-9)', () => {
+    const full = Array.from({ length: 200 }, (_, i) => task(`p${i}`, { status: 'in-progress', order: i }));
+    const done = task('a', { status: 'completed', order: 300, subtasks: [step('s1', true)], openSubtasks: 0 });
+    expect(toggleSubtask([...full, done], { id: 'a', subtaskId: 's1', done: false, reopen: true })).toEqual({
+      ok: false,
+      reason: 'wip-limit',
+      limit: 200,
+    });
+  });
+
+  it('removeSubtask la quita y, sin ninguna, la tarea vuelve al flujo normal', () => {
+    const list = withSteps([step('s1'), step('s2', true)]);
+    expect(removeSubtask(list, { id: 'a', subtaskId: 's1' })).toEqual({
+      ok: true,
+      changes: { subtasks: [step('s2', true)], openSubtasks: 0 },
+    });
+    expect(removeSubtask(withSteps([step('s1')]), { id: 'a', subtaskId: 's1' }).changes).toEqual({
+      subtasks: [],
+      openSubtasks: 0,
+    });
+    expect(removeSubtask(list, { id: 'a', subtaskId: 'zz' })).toEqual({ ok: false, reason: 'not-found' });
+    expect(removeSubtask(withSteps([step('s1', true)], { status: 'completed' }), { id: 'a', subtaskId: 's1' })).toEqual(
+      {
+        ok: false,
+        reason: 'completed',
+      },
+    );
+  });
+
+  it('reorderSubtask sube y baja un puesto, y no pasa de los extremos', () => {
+    const list = withSteps([step('s1'), step('s2', true), step('s3')]);
+    expect(reorderSubtask(list, { id: 'a', subtaskId: 's2', direction: -1 }).changes.subtasks.map((s) => s.id)).toEqual(
+      ['s2', 's1', 's3'],
+    );
+    expect(reorderSubtask(list, { id: 'a', subtaskId: 's2', direction: 1 }).changes.subtasks.map((s) => s.id)).toEqual([
+      's1',
+      's3',
+      's2',
+    ]);
+    expect(reorderSubtask(list, { id: 'a', subtaskId: 's1', direction: -1 })).toEqual({ ok: false, reason: 'edge' });
+    expect(reorderSubtask(list, { id: 'a', subtaskId: 's3', direction: 1 })).toEqual({ ok: false, reason: 'edge' });
+    expect(
+      reorderSubtask(withSteps([step('s1', true), step('s2', true)], { status: 'completed' }), {
+        id: 'a',
+        subtaskId: 's2',
+        direction: -1,
+      }),
+    ).toEqual({ ok: false, reason: 'completed' });
+  });
+
+  it('ningún caso de uso cambia la lista recibida', () => {
+    const list = withSteps([step('s1'), step('s2', true)]);
+    const copy = structuredClone(list);
+    addSubtask(list, { id: 'a', subtaskId: 's3', text: 'Otra' });
+    editSubtask(list, { id: 'a', subtaskId: 's1', text: 'Otro' });
+    toggleSubtask(list, { id: 'a', subtaskId: 's1', done: true });
+    removeSubtask(list, { id: 'a', subtaskId: 's1' });
+    reorderSubtask(list, { id: 'a', subtaskId: 's2', direction: -1 });
+    expect(list).toEqual(copy);
   });
 });
 

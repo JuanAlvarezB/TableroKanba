@@ -53,6 +53,14 @@ import {
 import { priorityRank, sortByPriority, sortForView } from './priority.js';
 import { attentionIds, currentReminderSlot } from './reminders.js';
 import { stalledDays } from './stalledTasks.js';
+import {
+  SUBTASK_LIMIT,
+  completionBlock,
+  normalizeSubtaskText,
+  subtaskChanges,
+  subtaskProgress,
+  subtaskTextProblem,
+} from './subtasks.js';
 
 // Miércoles 7 de octubre de 2026, 10:30 (hora local).
 const WEDNESDAY = new Date(2026, 9, 7, 10, 30);
@@ -791,6 +799,13 @@ describe('historial: effectiveHistory y planHistoryWrite', () => {
     expect(effectiveHistory({ ...old, history: null })).toEqual(deriveHistory(old));
   });
 
+  it('effectiveHistory no muestra los tipos que no conoce, pero la compactación los conserva (P-12)', () => {
+    const future = { id: 'f1', type: 'expire', at: AT };
+    expect(effectiveHistory({ ...old, history: [event('e1'), future] })).toEqual([event('e1')]);
+    const history = [...events(HISTORY_SOFT_LIMIT - 1), future];
+    expect(planHistoryWrite({ ...old, history }, [event('n')]).history).toContainEqual(future);
+  });
+
   it('sin eventos no hay nada que escribir', () => {
     expect(planHistoryWrite({ ...old, history: [] }, [])).toBeNull();
     expect(planHistoryWrite({ ...old, history: null }, [])).toBeNull();
@@ -818,5 +833,112 @@ describe('historial: effectiveHistory y planHistoryWrite', () => {
     expect(plan.history[0]).toEqual(history[HISTORY_SOFT_LIMIT - HISTORY_KEEP]);
     expect(plan.history.slice(-2)).toEqual([event('n1'), event('n2')]);
     expect(planHistoryWrite({ ...old, history: events(HISTORY_LIMIT) }, [event('n')]).history).toHaveLength(61);
+  });
+});
+
+describe('subtareas: reglas puras', () => {
+  const step = (id, done = false) => ({ id, text: `Paso ${id}`, done });
+
+  it('subtaskProgress cuenta terminadas y total, también sin el campo', () => {
+    expect(subtaskProgress(task({ subtasks: [step('a', true), step('b'), step('c'), step('d', true)] }))).toEqual({
+      done: 2,
+      total: 4,
+    });
+    expect(subtaskProgress(task({}))).toEqual({ done: 0, total: 0 });
+  });
+
+  it('completionBlock deja completar sin subtareas o con todas terminadas', () => {
+    expect(completionBlock(task({}))).toBeNull();
+    expect(completionBlock(task({ subtasks: [] }))).toBeNull();
+    expect(completionBlock(task({ subtasks: [step('a', true), step('b', true)] }))).toBeNull();
+  });
+
+  it('completionBlock dice cuántas y cuáles faltan', () => {
+    expect(completionBlock(task({ subtasks: [step('a', true), step('b'), step('c')] }))).toEqual({
+      reason: 'open-subtasks',
+      open: 2,
+      total: 3,
+      pending: ['Paso b', 'Paso c'],
+    });
+  });
+
+  it('subtaskChanges escribe siempre la lista con su contador', () => {
+    const list = [step('a', true), step('b')];
+    expect(subtaskChanges(list)).toEqual({ subtasks: list, openSubtasks: 1 });
+    expect(subtaskChanges([])).toEqual({ subtasks: [], openSubtasks: 0 });
+  });
+
+  it('el texto queda en una línea, sin espacios en los extremos, y con 200 caracteres como máximo', () => {
+    expect(normalizeSubtaskText('  Llamar\nal proveedor \r\n ')).toBe('Llamar al proveedor');
+    expect(subtaskTextProblem('')).toBe('empty');
+    expect(subtaskTextProblem('x'.repeat(200))).toBeNull();
+    expect(subtaskTextProblem('x'.repeat(201))).toBe('too-long');
+    expect(subtaskTextProblem('🌻'.repeat(200))).toBeNull();
+    expect(SUBTASK_LIMIT).toBe(20);
+  });
+});
+
+describe('historial: eventos de subtareas', () => {
+  const AT = 1_790_000_000_000;
+  let count;
+  const clock = () => {
+    count = 0;
+    return { now: AT, newId: () => `h${++count}` };
+  };
+  const step = (id, done = false, text = `Paso ${id}`) => ({ id, text, done });
+  const before = task({ id: 'a', status: 'completed', subtasks: [step('s1', true), step('s2', true)] });
+
+  it('terminar o volver a pendiente una subtarea genera un evento subtask', () => {
+    const open = task({ subtasks: [step('s1'), step('s2', true)] });
+    expect(historyEventsFor(open, { subtasks: [step('s1', true), step('s2')], openSubtasks: 1 }, clock())).toEqual([
+      { id: 'h1', type: 'subtask', at: AT, text: 'Paso s1', to: 'done' },
+      { id: 'h2', type: 'subtask', at: AT, text: 'Paso s2', to: 'pending' },
+    ]);
+  });
+
+  it('agregar, editar, reordenar o borrar subtareas no genera eventos', () => {
+    const open = task({ subtasks: [step('s1'), step('s2', true)] });
+    const changes = (subtasks) => ({ subtasks, openSubtasks: 0 });
+    expect(historyEventsFor(open, changes([step('s1'), step('s2', true), step('s3')]), clock())).toEqual([]);
+    expect(historyEventsFor(open, changes([step('s1', false, 'Otro'), step('s2', true)]), clock())).toEqual([]);
+    expect(historyEventsFor(open, changes([step('s2', true), step('s1')]), clock())).toEqual([]);
+    expect(historyEventsFor(open, changes([step('s2', true)]), clock())).toEqual([]);
+  });
+
+  it('reabrir desde una subtarea registra la subtarea y luego el move, en la misma escritura', () => {
+    const changes = {
+      subtasks: [step('s1'), step('s2', true)],
+      openSubtasks: 1,
+      status: 'in-progress',
+      startedAt: AT,
+      completedAt: null,
+    };
+    expect(historyEventsFor(before, changes, clock())).toEqual([
+      { id: 'h1', type: 'subtask', at: AT, text: 'Paso s1', to: 'pending' },
+      { id: 'h2', type: 'move', at: AT, from: 'completed', to: 'in-progress' },
+    ]);
+  });
+
+  it('recorta el texto de la subtarea y no lleva datos de la persona', () => {
+    const open = task({ subtasks: [step('s1', false, 'y'.repeat(250))] });
+    const [event] = historyEventsFor(open, { subtasks: [step('s1', true, 'y'.repeat(250))] }, clock());
+    expect(Array.from(event.text)).toHaveLength(HISTORY_TEXT_LIMIT);
+    expect(Object.keys(event).sort()).toEqual(['at', 'id', 'text', 'to', 'type']);
+  });
+
+  it('una tarea sin el campo subtasks se trata como sin subtareas', () => {
+    expect(historyEventsFor(task({}), { subtasks: [step('s1', true)], openSubtasks: 0 }, clock())).toEqual([]);
+  });
+
+  it('20 subtareas terminadas, más crear y dos movimientos, son 23 eventos', () => {
+    const steps = Array.from({ length: 20 }, (_, i) => step(`s${i}`));
+    let current = task({ subtasks: steps });
+    let total = 1 + 2;
+    for (let i = 0; i < 20; i++) {
+      const next = current.subtasks.map((s, j) => (j === i ? { ...s, done: true } : s));
+      total += historyEventsFor(current, { subtasks: next }, clock()).length;
+      current = { ...current, subtasks: next };
+    }
+    expect(total).toBe(23);
   });
 });

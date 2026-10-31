@@ -2,7 +2,7 @@
 // cambio, el historial que se deriva de las fechas en las tareas anteriores a esta función y cómo se
 // escribe sin pasar del tope. Es adicional: las alertas, los recordatorios y la limpieza siguen
 // usando createdAt, startedAt y completedAt. Ningún evento lleva datos de la persona.
-import { HISTORY_LIMIT, STATUSES, STATUS_DATE_FIELDS } from '../entities/Task.js';
+import { HISTORY_LIMIT, STATUSES, STATUS_DATE_FIELDS, isKnownEvent } from '../entities/Task.js';
 
 export { HISTORY_LIMIT };
 
@@ -31,9 +31,27 @@ export function truncateText(text) {
 // Campos que generan evento y su tipo. order no está: reordenar dentro de la columna no es un cambio.
 const TRACKED_FIELDS = { text: 'edit', status: 'move', priority: 'priority', dueDate: 'due' };
 
+// Eventos de subtareas (docs/PLAN_SUBTAREAS.md, 2.8): solo el avance, uno por cada subtarea que se
+// termina o vuelve a pendiente. Agregar, editar, reordenar o borrar subtareas no genera eventos.
+function subtaskEvents(before, changes, { now, newId }) {
+  if (!Array.isArray(changes.subtasks)) return [];
+  const previous = new Map((Array.isArray(before.subtasks) ? before.subtasks : []).map((s) => [s.id, s]));
+  return changes.subtasks
+    .filter((subtask) => previous.has(subtask.id) && previous.get(subtask.id).done !== subtask.done)
+    .map((subtask) => ({
+      id: newId(),
+      type: 'subtask',
+      at: now,
+      text: truncateText(subtask.text),
+      to: subtask.done ? 'done' : 'pending',
+    }));
+}
+
 /**
- * Eventos de un cambio: uno por cada campo que cambia de valor. Sin tarea anterior es la creación.
- * Un cambio sin diferencias, o que solo cambia order, no genera eventos.
+ * Eventos de un cambio: uno por cada campo que cambia de valor y uno por cada subtarea que se termina o
+ * vuelve a pendiente (antes que el resto: al reabrir una tarea desde una subtarea, la subtarea y luego el
+ * move). Sin tarea anterior es la creación. Un cambio sin diferencias, o que solo cambia order, no genera
+ * eventos.
  * @param {Task | null} before La tarea antes del cambio (null al crearla).
  * @param {Partial<Task>} changes Los campos que cambian (al crear, al menos text).
  * @param {{ now: number, newId: () => string }} clock
@@ -41,12 +59,14 @@ const TRACKED_FIELDS = { text: 'edit', status: 'move', priority: 'priority', due
  */
 export function historyEventsFor(before, changes, { now, newId }) {
   if (before === null) return [{ id: newId(), type: 'create', at: now, text: truncateText(changes.text) }];
-  return Object.entries(TRACKED_FIELDS)
+  const subtaskChangeEvents = subtaskEvents(before, changes, { now, newId });
+  const fieldEvents = Object.entries(TRACKED_FIELDS)
     .filter(([field]) => field in changes && changes[field] !== before[field])
     .map(([field, type]) => {
       const clip = field === 'text' ? truncateText : (value) => value;
       return { id: newId(), type, at: now, from: clip(before[field]), to: clip(changes[field]) };
     });
+  return [...subtaskChangeEvents, ...fieldEvents];
 }
 
 /**
@@ -76,9 +96,10 @@ export function deriveHistory(task) {
   }));
 }
 
-// Lo que muestra la vista: el historial guardado o, si la tarea aún no tiene, el derivado.
+// Lo que muestra la vista: el historial guardado o, si la tarea aún no tiene, el derivado. Los eventos de
+// tipos que esta versión no conoce se guardan (para no perderlos al compactar) pero no se muestran.
 export function effectiveHistory(task) {
-  return Array.isArray(task.history) ? task.history : deriveHistory(task);
+  return Array.isArray(task.history) ? task.history.filter(isKnownEvent) : deriveHistory(task);
 }
 
 /**

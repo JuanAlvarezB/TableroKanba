@@ -17,16 +17,26 @@
  * @property {string | null} dueDate Fecha límite opcional ("2026-10-15", día local).
  * @property {HistoryEvent[] | null} history Cambios de la tarea; null si aún no tiene historial
  *   guardado (tareas anteriores a él: se deriva de las fechas, ver domain/rules/history.js).
+ * @property {Subtask[]} subtasks Pasos de la tarea, en su orden; [] si no tiene (docs/PLAN_SUBTAREAS.md).
+ * @property {number} openSubtasks Cuántas subtareas siguen pendientes. Se calcula siempre desde la lista al
+ *   leer; el valor guardado no se usa.
+ *
+ * Subtarea: solo texto y estado (docs/PLAN_SUBTAREAS.md, 2.2).
+ * @typedef {object} Subtask
+ * @property {string} id Aleatorio, 8 caracteres.
+ * @property {string} text Hasta 200 caracteres, nunca vacío.
+ * @property {boolean} done Terminada.
  *
  * Evento del historial (docs/PLAN_USUARIOS.md, 4.2). No lleva datos de la persona: su dueño es el
  * ownerId de la tarea.
  * @typedef {object} HistoryEvent
  * @property {string} id Aleatorio (arrayUnion descarta elementos idénticos); determinista en los derivados.
- * @property {'create' | 'edit' | 'move' | 'priority' | 'due'} type
+ * @property {'create' | 'edit' | 'move' | 'priority' | 'due' | 'subtask'} type Una versión anterior puede
+ *   encontrar tipos que no conoce: los conserva sin mostrarlos (readEvent).
  * @property {number} at Hora del dispositivo (ms desde 1970).
- * @property {string} [text] create: texto inicial, recortado.
+ * @property {string} [text] create: texto inicial, recortado; subtask: texto de la subtarea.
  * @property {string | null} [from] edit, move, priority y due: valor anterior.
- * @property {string | null} [to] Valor nuevo.
+ * @property {string | null} [to] Valor nuevo; en subtask, 'done' (terminada) o 'pending' (pendiente otra vez).
  * @property {true} [derived] Calculado a partir de las fechas guardadas.
  */
 
@@ -64,6 +74,10 @@ export function readLabels(source) {
 // Tope de eventos del historial de una tarea; las reglas de Firestore también lo exigen.
 export const HISTORY_LIMIT = 100;
 
+// Topes de las subtareas (docs/PLAN_SUBTAREAS.md, 2.2). Las reglas exigen también las 20.
+export const SUBTASK_LIMIT = 20;
+export const SUBTASK_TEXT_LIMIT = 200;
+
 const isText = (value) => typeof value === 'string';
 const isStatus = (value) => STATUSES.includes(value);
 const isPriorityOrNone = (value) => value === null || PRIORITY_LEVELS.includes(value);
@@ -77,13 +91,34 @@ const EVENT_FIELDS = {
   move: { from: (value) => value === null || isStatus(value), to: isStatus },
   priority: { from: isPriorityOrNone, to: isPriorityOrNone },
   due: { from: isDueDateOrNone, to: isDueDateOrNone },
+  subtask: { text: isText, to: (value) => value === 'done' || value === 'pending' },
 };
 
-// Copia del evento con solo sus campos conocidos, o null si está mal formado.
+// Si el evento es de un tipo que esta versión sabe mostrar.
+export function isKnownEvent(event) {
+  return Object.hasOwn(EVENT_FIELDS, event.type);
+}
+
+// Campo simple de un evento de tipo desconocido que se conserva tal cual: texto corto, número, booleano o null.
+const isSimpleValue = (value) =>
+  value === null ||
+  typeof value === 'boolean' ||
+  Number.isFinite(value) ||
+  (isText(value) && Array.from(value).length <= SUBTASK_TEXT_LIMIT);
+
+// Copia del evento con solo sus campos conocidos, o null si está mal formado. Un tipo que esta versión no
+// conoce (de una versión posterior) se conserva con sus campos simples, para que una compactación no lo
+// borre (docs/PLAN_SUBTAREAS.md, P-12); la vista no lo muestra (isKnownEvent).
 function readEvent(raw) {
-  if (!raw || !Object.hasOwn(EVENT_FIELDS, raw.type)) return null;
+  if (!raw || !isText(raw.type) || raw.type === '') return null;
   if (!isText(raw.id) || raw.id === '' || !Number.isFinite(raw.at)) return null;
   const event = { id: raw.id, type: raw.type, at: raw.at };
+  if (!isKnownEvent(raw)) {
+    for (const [field, value] of Object.entries(raw)) {
+      if (field !== '__proto__' && !(field in event) && isSimpleValue(value)) event[field] = value;
+    }
+    return event;
+  }
   for (const [field, isValid] of Object.entries(EVENT_FIELDS[raw.type])) {
     if (!isValid(raw[field])) return null;
     event[field] = raw[field];
@@ -98,6 +133,30 @@ function readEvent(raw) {
 export function readHistory(source) {
   if (!Array.isArray(source.history)) return null;
   return source.history.map(readEvent).filter(Boolean).slice(-HISTORY_LIMIT);
+}
+
+// Cuántas subtareas siguen pendientes.
+export function countOpenSubtasks(subtasks) {
+  return subtasks.filter((subtask) => !subtask.done).length;
+}
+
+/**
+ * Lee las subtareas guardadas sin confiar en ellas (las reglas no pueden revisarlas una a una): descarta
+ * las mal formadas o repetidas, recorta los textos a 200 caracteres y se queda con las 20 primeras. El
+ * contador se calcula siempre desde la lista leída. Sin lista: sin subtareas.
+ * @returns {{ subtasks: Subtask[], openSubtasks: number }}
+ */
+export function readSubtasks(source) {
+  const subtasks = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(source.subtasks) ? source.subtasks : []) {
+    if (subtasks.length === SUBTASK_LIMIT) break;
+    if (!raw || !isText(raw.id) || raw.id === '' || seen.has(raw.id)) continue;
+    if (!isText(raw.text) || raw.text.trim() === '' || typeof raw.done !== 'boolean') continue;
+    seen.add(raw.id);
+    subtasks.push({ id: raw.id, text: Array.from(raw.text).slice(0, SUBTASK_TEXT_LIMIT).join(''), done: raw.done });
+  }
+  return { subtasks, openSubtasks: countOpenSubtasks(subtasks) };
 }
 
 // Lo mínimo para considerar tarea un elemento guardado en localStorage.
@@ -119,6 +178,7 @@ export function taskFromStorage(raw, index) {
     ...readDates(raw),
     ...readLabels(raw),
     history: readHistory(raw),
+    ...readSubtasks(raw),
   };
 }
 
@@ -135,11 +195,12 @@ export function taskFromData(id, data) {
     ...readDates(data),
     ...readLabels(data),
     history: readHistory(data),
+    ...readSubtasks(data),
   };
 }
 
 /**
- * Tarea nueva: entra en Pendiente, sin etiquetas. Su historial empieza con el evento de creación,
+ * Tarea nueva: entra en Pendiente, sin etiquetas ni subtareas. Su historial empieza con el evento de creación,
  * que se recibe hecho (domain/rules/history.js lo genera con historyEventsFor).
  * @param {{ id: string, text: string, order: number, now?: number, history?: HistoryEvent[] }} input
  * @returns {Task}
@@ -154,6 +215,8 @@ export function createTask({ id, text, order, now = Date.now(), history = [] }) 
     ...readLabels({}),
     createdAt: now,
     history,
+    subtasks: [],
+    openSubtasks: 0,
   };
 }
 

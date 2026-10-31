@@ -5,6 +5,7 @@ import {
   isStoredTask,
   missingDates,
   readHistory,
+  readSubtasks,
   taskFromData,
   taskFromStorage,
   wasInProgress,
@@ -25,6 +26,8 @@ describe('taskFromStorage', () => {
       priority: null,
       dueDate: null,
       history: null,
+      subtasks: [],
+      openSubtasks: 0,
     });
   });
 
@@ -69,6 +72,8 @@ describe('createTask', () => {
       priority: null,
       dueDate: null,
       history: [created],
+      subtasks: [],
+      openSubtasks: 0,
     });
   });
 });
@@ -97,8 +102,8 @@ describe('readHistory', () => {
     const broken = [
       null,
       'texto',
-      { ...move, type: 'delete' },
-      { ...move, type: 'constructor' },
+      { ...move, type: '' },
+      { ...move, type: 7 },
       { ...move, id: '' },
       { ...move, id: 7 },
       { ...move, at: 'ayer' },
@@ -108,8 +113,35 @@ describe('readHistory', () => {
       { id: 'e', type: 'edit', at: NOW, from: 'a', to: 5 },
       { id: 'e', type: 'priority', at: NOW, from: null, to: 'máxima' },
       { id: 'e', type: 'due', at: NOW, from: null, to: '15/10/2026' },
+      { id: 'e', type: 'subtask', at: NOW, text: 'Paso', to: 'archivada' },
+      { id: 'e', type: 'subtask', at: NOW, to: 'done' },
     ];
     expect(readHistory({ history: [...broken, move] })).toEqual([move]);
+  });
+
+  it('lee los eventos de subtareas', () => {
+    const done = { id: 'e5', type: 'subtask', at: NOW, text: 'Paso 1', to: 'done' };
+    const reopened = { id: 'e6', type: 'subtask', at: NOW, text: 'Paso 1', to: 'pending' };
+    expect(readHistory({ history: [done, reopened] })).toEqual([done, reopened]);
+  });
+
+  it('conserva los tipos que no conoce, con solo sus campos simples (P-12)', () => {
+    const future = {
+      id: 'f1',
+      type: 'expire',
+      at: NOW,
+      when: 1_800_000_000_000,
+      note: 'Vence',
+      automatic: true,
+      by: null,
+      nested: { a: 1 },
+      list: [1],
+      long: 'x'.repeat(201),
+    };
+    expect(readHistory({ history: [future, { ...move, type: 'constructor' }] })).toEqual([
+      { id: 'f1', type: 'expire', at: NOW, when: 1_800_000_000_000, note: 'Vence', automatic: true, by: null },
+      { ...move, type: 'constructor' },
+    ]);
   });
 
   it('se queda con los 100 eventos más recientes', () => {
@@ -151,5 +183,59 @@ describe('wasInProgress y missingDates', () => {
       startedAt: NOW,
     });
     expect(missingDates({ status: 'pending', createdAt: 1 }, NOW)).toEqual({});
+  });
+});
+
+describe('readSubtasks', () => {
+  const step = (id, done = false, text = `Paso ${id}`) => ({ id, text, done });
+
+  it('sin el campo, o si no es una lista, no hay subtareas', () => {
+    expect(readSubtasks({})).toEqual({ subtasks: [], openSubtasks: 0 });
+    expect(readSubtasks({ subtasks: { s1: step('s1') } })).toEqual({ subtasks: [], openSubtasks: 0 });
+    expect(readSubtasks({ subtasks: 'texto' })).toEqual({ subtasks: [], openSubtasks: 0 });
+  });
+
+  it('conserva el orden y cuenta las pendientes', () => {
+    const list = [step('s1', true), step('s2'), step('s3')];
+    expect(readSubtasks({ subtasks: list })).toEqual({ subtasks: list, openSubtasks: 2 });
+  });
+
+  it('recalcula el contador desde la lista, aunque el guardado diga otra cosa (AT-10)', () => {
+    expect(readSubtasks({ subtasks: [step('s1'), step('s2', true)], openSubtasks: 0 }).openSubtasks).toBe(1);
+    expect(readSubtasks({ subtasks: [step('s1', true)], openSubtasks: 5 }).openSubtasks).toBe(0);
+  });
+
+  it('descarta las mal formadas o repetidas, y los campos extra', () => {
+    const list = [
+      null,
+      'texto',
+      { id: '', text: 'x', done: false },
+      { id: 7, text: 'x', done: false },
+      { id: 's1', text: '', done: false },
+      { id: 's1', text: '   ', done: false },
+      { id: 's1', text: 5, done: false },
+      { id: 's1', text: 'x', done: 'sí' },
+      { ...step('s2'), priority: 'urgent' },
+      step('s2', true),
+    ];
+    expect(readSubtasks({ subtasks: list }).subtasks).toEqual([step('s2')]);
+  });
+
+  it('se queda con las 20 primeras y recorta los textos a 200 caracteres sin partir emojis', () => {
+    const many = Array.from({ length: 25 }, (_, i) => step(`s${i}`));
+    expect(readSubtasks({ subtasks: many }).subtasks.map((s) => s.id)).toEqual(many.slice(0, 20).map((s) => s.id));
+    const [long] = readSubtasks({ subtasks: [step('s1', false, '🌻'.repeat(250))] }).subtasks;
+    expect(long.text).toBe('🌻'.repeat(200));
+  });
+
+  it('taskFromData, taskFromStorage y createTask incluyen las subtareas', () => {
+    const list = [step('s1'), step('s2', true)];
+    expect(taskFromData('id', { text: 'x', subtasks: list })).toMatchObject({ subtasks: list, openSubtasks: 1 });
+    expect(taskFromStorage({ id: 'x', text: 'x', subtasks: list }, 0)).toMatchObject({
+      subtasks: list,
+      openSubtasks: 1,
+    });
+    expect(taskFromData('id', { text: 'x' })).toMatchObject({ subtasks: [], openSubtasks: 0 });
+    expect(createTask({ id: 'n', text: 'Nueva', order: 0, now: NOW })).toMatchObject({ subtasks: [], openSubtasks: 0 });
   });
 });

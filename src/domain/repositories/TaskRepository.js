@@ -10,6 +10,8 @@
  * @property {Task[]} tasks Todas las tareas de la persona.
  * @property {Task[]} added Tareas creadas en otro dispositivo desde el snapshot anterior.
  * @property {boolean} fromCache true si los datos aún no están confirmados por el servidor.
+ * @property {string[]} drifted Tareas cuyo contador de subtareas guardado no coincide con su lista; se
+ *   leen con el contador recalculado y el estado las repara (docs/PLAN_SUBTAREAS.md, P-13).
  *
  * @typedef {object} TaskRepository
  * Crear y borrar tareas escribe también su documento del índice (taskIndex: mismo ID, solo el
@@ -18,7 +20,8 @@
  *
  * @property {(task: Task) => Promise<void>} save Crea una tarea, con su historial y su índice.
  * @property {(id: string, fields: Partial<Task>, historyWrite?: HistoryWrite | null) => Promise<void>} update
- *   Cambia solo esos campos (así no pisa lo que otro dispositivo cambie a la vez) y, en la misma
+ *   Cambia solo esos campos (así no pisa lo que otro dispositivo cambie a la vez; las subtareas van siempre
+ *   enteras, con su contador, y ahí gana la última escritura: docs/PLAN_SUBTAREAS.md, 2.9) y, en la misma
  *   escritura, el historial según el plan de planHistoryWrite: append añade los eventos sin pisar los
  *   de otros dispositivos; replace reemplaza la lista entera (compactación).
  * @property {(ids: string[]) => Promise<void>} remove Borra varias tareas y sus índices, en trozos.

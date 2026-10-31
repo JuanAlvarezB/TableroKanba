@@ -44,6 +44,19 @@ export const BOARD_MESSAGES = {
     done: (count) => (count === 1 ? 'Se borró 1 tarea completada.' : `Se borraron ${count} tareas completadas.`),
     gone: 'Ya no hay tareas completadas: se borraron o se movieron en otro dispositivo.',
   },
+  // Subtareas (docs/PLAN_SUBTAREAS.md, 2.4 a 2.6 y 2.11). Motivos de rechazo de los casos de uso → texto.
+  subtasks: {
+    reasons: {
+      empty: 'Una subtarea no puede quedar vacía.',
+      'too-long': 'El texto de una subtarea puede tener hasta 200 caracteres.',
+      limit: 'Llegaste al máximo de 20 subtareas.',
+      completed: 'La tarea está completada. Desmarca una subtarea o devuélvela a En curso para cambiar la lista.',
+    },
+    reopenFull: (limit) => `En curso está llena (máx. ${limit}): termina o mueve una tarea antes de reabrir esta.`,
+    // Las reglas rechazaron completarla: quizá otro dispositivo dejó una subtarea pendiente (P-14).
+    completeRejected: (name) =>
+      `No se pudo completar «${name}»: el servidor lo rechazó. Si tiene subtareas pendientes (quizá desde otro dispositivo), termínalas primero.`,
+  },
 };
 
 // Gestión de usuarios (presentation/state/usersStore.js; docs/PLAN_USUARIOS.md, 2.4). Neutros en
