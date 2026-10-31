@@ -280,3 +280,114 @@ describe('subtareas en la tarjeta', () => {
     );
   });
 });
+
+describe('completar una tarea con subtareas desde la flecha', () => {
+  const step = (id, done = false) => ({ id, text: `Paso ${id}`, done });
+  const withSteps = (base, subtasks) => ({
+    ...base,
+    subtasks,
+    openSubtasks: subtasks.filter((s) => !s.done).length,
+  });
+  const forward = (id) => card(id).querySelectorAll('.move-btn')[1];
+  const statusOf = (store, id) => store.tasks.find((t) => t.id === id).status;
+  const subtasksDialog = () => document.querySelector('dialog.subtasks-dialog');
+  let store;
+  beforeEach(() => {
+    store = openBoard([
+      withSteps(task('lista', 'Organizar la bodega', 'in-progress', 0), [step('s1', true), step('s2', true)]),
+      withSteps(task('media', 'Preparar informe', 'in-progress', 1), [step('s1', true), step('s2'), step('s3')]),
+      task('sola', 'Revisar correo', 'in-progress', 2),
+      withSteps(
+        task('larga', 'Mudanza', 'in-progress', 3),
+        Array.from({ length: 8 }, (_, i) => step(`p${i}`)),
+      ),
+    ]);
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('una tarea sin subtareas se completa como siempre, sin diálogo', () => {
+    forward('sola').click();
+    expect(statusOf(store, 'sola')).toBe('completed');
+    expect(dialog().open).toBe(false);
+  });
+
+  it('con todas terminadas pide confirmar; cancelar no la mueve', () => {
+    forward('lista').focus();
+    forward('lista').click();
+    expect(dialog().open).toBe(true);
+    expect(dialog().querySelector('.dialog-title').textContent).toBe('¿Completar la tarea?');
+    expect(dialogText()).toBe('«Organizar la bodega» pasará a Completada. Sus 2 subtareas están terminadas.');
+    expect(confirmButton().textContent).toBe('✓ Completar tarea');
+    expect(confirmButton().classList.contains('primary')).toBe(true);
+    cancelButton().click();
+    expect(statusOf(store, 'lista')).toBe('in-progress');
+    expect(document.activeElement).toBe(forward('lista'));
+  });
+
+  it('al confirmar la completa y el foco va a su progreso en Completada', () => {
+    forward('lista').click();
+    confirmButton().click();
+    expect(statusOf(store, 'lista')).toBe('completed');
+    expect(card('lista').closest('.task-list').dataset.status).toBe('completed');
+    expect(document.activeElement).toBe(card('lista').querySelector('.subtasks-chip'));
+  });
+
+  it('con pendientes no la completa y dice cuáles faltan', () => {
+    forward('media').click();
+    expect(statusOf(store, 'media')).toBe('in-progress');
+    expect(dialog().querySelector('.dialog-title').textContent).toBe('Todavía no se puede completar');
+    expect(dialogText()).toBe('«Preparar informe»: faltan 2 de 3 subtareas:');
+    expect([...dialog().querySelectorAll('.dialog-items li')].map((li) => li.textContent)).toEqual([
+      'Paso s2',
+      'Paso s3',
+    ]);
+    expect(cancelButton().textContent).toBe('Cerrar');
+    expect(confirmButton().textContent).toBe('Ver subtareas');
+  });
+
+  it('"Ver subtareas" abre su lista con el foco dentro', () => {
+    forward('media').click();
+    confirmButton().click();
+    expect(dialog().open).toBe(false);
+    expect(subtasksDialog().open).toBe(true);
+    expect(document.activeElement).toBe(subtasksDialog().querySelector('[data-focus-key="toggle:s2"]'));
+  });
+
+  it('"Cerrar" devuelve el foco a la flecha y no cambia nada', () => {
+    forward('media').focus();
+    forward('media').click();
+    cancelButton().click();
+    expect(subtasksDialog().open).toBe(false);
+    expect(document.activeElement).toBe(forward('media'));
+    expect(statusOf(store, 'media')).toBe('in-progress');
+  });
+
+  it('nombra hasta 5 pendientes y resume el resto', () => {
+    forward('larga').click();
+    expect([...dialog().querySelectorAll('.dialog-items li')].map((li) => li.textContent)).toEqual([
+      'Paso p0',
+      'Paso p1',
+      'Paso p2',
+      'Paso p3',
+      'Paso p4',
+      'y 3 más',
+    ]);
+  });
+
+  it('si mientras se confirma otro dispositivo deja una pendiente, el diálogo se cierra con un aviso', async () => {
+    forward('lista').click();
+    store.toggleSubtask('lista', 's1', false);
+    await Promise.resolve();
+    expect(dialog().open).toBe(false);
+    expect(notice()).toBe('La tarea cambió en otro dispositivo: revisa sus subtareas.');
+    expect(statusOf(store, 'lista')).toBe('in-progress');
+  });
+
+  it('Pendiente ↔ En curso sigue libre con subtareas pendientes', () => {
+    card('media').querySelectorAll('.move-btn')[0].click();
+    expect(statusOf(store, 'media')).toBe('pending');
+    expect(dialog().open).toBe(false);
+  });
+});

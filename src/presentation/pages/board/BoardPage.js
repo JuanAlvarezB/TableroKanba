@@ -10,6 +10,7 @@ import { createSubtaskDialog } from '../../components/SubtaskDialog.js';
 import { createAlertsController } from './alertsController.js';
 import { createBoardNotices } from './boardNotices.js';
 import { createCardFactory } from './cardActions.js';
+import { createCompletionController } from './completionController.js';
 import { createDragController } from './dragController.js';
 import { createEditingController } from './editingController.js';
 import { createHighlights } from './highlights.js';
@@ -40,6 +41,8 @@ export function createBoardPage({ store, reminders }) {
   const confirmAction = createBoardConfirm({ store, showNotice });
   // Diálogo de subtareas de una tarea (docs/PLAN_SUBTAREAS.md, 2.10).
   const subtaskDialog = createSubtaskDialog({ store, confirmAction, showNotice });
+  // Completar con subtareas desde las flechas y el arrastre (2.5).
+  const completion = createCompletionController({ store, confirmAction, subtaskDialog });
 
   // El menú y la edición se cierran entre sí: abrir uno guarda o cierra el otro.
   const labelMenu = createLabelMenuController({
@@ -56,7 +59,7 @@ export function createBoardPage({ store, reminders }) {
     confirmAction,
     showNotice,
   });
-  const drag = createDragController({ store, lists });
+  const drag = createDragController({ store, lists, move: completion.move });
   const alerts = createAlertsController({
     store,
     reminders,
@@ -74,6 +77,7 @@ export function createBoardPage({ store, reminders }) {
     confirmAction,
     showNotice,
     subtaskDialog,
+    move: completion.move,
   });
 
   /* ---------- Dibujar ---------- */

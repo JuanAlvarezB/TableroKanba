@@ -43,6 +43,8 @@ function focusAfterDelete(id) {
  * @param {ReturnType<typeof import('../../components/BoardConfirm.js').createBoardConfirm>} deps.confirmAction
  * @param {(message: string) => void} deps.showNotice
  * @param {ReturnType<typeof import('../../components/SubtaskDialog.js').createSubtaskDialog>} deps.subtaskDialog
+ * @param {(id: string, status: string, beforeId: string | null, opener: HTMLElement | null) => void} deps.move
+ *   Mover con las flechas (completionController.js).
  * @returns {(task: import('../../../domain/entities/Task.js').Task) => HTMLLIElement}
  */
 export function createCardFactory({
@@ -54,12 +56,15 @@ export function createCardFactory({
   confirmAction,
   showNotice,
   subtaskDialog,
+  move,
 }) {
+  // A Completada con subtareas pide confirmar o explica qué falta (completionController.js).
   function shiftTask(id, direction) {
     const task = store.tasks.find((t) => t.id === id);
     if (!task) return;
     const nextStatus = adjacentStatus(task, direction);
-    if (nextStatus) store.move(id, nextStatus);
+    const arrow = cardElement(id)?.querySelectorAll('.move-btn')[direction > 0 ? 1 : 0] ?? null;
+    if (nextStatus) move(id, nextStatus, null, arrow);
   }
 
   const findTask = (id) => store.tasks.find((t) => t.id === id);
