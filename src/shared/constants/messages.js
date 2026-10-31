@@ -56,6 +56,72 @@ export const BOARD_MESSAGES = {
     // Las reglas rechazaron completarla: quizá otro dispositivo dejó una subtarea pendiente (P-14).
     completeRejected: (name) =>
       `No se pudo completar «${name}»: el servidor lo rechazó. Si tiene subtareas pendientes (quizá desde otro dispositivo), termínalas primero.`,
+    // Tarjeta (docs/PLAN_SUBTAREAS.md, 2.10).
+    progress: (done, total) => `${done} de ${total} subtareas`,
+    openLabel: (done, total) => `Subtareas: ${done} de ${total} terminadas. Abrir lista`,
+    addLabel: 'Agregar subtareas',
+    // Diálogo de subtareas.
+    status: (column, done, total) =>
+      total === 0 ? `${column} · Sin subtareas` : `${column} · ${done} de ${total} subtareas terminadas`,
+    listLabel: 'Subtareas',
+    progressLabel: 'Progreso de las subtareas',
+    empty: 'Divide la tarea en pasos pequeños. Cada paso se marca por separado.',
+    newPlaceholder: 'Nueva subtarea',
+    newLabel: 'Nueva subtarea',
+    add: 'Agregar',
+    count: (count, limit) => `${count} de ${limit}`,
+    editField: 'Texto de la subtarea',
+    edit: (name) => `Editar «${name}»`,
+    up: (name) => `Subir «${name}»`,
+    down: (name) => `Bajar «${name}»`,
+    remove: (name) => `Borrar «${name}»`,
+    save: 'Guardar',
+    cancelEdit: 'Cancelar la edición',
+    editEmpty: 'Una subtarea no puede quedar vacía: se mantuvo el texto anterior.',
+    completeHint: (open) =>
+      open === 1
+        ? 'Termina la subtarea pendiente para completar la tarea.'
+        : `Termina las ${open} subtareas pendientes para completar la tarea.`,
+    lastNote: 'Marcar la última subtarea no completa la tarea: elige "Completar tarea".',
+    readOnly: 'La tarea está completada. Desmarca una subtarea o devuélvela a En curso para cambiar la lista.',
+    completedAt: (date) => `Completada el ${date}`,
+    completedElsewhere: 'Se completó en otro dispositivo.',
+    taskGone: 'La tarea se borró en otro dispositivo.',
+    close: 'Cerrar',
+    complete: 'Completar tarea',
+    completed: (name) => `«${name}» pasó a Completada.`,
+    // Anuncios para el lector de pantalla (aria-live).
+    announceProgress: (done, total) => `${done} de ${total} subtareas terminadas.`,
+    announceMoved: (name, position, total) => `«${name}» quedó en la posición ${position} de ${total}.`,
+    announceAdded: (name) => `Subtarea agregada: «${name}».`,
+    announceRemoved: (name) => `Subtarea borrada: «${name}».`,
+    // Confirmaciones con BoardConfirm (2.5 a 2.7).
+    removeConfirm: {
+      title: '¿Borrar la subtarea?',
+      text: (name) => `«${name}» se borrará de esta tarea.`,
+      confirm: 'Borrar subtarea',
+      gone: 'La subtarea ya no existe: se borró o cambió en otro dispositivo.',
+    },
+    reopenConfirm: {
+      title: '¿Volver a abrir la tarea?',
+      text: (task, subtask) =>
+        `«${task}» está completada. Si marcas «${subtask}» como pendiente, la tarea vuelve a En curso.`,
+      confirm: 'Volver a En curso',
+      gone: 'La tarea cambió en otro dispositivo: revisa sus subtareas.',
+    },
+    completeConfirm: {
+      title: '¿Completar la tarea?',
+      text: (name, total) =>
+        `«${name}» pasará a Completada. ${total === 1 ? 'Su subtarea está terminada.' : `Sus ${total} subtareas están terminadas.`}`,
+      confirm: 'Completar tarea',
+      gone: 'La tarea cambió en otro dispositivo: revisa sus subtareas.',
+    },
+    blocked: {
+      title: 'Todavía no se puede completar',
+      text: (name, open, total) => `«${name}»: ${open === 1 ? 'falta' : 'faltan'} ${open} de ${total} subtareas:`,
+      more: (count) => `y ${count} más`,
+      confirm: 'Ver subtareas',
+    },
   },
 };
 
