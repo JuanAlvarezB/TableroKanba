@@ -37,8 +37,10 @@ function getCardAfterCursor(list, y, priority) {
  * @param {object} deps
  * @param {ReturnType<typeof import('../../state/boardStore.js').createBoardStore>} deps.store
  * @param {NodeListOf<HTMLElement>} deps.lists Las listas de las columnas (.task-list).
+ * @param {(id: string, status: string, beforeId: string | null) => void} [deps.move] Cómo se mueve la
+ *   tarea soltada (a Completada con subtareas pide confirmar: completionController.js).
  */
-export function createDragController({ store, lists }) {
+export function createDragController({ store, lists, move = (...args) => store.move(...args) }) {
   let draggedId = null;
 
   return {
@@ -77,7 +79,7 @@ export function createDragController({ store, lists }) {
           if (!dragged) return;
           const afterCard = getCardAfterCursor(list, event.clientY, dragged.priority);
           const beforeId = afterCard ? afterCard.dataset.id : null;
-          store.move(draggedId, list.dataset.status, beforeId);
+          move(draggedId, list.dataset.status, beforeId);
         });
       });
     },

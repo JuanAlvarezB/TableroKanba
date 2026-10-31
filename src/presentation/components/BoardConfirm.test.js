@@ -153,6 +153,46 @@ describe('confirmación del tablero', () => {
     expect(notices).toEqual([]);
   });
 
+  it('muestra una lista, un botón sin ícono y otro texto para cerrar', () => {
+    ask({
+      title: 'Todavía no se puede completar',
+      text: '«Informe»: faltan 2 de 4 subtareas:',
+      items: ['Revisar cifras', 'Enviar borrador'],
+      warning: null,
+      confirmLabel: 'Ver subtareas',
+      icon: '',
+      cancelLabel: 'Cerrar',
+      tone: 'primary',
+    });
+    expect([...dialog.querySelectorAll('.dialog-items li')].map((li) => li.textContent)).toEqual([
+      'Revisar cifras',
+      'Enviar borrador',
+    ]);
+    expect(dialog.getAttribute('aria-describedby')).toBe('board-confirm-text board-confirm-items');
+    expect(confirmButton().textContent).toBe('Ver subtareas');
+    expect(cancelButton().textContent).toBe('Cerrar');
+  });
+
+  it('sin lista la oculta, y Cancelar vuelve a su texto', () => {
+    ask({ items: ['Uno'], cancelLabel: 'Cerrar' });
+    cancelButton().click();
+    ask();
+    expect(dialog.querySelector('.dialog-items').hidden).toBe(true);
+    expect(cancelButton().textContent).toBe('Cancelar');
+  });
+
+  it('afterClose se llama con el diálogo ya cerrado, al confirmar y al cancelar', () => {
+    const seen = [];
+    ask({ afterClose: (confirmed) => seen.push([confirmed, dialog.open]) });
+    confirmButton().click();
+    ask({ afterClose: (confirmed) => seen.push([confirmed, dialog.open]) });
+    cancelButton().click();
+    expect(seen).toEqual([
+      [true, false],
+      [false, false],
+    ]);
+  });
+
   it('se puede volver a abrir para otra acción con el botón habilitado', () => {
     ask();
     confirmButton().click();

@@ -1,0 +1,306 @@
+/* ---------- Subtareas (docs/PLAN_SUBTAREAS.md, 2.10) ---------- */
+
+/* Progreso en la tarjeta: es el botón que abre el diálogo. */
+.subtasks-chip {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-surface);
+  border-radius: var(--radius);
+  background: #fafbfd;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--ease),
+    border-color var(--ease);
+}
+
+.subtasks-chip:hover {
+  border-color: var(--border);
+  background: var(--color-primary-soft);
+}
+
+.subtasks-chip-bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: #e9eef3;
+}
+
+.subtasks-chip-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--color-progress);
+}
+
+.subtasks-chip.is-complete .subtasks-chip-bar > span {
+  background: var(--color-done);
+}
+
+/* Botón ☑ de la barra de acciones (tareas sin subtareas): como los demás botones de la tarjeta. */
+.subtasks-add-btn {
+  min-width: 32px;
+  min-height: 28px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: 1rem;
+  cursor: pointer;
+  transition:
+    background var(--ease),
+    transform var(--ease);
+}
+
+.subtasks-add-btn:hover {
+  background: var(--color-primary-soft);
+}
+
+.subtasks-add-btn:active {
+  transform: scale(0.9);
+}
+
+/* Diálogo (los estilos base son los de .lucas-dialog en lucas.css). */
+.subtasks-dialog {
+  width: min(100% - 32px, 560px);
+}
+
+.subtasks-dialog [hidden] {
+  display: none !important;
+}
+
+.subtasks-status {
+  margin: 0 0 8px;
+  color: var(--lucas-muted);
+  font-size: 0.92rem;
+}
+
+.subtasks-progress {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border: none;
+  border-radius: 99px;
+  background: #e9eef3;
+  appearance: none;
+}
+
+.subtasks-progress::-webkit-progress-bar {
+  border-radius: 99px;
+  background: #e9eef3;
+}
+
+.subtasks-progress::-webkit-progress-value {
+  border-radius: 99px;
+  background: var(--color-progress);
+}
+
+.subtasks-progress::-moz-progress-bar {
+  background: var(--color-progress);
+}
+
+.subtasks-progress.is-complete::-webkit-progress-value {
+  background: var(--color-done);
+}
+
+.subtasks-progress.is-complete::-moz-progress-bar {
+  background: var(--color-done);
+}
+
+.subtasks-message {
+  margin-top: 12px;
+}
+
+.subtasks-empty {
+  margin: 12px 0 0;
+  padding: 16px;
+  border: 1px dashed var(--lucas-line);
+  border-radius: 10px;
+  color: var(--lucas-muted);
+  text-align: center;
+}
+
+.subtasks-list {
+  margin: 16px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--lucas-line);
+  list-style: none;
+}
+
+.subtask-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 48px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--lucas-line);
+}
+
+.subtask-check {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.subtask-check input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--lucas-accent);
+}
+
+.subtask-check span {
+  overflow-wrap: anywhere;
+}
+
+.subtask-check.is-done span {
+  color: var(--lucas-muted);
+  text-decoration: line-through;
+}
+
+.subtask-tools {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--lucas-ink);
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  border-color: var(--lucas-line);
+  background: var(--lucas-accent-soft);
+}
+
+.icon-btn[aria-disabled='true'] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.subtask-edit,
+.subtasks-add input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--lucas-line);
+  border-radius: 8px;
+  color: var(--lucas-ink);
+  font: inherit;
+}
+
+.subtask-edit {
+  border-color: var(--lucas-accent);
+}
+
+.subtasks-add {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.subtasks-count {
+  margin: 6px 0 0;
+  color: var(--lucas-muted);
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.subtasks-note,
+.subtasks-hint {
+  margin: 12px 0 0;
+  color: var(--lucas-muted);
+  font-size: 0.88rem;
+}
+
+.subtasks-hint {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--lucas-warn-bg);
+  color: var(--lucas-warn-fg);
+}
+
+.subtasks-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--lucas-line);
+}
+
+.subtasks-done-at {
+  margin-right: auto;
+  color: var(--lucas-muted);
+  font-size: 0.9rem;
+}
+
+.subtasks-footer .dialog-btn[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Celular: el diálogo ocupa casi toda la pantalla, cada fila en dos líneas y el pie siempre visible. */
+@media (max-width: 480px) {
+  .subtasks-dialog {
+    width: calc(100% - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+
+  .subtasks-dialog .dialog-body {
+    padding: 16px;
+  }
+
+  .subtask-item {
+    flex-wrap: wrap;
+    padding: 4px 0;
+  }
+
+  .subtask-check {
+    flex-basis: 100%;
+  }
+
+  .subtask-tools {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .subtasks-footer {
+    position: sticky;
+    bottom: -16px;
+    margin-bottom: -16px;
+    padding-bottom: 16px;
+    background: #fff;
+  }
+
+  .subtasks-footer .dialog-btn {
+    flex: 1 1 100%;
+  }
+
+  .subtasks-done-at {
+    flex-basis: 100%;
+  }
+}

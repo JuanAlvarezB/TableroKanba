@@ -1,8 +1,11 @@
-// Tarjeta de una tarea: texto, etiquetas, alerta de tarea detenida, historial y acciones. Lo que
+// Tarjeta de una tarea: texto, etiquetas, alerta de tarea detenida, progreso de sus subtareas, historial y
+// acciones. Lo que
 // depende de una función apagada no se muestra (docs/PLAN_USUARIOS.md, 3.4): el borde y el atenuado
 // de la prioridad, la alerta de tarea detenida y el botón 🏷️ si no queda ninguna de sus secciones.
 import { STATUSES } from '../../domain/entities/Task.js';
 import { STALLED_DAYS, stalledDays } from '../../domain/rules/stalledTasks.js';
+import { subtaskProgress } from '../../domain/rules/subtasks.js';
+import { BOARD_MESSAGES } from '../../shared/constants/messages.js';
 import { OVERDUE_COLUMNS } from '../format/labels.js';
 import { currentFeatures } from '../state/features.js';
 import { createLabelMenu, labelMenuName } from './LabelMenu.js';
@@ -19,8 +22,8 @@ export function isEditable(task) {
  * @param {object} ctx
  * @param {boolean} ctx.menuOpen Si esta tarjeta tiene abierto el menú de etiquetas.
  * @param {number | null} ctx.highlightElapsed ms desde que empezó su resaltado, o null.
- * @param {object} ctx.actions startEdit, shift, toggleLabelMenu, remove, dragStart, dragEnd y los
- *   del menú de etiquetas (setPriority, setDueDate, closeLabelMenu).
+ * @param {object} ctx.actions startEdit, shift, toggleLabelMenu, remove, openSubtasks, dragStart, dragEnd
+ *   y los del menú de etiquetas (setPriority, setDueDate, closeLabelMenu).
  */
 export function createTaskCard(task, { menuOpen, highlightElapsed, actions }) {
   const features = currentFeatures();
@@ -104,6 +107,9 @@ export function createTaskCard(task, { menuOpen, highlightElapsed, actions }) {
 
   actionsBar.append(backBtn, forwardBtn);
   if (isEditable(task) && labelName) actionsBar.append(labelBtn);
+  // Sin subtareas, ☑ las agrega (no en una completada, que no admite nuevas: docs/PLAN_SUBTAREAS.md, 2.10).
+  const progress = createSubtasksChip(task, actions);
+  if (!progress && isEditable(task)) actionsBar.append(createAddSubtasksButton(task, actions));
   if (isEditable(task)) actionsBar.append(editBtn);
   actionsBar.append(deleteBtn);
 
@@ -120,7 +126,9 @@ export function createTaskCard(task, { menuOpen, highlightElapsed, actions }) {
     li.append(badge);
   }
 
-  li.append(span, createTaskHistory(task), actionsBar);
+  li.append(span);
+  if (progress) li.append(progress);
+  li.append(createTaskHistory(task), actionsBar);
   if (menuOpen && labelName) {
     li.append(
       createLabelMenu(task, {
@@ -131,4 +139,43 @@ export function createTaskCard(task, { menuOpen, highlightElapsed, actions }) {
     );
   }
   return li;
+}
+
+// Progreso de las subtareas ("2 de 4 subtareas" con una barra): es el botón que abre su lista. null si la
+// tarea no tiene subtareas.
+function createSubtasksChip(task, actions) {
+  const { done, total } = subtaskProgress(task);
+  if (total === 0) return null;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = `subtasks-btn subtasks-chip${done === total ? ' is-complete' : ''}`;
+  button.setAttribute('aria-label', BOARD_MESSAGES.subtasks.openLabel(done, total));
+
+  const label = document.createElement('span');
+  const icon = document.createElement('span');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '☑ ';
+  label.append(icon, BOARD_MESSAGES.subtasks.progress(done, total));
+
+  const bar = document.createElement('span');
+  bar.className = 'subtasks-chip-bar';
+  bar.setAttribute('aria-hidden', 'true');
+  const fill = document.createElement('span');
+  fill.style.width = `${Math.round((done / total) * 100)}%`;
+  bar.append(fill);
+
+  button.append(label, bar);
+  button.addEventListener('click', () => actions.openSubtasks(task.id));
+  return button;
+}
+
+function createAddSubtasksButton(task, actions) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'subtasks-btn subtasks-add-btn';
+  button.textContent = '☑';
+  button.title = BOARD_MESSAGES.subtasks.addLabel;
+  button.setAttribute('aria-label', BOARD_MESSAGES.subtasks.addLabel);
+  button.addEventListener('click', () => actions.openSubtasks(task.id));
+  return button;
 }

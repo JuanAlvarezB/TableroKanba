@@ -337,6 +337,21 @@
   display: none;
 }
 
+/* Lista bajo el texto de una confirmación (por ejemplo, las subtareas que faltan). */
+.dialog-items {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: var(--lucas-ink);
+}
+
+.dialog-items li + li {
+  margin-top: 2px;
+}
+
+.dialog-items[hidden] {
+  display: none;
+}
+
 /* En pantallas estrechas los botones ocupan el ancho, con Cancelar arriba (lejos del pulgar). */
 @media (max-width: 480px) {
   .board-confirm .dialog-actions {

@@ -9,6 +9,7 @@
 @import './board/cards.css';
 @import './board/tags.css';
 @import './board/editor.css';
+@import './board/subtasks.css';
 @import './board/footer.css';
 @import './board/decoration.css';
 @import './board/responsive.css';

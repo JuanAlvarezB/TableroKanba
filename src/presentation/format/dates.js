@@ -54,6 +54,9 @@ const EVENT_TEXTS = {
     from === null ? `Entró en ${COLUMN_NAMES[to]}` : `Movida de ${COLUMN_NAMES[from]} a ${COLUMN_NAMES[to]}`,
   priority: ({ from, to }) => `Prioridad: ${priorityText(from)} → ${priorityText(to)}`,
   due: ({ from, to }) => `Fecha límite: ${dueDateText(from)} → ${dueDateText(to)}`,
+  // Avance de una subtarea (docs/PLAN_SUBTAREAS.md, 2.8).
+  subtask: ({ text, to }) =>
+    to === 'done' ? `Subtarea terminada: «${text}»` : `Subtarea pendiente otra vez: «${text}»`,
 };
 
 /** @param {import('../../domain/entities/Task.js').HistoryEvent} event */
