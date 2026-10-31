@@ -1,13 +1,13 @@
-// Vista del tablero (tablero.html): dibuja las columnas a partir del store y traduce lo que hace
-// la persona (clic, arrastrar, teclado) en acciones del store. Guarda el estado propio de la
-// vista: tarea en edición, menú de etiquetas abierto, filtro, arrastre y resaltados.
+// Vista del tablero (tablero.html): compone los controladores de esta carpeta (avisos, resaltados,
+// edición, menú de etiquetas, barra, arrastre, alertas y tarjetas), dibuja las columnas a partir del
+// store y se suscribe a sus eventos. Cada controlador guarda su propio estado de la vista. Lo nuevo va
+// en un controlador, no aquí (docs/PLAN_ARQUITECTURA.md, 8.3).
 import { WIP_LIMITS, isColumnFull } from '../../../domain/rules/board.js';
 import { sortForView } from '../../../domain/rules/priority.js';
-import { adjacentStatus } from '../../../domain/usecases/MoveTask.js';
-import { createTaskCard } from '../../components/TaskCard.js';
 import { currentFeatures } from '../../state/features.js';
 import { createAlertsController } from './alertsController.js';
 import { createBoardNotices } from './boardNotices.js';
+import { createCardFactory } from './cardActions.js';
 import { createDragController } from './dragController.js';
 import { createEditingController } from './editingController.js';
 import { createHighlights } from './highlights.js';
@@ -31,9 +31,10 @@ export function createBoardPage({ store, reminders }) {
   });
 
   const highlights = createHighlights();
-
   const tasks = () => store.tasks;
   const { showNotice } = notices;
+
+  // El menú y la edición se cierran entre sí: abrir uno guarda o cierra el otro.
   const labelMenu = createLabelMenuController({
     render,
     beforeToggle: () => {
@@ -51,43 +52,7 @@ export function createBoardPage({ store, reminders }) {
     isDragging: () => drag.isDragging,
     filter: { current: () => toolbar.activeFilter, showAll: () => toolbar.setFilter('all') },
   });
-
-  /* ---------- Acciones de la tarjeta ---------- */
-
-  function shiftTask(id, direction) {
-    const task = tasks().find((t) => t.id === id);
-    if (!task) return;
-    const nextStatus = adjacentStatus(task, direction);
-    if (nextStatus) store.move(id, nextStatus);
-  }
-
-  function deleteTask(id) {
-    editor.discard([id]);
-    labelMenu.forget(id);
-    store.delete(id);
-  }
-
-  const cardActions = {
-    startEdit: editor.start,
-    shift: shiftTask,
-    toggleLabelMenu: labelMenu.toggle,
-    remove: deleteTask,
-    setPriority: (id, priority) => store.setPriority(id, priority),
-    setDueDate: (id, dueDate) => store.setDueDate(id, dueDate),
-    closeLabelMenu: labelMenu.close,
-    dragStart: drag.start,
-    dragEnd: drag.end,
-  };
-
-  function createCard(task) {
-    const editorCard = editor.cardFor(task);
-    if (editorCard) return editorCard;
-    return createTaskCard(task, {
-      menuOpen: labelMenu.isOpen(task.id),
-      highlightElapsed: highlights.elapsed(task.id),
-      actions: cardActions,
-    });
-  }
+  const createCard = createCardFactory({ store, editor, labelMenu, drag, highlights });
 
   /* ---------- Dibujar ---------- */
 
@@ -95,8 +60,8 @@ export function createBoardPage({ store, reminders }) {
     const all = tasks();
     editor.reconcile(all);
     labelMenu.reconcile(all);
+    // Al vaciar las listas se pierde el foco del menú o del editor; se devuelve al terminar.
     const restoreMenuFocus = labelMenu.preserveFocus();
-
     const restoreEditorFocus = editor.preserveFocus();
 
     lists.forEach((list) => {
@@ -143,11 +108,8 @@ export function createBoardPage({ store, reminders }) {
   store.on('sync', notices.setSyncStatus);
 
   drag.listen();
-
   toolbar.listen();
-
   labelMenu.listen();
-
   alerts.listen();
 
   // Sin conexión a Firestore, sincroniza al menos las pestañas del mismo navegador.
