@@ -241,7 +241,7 @@ Pruebas automáticas: de 0 a **146** (dominio, datos, store, autorización, text
 De la reestructuración:
 - [x] **Publicar en PDN**: PR #5 fusionado, `deploy.yml` en verde y PDN verificado: la sesión iniciada se conservó, las 21 tareas reales aparecen (14 / 1 / 6) con "Sincronizado" y sin el distintivo DESARROLLO.
 - [ ] **Hacer obligatorio el check `revisar`** (`ci.yml`) en el ruleset "Proteger main", para que no se pueda hacer merge con pruebas fallidas.
-- [ ] **Partir `createBoardPage()`** en controladores más pequeños (edición, menú de etiquetas, arrastre, alertas): es el nodo más conectado del grafo (40 conexiones).
+- [x] **Partir `createBoardPage()`** en controladores más pequeños (edición, menú de etiquetas, arrastre, alertas): era el nodo más conectado del grafo (44 conexiones). Hecho en la rama `partir-board-page` (31 oct 2026): `presentation/pages/board/` tiene ahora un controlador por responsabilidad (`boardNotices`, `highlights`, `editingController`, `labelMenuController`, `toolbarController`, `dragController`, `alertsController` y `cardActions`), y `createBoardPage()` solo los compone, dibuja y se suscribe al store (16 conexiones). Sin cambios de comportamiento, textos, clases ni IDs. Lo nuevo del tablero va en un controlador, no en `createBoardPage()`.
 - [ ] **Rediseño del tablero** con el sistema de `DESIGN.md` y, con él, `reset.css` y `base.css` comunes (ver fase 6).
 - [ ] **`@ts-check` con JSDoc** (opcional desde la fase 2).
 
