@@ -62,6 +62,16 @@ export const USERS_MESSAGES = {
     demote: 'Rol de administrador retirado.',
     'cancel-delete': 'Eliminación cancelada.',
     delete: 'Se eliminaron los datos de la persona. Recuerda borrar su cuenta en Authentication.',
+    'set-permissions': 'Permisos actualizados.',
+  },
+  // Panel de permisos (3.7): sin diferencias no se escribe nada, y los motivos propios de los permisos
+  // sustituyen a los generales (que hablan de rol, estado o eliminación).
+  permissionsUnchanged: 'No había cambios que guardar.',
+  permissionsReasons: {
+    self: 'No puedes cambiar tus propios permisos.',
+    'target-is-admin': 'Los administradores tienen siempre todas las funciones.',
+    'unknown-feature': 'Esa función no existe. Recarga la página e inténtalo de nuevo.',
+    'invalid-value': 'Valor de permiso no válido. Recarga la página e inténtalo de nuevo.',
   },
   // Eliminación en dos fases (2.4, flujo 5): avance y corte a medias.
   deletionProgress: (done, total) => `Borrando tareas: ${done} de ${total}.`,

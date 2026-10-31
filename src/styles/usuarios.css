@@ -513,10 +513,197 @@
   margin-top: 12px;
 }
 
+/* ---------- Panel de permisos (PermissionsPanel.js; boceto permisos-usuario.html) ---------- */
+
+.lucas-users .permissions-dialog {
+  width: min(100% - 32px, 600px);
+}
+
+.permissions-person {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+}
+
+.permissions-person .person-email {
+  margin: 0;
+}
+
+.permissions-content .readonly-note {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-cards);
+  background: var(--color-card-mint);
+}
+
+.features {
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feature {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 16px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--color-sea-foam);
+  border-radius: var(--radius-cards);
+  background: var(--color-field);
+}
+
+.feature + .feature,
+.children,
+.parent-off-note {
+  margin-top: 8px;
+}
+
+.children {
+  margin-left: 16px;
+  padding: 0 0 0 12px;
+  border-left: 2px solid var(--color-sea-foam);
+  list-style: none;
+}
+
+.feature-name {
+  margin: 0;
+  font-weight: 700;
+}
+
+.feature-desc {
+  margin: 2px 0 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.enforced,
+.unsaved {
+  display: inline-block;
+  margin: 6px 6px 0 0;
+  padding: 2px 8px;
+  border-radius: var(--radius-pills);
+  font: 600 11px/1.5 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.enforced.server {
+  background: var(--color-active-bg);
+  color: var(--color-active-fg);
+}
+
+.enforced.ui {
+  background: var(--color-sea-foam);
+  color: var(--color-pine-shadow);
+}
+
+/* Cambio sin guardar: con texto y una marca a la izquierda, no solo color. */
+.unsaved {
+  border: 1px solid var(--color-sage);
+  color: var(--color-pine-shadow);
+}
+
+.unsaved[hidden],
+.parent-off-note[hidden] {
+  display: none;
+}
+
+.feature.changed {
+  box-shadow: inset 4px 0 0 var(--color-sage);
+}
+
+.feature.is-disabled .feature-name,
+.feature.is-disabled .feature-desc {
+  color: var(--color-muted);
+}
+
+.parent-off-note {
+  margin-bottom: 0;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+/* Interruptor accesible: texto de estado y forma, no solo color; al menos 44 px de alto. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 6px 4px 12px;
+  border: 1px solid var(--color-mint-mist);
+  border-radius: var(--radius-pills);
+  background: var(--color-paper-white);
+  color: var(--color-charcoal-navy);
+  font: 600 13px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.switch-state {
+  min-width: 5.5em;
+  text-align: right;
+}
+
+.switch .track {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  border-radius: var(--radius-pills);
+  background: #c9d3d4;
+}
+
+.switch .track::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  content: '';
+}
+
+.switch[aria-checked='true'] .track {
+  background: var(--color-deep-teal);
+}
+
+.switch[aria-checked='true'] .track::after {
+  left: 21px;
+}
+
+.switch:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.switch:focus-visible {
+  outline: 3px solid var(--color-deep-teal);
+  outline-offset: 2px;
+}
+
 /* En celular los diálogos de esta página dejan más ancho a los campos (como el boceto). */
 @media (max-width: 599px) {
   .lucas-users .users-dialog .dialog-body {
     padding: 24px;
+  }
+
+  /* El interruptor baja debajo del texto de su función. */
+  .feature {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .feature .switch {
+    justify-self: start;
+  }
+
+  .children {
+    margin-left: 4px;
+    padding-left: 10px;
   }
 }
 
@@ -574,5 +761,9 @@
 
   .delete-progress span {
     transition: width 0.4s ease;
+  }
+
+  .switch .track::after {
+    transition: left 0.15s ease;
   }
 }

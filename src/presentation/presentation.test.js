@@ -9,6 +9,7 @@ import { labelMenuName } from './components/LabelMenu.js';
 import { currentFeatures, setFeatures } from './state/features.js';
 import { newestFirst, stepLabel } from './components/TaskHistory.js';
 import { backupCommand, cleanupCommand } from './components/DeleteWizard.js';
+import { changeSummary, panelItems, pendingChanges } from './components/PermissionsPanel.js';
 import { actionLabel, actionsFor, deletionNote, displayedName } from './components/UserList.js';
 import { dueInfo, formatDate, historyEventText } from './format/dates.js';
 import { HISTORY_TEXTS, plural } from './format/labels.js';
@@ -258,23 +259,33 @@ describe('acciones de cada fila de la página de usuarios', () => {
     expect(actionsFor(row({ active: false, deleting: true }, 'deleting'))).toEqual(['resume']);
   });
 
-  it('activos: dar o quitar el rol y desactivar', () => {
-    expect(actionsFor(row({}))).toEqual(['promote', 'deactivate']);
-    expect(actionsFor(row({ role: 'admin' }))).toEqual(['demote', 'deactivate']);
+  it('activos: permisos, dar o quitar el rol y desactivar', () => {
+    expect(actionsFor(row({}))).toEqual(['permissions', 'promote', 'deactivate']);
+    expect(actionsFor(row({ role: 'admin' }))).toEqual(['permissions', 'demote', 'deactivate']);
+    expect(actionLabel('permissions', row({}))).toBe('Permisos…');
   });
 
-  it('inactivos: reactivar, eliminar si es miembro y, si es administrador, quitarle el rol', () => {
-    expect(actionsFor(row({ active: false }, 'inactive'))).toEqual(['reactivate', 'delete']);
-    expect(actionsFor(row({ active: false, role: 'admin' }, 'inactive'))).toEqual(['reactivate', 'demote']);
+  it('inactivos: permisos, reactivar, eliminar si es miembro y, si es administrador, quitarle el rol', () => {
+    expect(actionsFor(row({ active: false }, 'inactive'))).toEqual(['permissions', 'reactivate', 'delete']);
+    expect(actionsFor(row({ active: false, role: 'admin' }, 'inactive'))).toEqual([
+      'permissions',
+      'reactivate',
+      'demote',
+    ]);
   });
 
   it('con un respaldo preparado se puede cancelar la eliminación, y eliminar es definitivo', () => {
     const prepared = row({ active: false }, 'inactive', false, { marker: ready, backupReady: true });
-    expect(actionsFor(prepared)).toEqual(['reactivate', 'cancel-delete', 'delete']);
+    expect(actionsFor(prepared)).toEqual(['permissions', 'reactivate', 'cancel-delete', 'delete']);
     expect(actionLabel('delete', prepared)).toBe('Eliminar definitivamente…');
     expect(actionLabel('delete', row({ active: false }, 'inactive'))).toBe('Eliminar…');
     // Si la persona se reactivó tras el respaldo, el marcador sobrante también se puede cancelar.
-    expect(actionsFor(row({}, 'active', false, { marker: ready }))).toEqual(['promote', 'deactivate', 'cancel-delete']);
+    expect(actionsFor(row({}, 'active', false, { marker: ready }))).toEqual([
+      'permissions',
+      'promote',
+      'deactivate',
+      'cancel-delete',
+    ]);
   });
 
   it('la nota de la fila muestra el respaldo (número de tareas y fecha), si venció o si quedó sin terminar', () => {
@@ -299,6 +310,52 @@ describe('acciones de cada fila de la página de usuarios', () => {
 
   it('sin nombre se muestra el correo', () => {
     expect(displayedName({ name: '', email: 'a@x.com' })).toBe('a@x.com');
+  });
+});
+
+describe('panel de permisos', () => {
+  const member = { role: 'member' };
+  const withOff = (...keys) => ({ ...ALL_FEATURES, ...Object.fromEntries(keys.map((key) => [key, false])) });
+  const itemOf = (items, key) => items.find((item) => item.key === key);
+
+  it('muestra el valor propio de cada función y dónde se cumple', () => {
+    const items = panelItems(member, withOff('reminders'), withOff('reminders'));
+    expect(items.map(({ key }) => key)).toEqual([
+      'board',
+      'priorities',
+      'dueDates',
+      'stalledAlerts',
+      'reminders',
+      'history',
+    ]);
+    expect(itemOf(items, 'reminders')).toMatchObject({ checked: false, disabled: false, changed: false, child: true });
+    expect(items.filter(({ server }) => server).map(({ key }) => key)).toEqual(['board', 'priorities', 'dueDates']);
+  });
+
+  it('con el tablero apagado las hijas se deshabilitan y conservan su valor', () => {
+    const saved = withOff('history');
+    const items = panelItems(member, saved, withOff('board', 'history'));
+    expect(itemOf(items, 'board')).toMatchObject({ checked: false, disabled: false, changed: true });
+    expect(itemOf(items, 'priorities')).toMatchObject({ checked: true, disabled: true, changed: false });
+    expect(itemOf(items, 'history')).toMatchObject({ checked: false, disabled: true, changed: false });
+  });
+
+  it('el panel de un administrador es de solo lectura, con todo activo', () => {
+    const stored = withOff('board');
+    const items = panelItems({ role: 'admin' }, stored, stored);
+    expect(items.every(({ checked, disabled, changed }) => checked && disabled && !changed)).toBe(true);
+  });
+
+  it('solo se envían y resumen las funciones que cambian, en el orden del catálogo', () => {
+    const saved = withOff('history');
+    const draft = withOff('board', 'priorities');
+    expect(pendingChanges(saved, draft)).toEqual({ board: false, priorities: false, history: true });
+    expect(changeSummary(saved, draft)).toEqual([
+      'Tablero de tareas: activada → apagada',
+      'Etiquetas de prioridad: activada → apagada',
+      'Historial de la tarea: apagada → activada',
+    ]);
+    expect(pendingChanges(saved, { ...saved })).toEqual({});
   });
 });
 

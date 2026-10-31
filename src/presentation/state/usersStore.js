@@ -12,6 +12,7 @@
 //                 guardia revalida su acceso (presentation/guards/session.js, sección 1.4).
 import { deletionKey } from '../../domain/entities/User.js';
 import { RepositoryError } from '../../domain/repositories/RepositoryError.js';
+import { featureDefaults, ownPermissions } from '../../domain/rules/features.js';
 import { isBackupFresh, lifecycleOf, normalizeEmail } from '../../domain/rules/permissions.js';
 import { authorizeEmail } from '../../domain/usecases/admin/AuthorizeEmail.js';
 import { cancelUserDeletion } from '../../domain/usecases/admin/CancelUserDeletion.js';
@@ -20,6 +21,7 @@ import { demoteUser } from '../../domain/usecases/admin/DemoteUser.js';
 import { promoteUser } from '../../domain/usecases/admin/PromoteUser.js';
 import { reactivateUser } from '../../domain/usecases/admin/ReactivateUser.js';
 import { runUserDeletion } from '../../domain/usecases/admin/RunUserDeletion.js';
+import { setUserPermissions } from '../../domain/usecases/admin/SetUserPermissions.js';
 import { startUserDeletion } from '../../domain/usecases/admin/StartUserDeletion.js';
 import { USERS_MESSAGES } from '../../shared/constants/messages.js';
 
@@ -70,9 +72,11 @@ function createId() {
 }
 
 /**
- * @param {{ newId?: () => string, now?: () => number }} [deps]
+ * @param {{ newId?: () => string, now?: () => number,
+ *   defaults?: import('../../domain/rules/features.js').FeatureFlags }} [deps]
+ *   defaults: valores iniciales de los permisos en este ambiente (los de la guardia de sesión).
  */
-export function createUsersStore({ newId = createId, now = () => Date.now() } = {}) {
+export function createUsersStore({ newId = createId, now = () => Date.now(), defaults = featureDefaults() } = {}) {
   /** @type {import('../../domain/entities/User.js').AllowedUser[]} */
   let users = [];
   /** @type {Map<string, import('../../domain/entities/User.js').DeletionMarker>} */
@@ -121,26 +125,28 @@ export function createUsersStore({ newId = createId, now = () => Date.now() } = 
     return { ok: false, reason: 'failed', message: USERS_MESSAGES.failed };
   }
 
-  function rejected(reason) {
+  // texts: motivos propios de una acción, que mandan sobre los generales.
+  function rejected(reason, texts = {}) {
     // Si el dominio dice que ya no es administrador, la guardia lo comprueba con el servidor.
     if (reason === 'not-admin') emit('access-lost');
-    return { ok: false, reason, message: USERS_MESSAGES.reasons[reason] ?? USERS_MESSAGES.failed };
+    return { ok: false, reason, message: texts[reason] ?? USERS_MESSAGES.reasons[reason] ?? USERS_MESSAGES.failed };
   }
 
   const find = (email) => users.find((user) => user.email === email);
   const markerOf = (user) => markers.get(deletionKey(user)) ?? null;
 
   /** @returns {Promise<ActionResult>} */
-  async function run(action, execute) {
+  async function run(action, execute, texts = {}) {
     let result;
     try {
       result = await execute();
     } catch (error) {
       return failure(error);
     }
-    if (!result.ok) return rejected(result.reason);
-    emit('notice', USERS_MESSAGES.done[action]);
-    return { ok: true, message: USERS_MESSAGES.done[action] };
+    if (!result.ok) return rejected(result.reason, texts);
+    const message = result.unchanged ? USERS_MESSAGES.permissionsUnchanged : USERS_MESSAGES.done[action];
+    emit('notice', message);
+    return { ok: true, message };
   }
 
   // Fase 2 de la eliminación (2.5): borra por trozos avisando el avance. Si se corta a medias, el
@@ -286,6 +292,32 @@ export function createUsersStore({ newId = createId, now = () => Date.now() } = 
       const target = find(email);
       if (!target) return Promise.resolve(rejected('not-found'));
       return run(action, () => CHANGES[action](actor(), target, { adminUsers: repository, newId }));
+    },
+
+    /**
+     * Valor propio de cada función de una persona (guardado o inicial del ambiente), sin mirar al padre:
+     * lo que muestra el panel de permisos.
+     * @param {import('../../domain/entities/User.js').AllowedUser} user
+     */
+    ownPermissions(user) {
+      return ownPermissions(user.permissions, defaults);
+    },
+
+    /**
+     * Cambia los permisos de otra persona sobre su estado más reciente: solo las funciones de changes,
+     * con su entrada set-permissions en el mismo lote (3.6).
+     * @param {string} email
+     * @param {Partial<import('../../domain/rules/features.js').FeatureFlags>} changes
+     * @returns {Promise<ActionResult>}
+     */
+    setPermissions(email, changes) {
+      const target = find(email);
+      if (!target) return Promise.resolve(rejected('not-found'));
+      return run(
+        'set-permissions',
+        () => setUserPermissions(actor(), target, changes, { adminUsers: repository, newId, defaults }),
+        USERS_MESSAGES.permissionsReasons,
+      );
     },
 
     /**

@@ -63,6 +63,17 @@ function ownValue(stored, key, defaults) {
 }
 
 /**
+ * Valor propio de cada función, sin mirar a su padre: lo que muestra el interruptor de cada una en el panel
+ * de permisos. Con el padre apagado, una hija conserva aquí su valor aunque no esté activa.
+ * @param {Record<string, unknown>} stored allowedUsers.permissions tal como está.
+ * @param {FeatureFlags} [defaults] Valores iniciales del ambiente (featureDefaults).
+ * @returns {FeatureFlags}
+ */
+export function ownPermissions(stored, defaults = featureDefaults()) {
+  return Object.fromEntries(FEATURE_KEYS.map((key) => [key, ownValue(stored, key, defaults)]));
+}
+
+/**
  * Permisos efectivos de una persona. Un administrador tiene siempre todas las funciones; un miembro
  * tiene una función si su valor guardado (o el inicial) es true y su padre está activo: apagar el padre
  * apaga las hijas sin reescribirlas.

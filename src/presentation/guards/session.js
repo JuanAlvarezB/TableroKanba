@@ -22,8 +22,9 @@ const LOGIN_MESSAGE_KEY = 'lucas-mensaje-login';
 // Función deshabilitada de la que viene la persona, para que index.html muestre su aviso al llegar.
 const HOME_MESSAGE_KEY = 'lucas-mensaje-inicio';
 
-// Valores iniciales de los permisos por función en este ambiente (docs/PLAN_USUARIOS.md, 3.3).
-const ENV_FEATURE_DEFAULTS = featureDefaults(FEATURE_DEFAULTS[APP_ENV.name]);
+// Valores iniciales de los permisos por función en este ambiente (docs/PLAN_USUARIOS.md, 3.3). También
+// los usa el panel de permisos de la página de usuarios, para mostrar las claves aún no guardadas.
+export const ENV_FEATURE_DEFAULTS = featureDefaults(FEATURE_DEFAULTS[APP_ENV.name]);
 
 // Al volver a la pestaña se revalida el acceso como máximo una vez por minuto.
 const REVALIDATE_INTERVAL = 60 * 1000;
