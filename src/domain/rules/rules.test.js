@@ -19,6 +19,7 @@ import {
   canOpenFeature,
   effectivePermissions,
   featureDefaults,
+  ownPermissions,
   permissionDiff,
   rememberedFeatures,
 } from './features.js';
@@ -579,6 +580,21 @@ describe('permisos por función: applyPermissionChange', () => {
       history: false,
       board: false,
     });
+  });
+});
+
+describe('permisos por función: ownPermissions', () => {
+  it('cada función con su valor guardado o el inicial, sin mirar al padre', () => {
+    expect(ownPermissions({ board: false, reminders: false })).toEqual({
+      ...ALL_FEATURES,
+      board: false,
+      reminders: false,
+    });
+    expect(ownPermissions({}, featureDefaults({ history: false }))).toEqual({ ...ALL_FEATURES, history: false });
+  });
+
+  it('un valor corrupto cuenta como apagado y las claves desconocidas no aparecen', () => {
+    expect(ownPermissions({ board: 'true', tablero: true })).toEqual({ ...ALL_FEATURES, board: false });
   });
 });
 
