@@ -3,6 +3,14 @@ import { FILTERS, countByStatus, isColumnFull, nextOrder, orderBefore, sortTasks
 import { businessDaysUntil, calendarDaysSince } from './dates.js';
 import { dueStatus, needsDueAttention, parseDueDate } from './dueDates.js';
 import {
+  FEATURES,
+  FEATURE_KEYS,
+  applyPermissionChange,
+  effectivePermissions,
+  featureDefaults,
+  permissionDiff,
+} from './features.js';
+import {
   HISTORY_KEEP,
   HISTORY_LIMIT,
   HISTORY_SOFT_LIMIT,
@@ -370,6 +378,118 @@ describe('accessChanged', () => {
     expect(accessChanged(before, { role: 'member', permissions: { b: false, a: true } })).toBe(false);
     expect(accessChanged(before, { role: 'admin', permissions: { a: true, b: false } })).toBe(true);
     expect(accessChanged(before, { role: 'member', permissions: { a: false, b: false } })).toBe(true);
+  });
+});
+
+describe('permisos por función: catálogo', () => {
+  it('el tablero es el padre de cinco hijas', () => {
+    expect(FEATURE_KEYS).toEqual(['board', 'priorities', 'dueDates', 'stalledAlerts', 'reminders', 'history']);
+    expect(FEATURES.filter(({ parent }) => parent === null).map(({ key }) => key)).toEqual(['board']);
+    expect(FEATURES.filter(({ parent }) => parent === 'board')).toHaveLength(5);
+  });
+
+  it('las reglas de Firestore cumplen board, priorities y dueDates, y su valor inicial es true (A-37)', () => {
+    const enforced = FEATURES.filter(({ enforcedInRules }) => enforcedInRules);
+    expect(enforced.map(({ key }) => key)).toEqual(['board', 'priorities', 'dueDates']);
+    enforced.forEach(({ defaultValue }) => expect(defaultValue).toBe(true));
+  });
+
+  it('featureDefaults toma el catálogo y solo los ajustes booleanos de funciones conocidas', () => {
+    expect(featureDefaults()).toEqual({
+      board: true,
+      priorities: true,
+      dueDates: true,
+      stalledAlerts: true,
+      reminders: true,
+      history: true,
+    });
+    expect(featureDefaults({ reminders: false, history: 'no', otra: false })).toEqual({
+      ...featureDefaults(),
+      reminders: false,
+    });
+  });
+});
+
+describe('permisos por función: effectivePermissions', () => {
+  const member = (permissions = {}) => ({ role: 'member', permissions });
+  const all = (value) => Object.fromEntries(FEATURE_KEYS.map((key) => [key, value]));
+
+  it('un documento sin permisos tiene todas las funciones con su valor inicial', () => {
+    expect(effectivePermissions(member())).toEqual(all(true));
+    const defaults = featureDefaults({ reminders: false });
+    expect(effectivePermissions(member(), defaults)).toEqual({ ...all(true), reminders: false });
+  });
+
+  it('el valor guardado manda sobre el inicial', () => {
+    expect(effectivePermissions(member({ priorities: false }))).toEqual({ ...all(true), priorities: false });
+    const defaults = featureDefaults({ reminders: false });
+    expect(effectivePermissions(member({ reminders: true }), defaults)).toEqual(all(true));
+  });
+
+  it('apagar el padre apaga las hijas, aunque estén encendidas', () => {
+    expect(effectivePermissions(member({ board: false, priorities: true, history: true }))).toEqual(all(false));
+  });
+
+  it.each([['false'], [0], [1], ['true'], [null], [{}]])('un valor corrupto (%j) apaga la función', (value) => {
+    expect(effectivePermissions(member({ dueDates: value })).dueDates).toBe(false);
+    expect(effectivePermissions(member({ board: value }))).toEqual(all(false));
+  });
+
+  it('un administrador tiene todas las funciones, aunque las tenga apagadas', () => {
+    expect(effectivePermissions({ role: 'admin', permissions: all(false) })).toEqual(all(true));
+    expect(effectivePermissions({ role: 'admin', permissions: {} }, featureDefaults({ history: false }))).toEqual(
+      all(true),
+    );
+  });
+});
+
+describe('permisos por función: applyPermissionChange', () => {
+  it('apagar y volver a encender el padre conserva las hijas', () => {
+    const stored = { board: true, priorities: false, history: true };
+    const off = applyPermissionChange(stored, 'board', false);
+    expect(off).toEqual({ board: false, priorities: false, history: true });
+    expect(applyPermissionChange(off, 'board', true)).toEqual(stored);
+  });
+
+  it('cambia solo la clave indicada y no modifica el mapa recibido', () => {
+    const stored = { dueDates: false };
+    expect(applyPermissionChange(stored, 'reminders', false)).toEqual({ dueDates: false, reminders: false });
+    expect(stored).toEqual({ dueDates: false });
+  });
+
+  it('quita claves desconocidas y pasa a false los valores corruptos', () => {
+    expect(applyPermissionChange({ tablero: true, history: 'false', dueDates: true }, 'board', false)).toEqual({
+      dueDates: true,
+      history: false,
+      board: false,
+    });
+  });
+});
+
+describe('permisos por función: permissionDiff', () => {
+  it('lista lo que se apaga y lo que se enciende, en el orden del catálogo', () => {
+    expect(permissionDiff({ history: false }, { board: false, history: true })).toEqual({
+      off: ['board'],
+      on: ['history'],
+    });
+    expect(permissionDiff({}, { dueDates: false, priorities: false })).toEqual({ off: ['priorities', 'dueDates'] });
+  });
+
+  it('una clave ausente vale su valor inicial: guardarlo explícito no es un cambio', () => {
+    expect(permissionDiff({}, { board: true })).toEqual({});
+    expect(permissionDiff({ board: true }, {})).toEqual({});
+    expect(permissionDiff({}, { reminders: false }, featureDefaults({ reminders: false }))).toEqual({});
+  });
+
+  it('un valor corrupto cuenta como apagado', () => {
+    expect(permissionDiff({ board: 'true' }, { board: false })).toEqual({});
+    expect(permissionDiff({ board: 'true' }, { board: true })).toEqual({ on: ['board'] });
+  });
+
+  it('cambiar las seis funciones cabe en dos claves', () => {
+    const off = Object.fromEntries(FEATURE_KEYS.map((key) => [key, false]));
+    expect(permissionDiff({}, off)).toEqual({ off: FEATURE_KEYS });
+    expect(Object.keys(permissionDiff({}, off))).toHaveLength(1);
   });
 });
 
