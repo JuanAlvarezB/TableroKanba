@@ -4,6 +4,7 @@
 import { APP_ENV } from '../../../shared/config/firebase.config.js';
 import { createConfirmDialogs } from '../../components/ConfirmDialogs.js';
 import { createDeleteWizard } from '../../components/DeleteWizard.js';
+import { createPermissionsPanel } from '../../components/PermissionsPanel.js';
 import { createUserForm } from '../../components/UserForm.js';
 import { createUserList } from '../../components/UserList.js';
 import { plural } from '../../format/labels.js';
@@ -41,6 +42,7 @@ export function createUsersPage({ store }) {
   const list = createUserList(document.getElementById('user-rows'), {
     onAction: (action, row, opener) => {
       if (action === 'delete' || action === 'resume') wizard.open(action, row, opener);
+      else if (action === 'permissions') openPermissions(row, opener);
       else openConfirm(action, row.user, opener);
     },
   });
@@ -54,6 +56,11 @@ export function createUsersPage({ store }) {
     onResume: (email) => store.resumeDeletion(email),
     commandOptions: () => ({ ambiente: APP_ENV.name, admin: store.sessionEmail() }),
     authConsoleUrl: authConsoleUrl(),
+    restoreFocus,
+  });
+  const openPermissions = createPermissionsPanel({
+    permissionsOf: (user) => store.ownPermissions(user),
+    onSave: (email, changes) => store.setPermissions(email, changes),
     restoreFocus,
   });
   const openUserForm = createUserForm({ onSubmit: (input) => store.authorize(input) });

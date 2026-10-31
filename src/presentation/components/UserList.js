@@ -5,7 +5,7 @@
 import { formatDate } from '../format/dates.js';
 import { plural } from '../format/labels.js';
 
-const ROLE_LABELS = { admin: 'Administrador', member: 'Miembro' };
+export const ROLE_LABELS = { admin: 'Administrador', member: 'Miembro' };
 
 // Estado con icono y texto: nunca solo con color.
 const LIFECYCLE_LABELS = {
@@ -15,6 +15,7 @@ const LIFECYCLE_LABELS = {
 };
 
 export const ACTION_LABELS = {
+  permissions: 'Permisos…',
   deactivate: 'Desactivar',
   reactivate: 'Reactivar',
   promote: 'Dar rol de administrador',
@@ -27,9 +28,10 @@ export const ACTION_LABELS = {
 const DANGER_ACTIONS = ['deactivate', 'delete'];
 
 /**
- * Acciones de una fila según su estado. Solo se elimina a una persona desactivada que no es
- * administradora; un respaldo preparado sin confirmar se puede cancelar, y una eliminación
- * confirmada solo se puede reanudar (2.4, flujos 5 y 6).
+ * Acciones de una fila según su estado. Los permisos se abren en toda fila ajena que no esté en
+ * eliminación (los de un administrador, solo para leerlos; 3.7). Solo se elimina a una persona
+ * desactivada que no es administradora; un respaldo preparado sin confirmar se puede cancelar, y una
+ * eliminación confirmada solo se puede reanudar (2.4, flujos 5 y 6).
  * @param {import('../state/usersStore.js').UserRow} row
  * @returns {(keyof typeof ACTION_LABELS)[]}
  */
@@ -42,7 +44,7 @@ export function actionsFor({ user, lifecycle, self, marker }) {
     ? ['reactivate', ...(admin ? ['demote'] : [])]
     : [admin ? 'demote' : 'promote', 'deactivate'];
   const cancel = marker?.state === 'backup-ready' ? ['cancel-delete'] : [];
-  return [...changes, ...cancel, ...(inactive && !admin ? ['delete'] : [])];
+  return ['permissions', ...changes, ...cancel, ...(inactive && !admin ? ['delete'] : [])];
 }
 
 /**

@@ -22,6 +22,26 @@ export const LABEL_MENU_NAMES = {
   dueDates: 'Fecha límite',
 };
 
+// Nombre y descripción de cada función del catálogo (domain/rules/features.js) en el panel de permisos
+// (docs/PLAN_USUARIOS.md, 3.7).
+export const FEATURE_LABELS = {
+  board: { name: 'Tablero de tareas', description: 'Ver y organizar sus tareas en tres columnas.' },
+  priorities: {
+    name: 'Etiquetas de prioridad',
+    description: 'Urgente, Prioritaria y Puede esperar, con sus filtros.',
+  },
+  dueDates: { name: 'Fecha límite y vencimientos', description: 'Fechas límite, avisos de vencimiento y su filtro.' },
+  stalledAlerts: {
+    name: 'Alertas de tareas detenidas',
+    description: 'Aviso cuando una tarea lleva más de 3 días sin moverse.',
+  },
+  reminders: { name: 'Recordatorios', description: 'Aviso de lunes a viernes a las 10:00 y a las 15:00.' },
+  history: {
+    name: 'Historial de la tarea',
+    description: 'Línea de tiempo de cada tarea. Se sigue registrando aunque esté apagado.',
+  },
+};
+
 // Textos de las alertas de tareas detenidas (la regla está en domain/rules/stalledTasks.js).
 // "phrase" completa frases como "Lleva 4 días en Pendiente".
 export const OVERDUE_COLUMNS = {
