@@ -4,8 +4,10 @@ PENDIENTES.txt
 # Sitio generado por vite build (deploy.yml lo publica en GitHub Pages)
 dist/
 
-# Respaldos de tareas con datos reales de PDN (ver GUIA_AMBIENTES.md, fase 0)
+# Respaldos de tareas con datos reales de PDN (ver GUIA_AMBIENTES.md, fase 0) y respaldos cifrados del
+# script administrativo, que se guardan fuera del repositorio (README, "Script administrativo")
 respaldo-*.json
+respaldo-*.cifrado
 
 # Firebase CLI: caché, registros y exportaciones del emulador
 .firebase/
