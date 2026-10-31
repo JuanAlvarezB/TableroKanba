@@ -1,7 +1,7 @@
-// Gestión de usuarios en firestore.rules, reglas de transición (docs/PLAN_USUARIOS.md, 2.9 y 2.12,
-// casos P-1…P-14 y P-20): el administrador escribe allowedUsers solo con su entrada del registro,
-// adminLog es inmutable, el marcador de eliminación solo lo crea el script, y las tareas se aceptan
-// con o sin su documento de taskIndex. La invariante de siempre: el administrador no lee tareas.
+// Gestión de usuarios en firestore.rules (docs/PLAN_USUARIOS.md, 2.9 y 2.12, casos P-1…P-14 y P-20): el
+// administrador escribe allowedUsers solo con su entrada del registro, adminLog es inmutable, el marcador
+// de eliminación solo lo crea el script, y con las reglas estrictas del índice (2.6, paso 3) cada tarea se
+// crea y se borra con su documento de taskIndex. La invariante de siempre: el administrador no lee tareas.
 import { assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import * as firestore from 'firebase/firestore';
 import {
@@ -540,12 +540,25 @@ describe('P-9 el dueño y el índice de sus tareas', () => {
     await assertFails(setDoc(doc(signedIn(env, INES), 'taskIndex/ines-2'), { ownerId: INES.uid }));
   });
 
-  // En las reglas estrictas (PR 6) estos dos casos pasan a rechazarse.
-  it('transición: acepta todavía una tarea sin índice y un índice sin tarea', async () => {
+  // Con las reglas de transición (PR 3) estos casos se aceptaban; con las estrictas (PR 6), no.
+  it('estrictas: no crea una tarea sin su índice ni un índice sin su tarea', async () => {
     const db = signedIn(env, BETO);
-    await assertSucceeds(writeTasks(db, ['beto-sin-indice'], BETO, { withIndex: false }));
-    await assertSucceeds(setDoc(doc(db, 'taskIndex/beto-solo-indice'), { ownerId: BETO.uid }));
-    await assertSucceeds(writeTasks(db, ['beto-1'], BETO, { remove: true, withIndex: false }));
+    await assertFails(writeTasks(db, ['beto-sin-indice'], BETO, { withIndex: false }));
+    await assertFails(setDoc(doc(db, 'taskIndex/beto-solo-indice'), { ownerId: BETO.uid }));
+  });
+
+  it('estrictas: no borra la tarea dejando su índice, ni el índice dejando su tarea', async () => {
+    const db = signedIn(env, BETO);
+    await assertFails(writeTasks(db, ['beto-1'], BETO, { remove: true, withIndex: false }));
+    await assertFails(deleteDoc(doc(db, 'taskIndex/beto-1')));
+    expect((await getDoc(doc(db, 'tasks/beto-1'))).exists()).toBe(true);
+  });
+
+  it('estrictas: la tarea y su índice son del mismo dueño', async () => {
+    await seed(env, { 'tasks/beto-antigua': task(BETO.uid), 'taskIndex/ana-suelto': { ownerId: ANA.uid } });
+    // Un índice propio para la tarea de otra persona, o una tarea propia sobre el índice de otra.
+    await assertFails(setDoc(doc(signedIn(env, ANA), 'taskIndex/beto-antigua'), { ownerId: ANA.uid }));
+    await assertFails(setDoc(doc(signedIn(env, BETO), 'tasks/ana-suelto'), task(BETO.uid)));
   });
 });
 
@@ -631,6 +644,13 @@ describe('P-12 borrar las tareas de una persona en eliminación', () => {
     await assertFails(deleteDoc(doc(db, 'taskIndex/beto-1')));
   });
 
+  it('estrictas: tampoco borra la tarea sin su índice ni el índice sin su tarea', async () => {
+    await seed(env, { 'deletions/uid-ines': marker('deleting') });
+    const db = signedIn(env, ADMIN);
+    await assertFails(deleteDoc(doc(db, 'tasks/ines-1')));
+    await assertFails(deleteDoc(doc(db, 'taskIndex/ines-1')));
+  });
+
   it('un miembro o un administrador inactivo no las borran, aunque haya marcador', async () => {
     await seed(env, { 'deletions/uid-ines': marker('deleting') });
     await assertFails(writeTasks(signedIn(env, BETO), ['ines-1'], INES, { remove: true }));
@@ -639,15 +659,19 @@ describe('P-12 borrar las tareas de una persona en eliminación', () => {
   });
 });
 
-describe('P-13 las personas actuales siguen trabajando con las reglas de transición', () => {
-  it('un documento con solo name crea, lee, edita, mueve y borra sus tareas sin índice', async () => {
+describe('P-13 las personas actuales siguen trabajando con las reglas estrictas', () => {
+  it('un documento con solo name lee, edita, mueve y borra una tarea antigua que no tiene índice', async () => {
+    await seed(env, { 'tasks/ana-antigua': task(ANA.uid) });
     const db = signedIn(env, ANA);
-    await assertSucceeds(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid)));
-    await assertSucceeds(getDoc(doc(db, 'tasks/ana-2')));
+    await assertSucceeds(getDoc(doc(db, 'tasks/ana-antigua')));
     await assertSucceeds(getDocs(query(collection(db, 'tasks'), where('ownerId', '==', ANA.uid))));
-    await assertSucceeds(updateDoc(doc(db, 'tasks/ana-2'), { text: 'Cambiada' }));
-    await assertSucceeds(updateDoc(doc(db, 'tasks/ana-2'), { status: 'in-progress', startedAt: 2 }));
-    await assertSucceeds(deleteDoc(doc(db, 'tasks/ana-2')));
+    await assertSucceeds(updateDoc(doc(db, 'tasks/ana-antigua'), { text: 'Cambiada' }));
+    await assertSucceeds(updateDoc(doc(db, 'tasks/ana-antigua'), { status: 'in-progress', startedAt: 2 }));
+    await assertSucceeds(writeTasks(db, ['ana-antigua'], ANA, { remove: true }));
+  });
+
+  it('una tarea nueva ya no se crea sin su índice', async () => {
+    await assertFails(setDoc(doc(signedIn(env, ANA), 'tasks/ana-2'), task(ANA.uid)));
   });
 
   it('y con índice: crea, edita y mueve sin tocarlo, y lo borra con la tarea', async () => {
@@ -738,21 +762,8 @@ describe('P-20 tamaño del trozo: 8 tareas con su índice por lote', () => {
     await assertSucceeds(writeTasks(signedIn(env, ADMIN), owned, INES, { remove: true }));
   });
 
-  // Con las reglas de transición las llamadas no dependen del tamaño del lote (siempre los mismos
-  // documentos), así que el límite real se mide aparte, en limite-llamadas.rules.test.js.
-  it('el administrador borra 25 tareas con sus índices (50 escrituras) en un lote', async () => {
-    const owned = ids('ines-grande', 25);
-    await seed(env, {
-      'deletions/uid-ines': marker('deleting'),
-      ...Object.fromEntries(
-        owned.flatMap((id) => [
-          [`tasks/${id}`, task(INES.uid)],
-          [`taskIndex/${id}`, { ownerId: INES.uid }],
-        ]),
-      ),
-    });
-    await assertSucceeds(writeTasks(signedIn(env, ADMIN), owned, INES, { remove: true }));
-  });
+  // Con las reglas estrictas las llamadas crecen con el lote (dos por tarea): cuántas tareas acepta el
+  // emulador por lote se mide en limite-llamadas.rules.test.js, con estas mismas reglas.
 });
 
 // La página de usuarios (PR 4) escribe con AdminUsersRepository y los casos de uso del dominio: se

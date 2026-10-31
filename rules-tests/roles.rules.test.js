@@ -17,6 +17,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { TASK_CHUNK_SIZE } from '../src/data/repositories/FirestoreTaskRepository.js';
 import {
   ANA,
   BETO,
@@ -242,18 +243,27 @@ describe('R-13 denegación por defecto', () => {
   });
 });
 
+// Con las reglas estrictas del índice (2.6) cada tarea suma dos llamadas, una por pieza, así que la app
+// escribe en trozos de TASK_CHUNK_SIZE tareas: 1 + 8 × 2 = 17. La lectura del documento de autorización
+// cuenta una sola vez aunque la pidan las 16 escrituras. El emulador no aplica el límite de 20 de
+// producción (A-23): el límite real se comprueba en Desarrollo (VERIFICACION_MANUAL.md, 7.5).
 describe('R-14 límite de get() por petición', () => {
-  it('un lote de 25 borrados (y otro de 25 altas) de tareas propias no lo supera', async () => {
-    const ids = Array.from({ length: 25 }, (_, i) => `ana-lote-${i}`);
-    await seed(env, Object.fromEntries(ids.map((id) => [`tasks/${id}`, task(ANA.uid)])));
+  it(`un trozo de ${TASK_CHUNK_SIZE} altas y otro de ${TASK_CHUNK_SIZE} borrados con su índice no lo superan`, async () => {
+    const ids = Array.from({ length: TASK_CHUNK_SIZE }, (_, i) => `ana-lote-${i}`);
     const db = signedIn(env, ANA);
 
-    const deletes = writeBatch(db);
-    ids.forEach((id) => deletes.delete(doc(db, `tasks/${id}`)));
-    await assertSucceeds(deletes.commit());
-
     const creates = writeBatch(db);
-    ids.forEach((id) => creates.set(doc(db, `tasks/${id}`), task(ANA.uid)));
+    ids.forEach((id) => {
+      creates.set(doc(db, `tasks/${id}`), task(ANA.uid));
+      creates.set(doc(db, `taskIndex/${id}`), { ownerId: ANA.uid });
+    });
     await assertSucceeds(creates.commit());
+
+    const deletes = writeBatch(db);
+    ids.forEach((id) => {
+      deletes.delete(doc(db, `tasks/${id}`));
+      deletes.delete(doc(db, `taskIndex/${id}`));
+    });
+    await assertSucceeds(deletes.commit());
   });
 });
