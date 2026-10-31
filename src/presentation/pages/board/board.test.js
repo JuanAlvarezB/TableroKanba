@@ -1,9 +1,23 @@
 // Pruebas de la lógica propia de los controladores del tablero (pages/board/), sin navegador.
 import { describe, expect, it } from 'vitest';
+import { overdueSignature } from './alertsController.js';
 import { editOutcome, editingConflict } from './editingController.js';
 import { HIGHLIGHT_DURATION, createHighlights } from './highlights.js';
 
-const task = (id, fields = {}) => ({ id, text: 'Texto', status: 'pending', ...fields });
+// Tarea con la forma de domain/entities/Task.js, creada ahora (sin alertas).
+const task = (id, fields = {}) => ({
+  id,
+  text: 'Texto',
+  status: 'pending',
+  order: 0,
+  createdAt: Date.now(),
+  startedAt: null,
+  completedAt: null,
+  priority: null,
+  dueDate: null,
+  history: null,
+  ...fields,
+});
 
 describe('resaltado de tarjetas', () => {
   function withClock() {
@@ -73,5 +87,14 @@ describe('tarea en edición cambiada en otro dispositivo', () => {
   it('se deja de editar si se borró o se completó', () => {
     expect(editingConflict([task('a')], 'b')).toBe('deleted');
     expect(editingConflict([task('a', { status: 'completed' })], 'a')).toBe('completed');
+  });
+});
+
+describe('firma de las alertas', () => {
+  it('es la misma con las mismas tareas y cambia si cambia el tablero', () => {
+    const board = [task('a'), task('b')];
+    expect(overdueSignature(board)).toBe(overdueSignature([task('a'), task('b')]));
+    expect(overdueSignature(board)).not.toBe(overdueSignature([task('a')]));
+    expect(overdueSignature([])).toBe('');
   });
 });

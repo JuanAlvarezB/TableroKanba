@@ -3,13 +3,10 @@
 // vista: tarea en edición, menú de etiquetas abierto, filtro, arrastre y resaltados.
 import { WIP_LIMITS, countByStatus, filtersFor, isColumnFull } from '../../../domain/rules/board.js';
 import { sortForView } from '../../../domain/rules/priority.js';
-import { stalledDays } from '../../../domain/rules/stalledTasks.js';
 import { adjacentStatus } from '../../../domain/usecases/MoveTask.js';
-import { checkReminder } from '../../../domain/usecases/CheckReminder.js';
-import { attentionGroups, createReminderBanner, renderColumnChips } from '../../components/OverdueAlerts.js';
 import { createTaskCard } from '../../components/TaskCard.js';
-import { dueInfo } from '../../format/dates.js';
 import { currentFeatures } from '../../state/features.js';
+import { createAlertsController } from './alertsController.js';
 import { createBoardNotices } from './boardNotices.js';
 import { createEditingController } from './editingController.js';
 import { createHighlights } from './highlights.js';
@@ -34,22 +31,10 @@ export function createBoardPage({ store, reminders }) {
     toast: document.getElementById('toast'),
     syncStatus: document.getElementById('sync-status'),
   });
-  const banner = createReminderBanner(
-    {
-      banner: document.getElementById('overdue-banner'),
-      title: document.getElementById('overdue-title'),
-      summary: document.getElementById('overdue-summary'),
-      dismiss: document.getElementById('overdue-dismiss'),
-    },
-    { onShowTasks: showTasks },
-  );
 
   let activeFilter = 'all';
   let draggedId = null;
   const highlights = createHighlights();
-  // Firma de las alertas dibujadas; si cambia (pasa un día, una tarea supera el límite) hay
-  // que volver a dibujar el tablero.
-  let lastOverdueSignature = '';
 
   const tasks = () => store.tasks;
   const { showNotice } = notices;
@@ -60,6 +45,14 @@ export function createBoardPage({ store, reminders }) {
     },
   });
   const editor = createEditingController({ store, showNotice, render, beforeStart: () => labelMenu.forget() });
+  const alerts = createAlertsController({
+    store,
+    reminders,
+    highlights,
+    render,
+    isDragging: () => draggedId !== null,
+    filter: { current: () => activeFilter, showAll: () => setFilter('all') },
+  });
 
   /* ---------- Filtro ---------- */
 
@@ -67,54 +60,6 @@ export function createBoardPage({ store, reminders }) {
     activeFilter = filter;
     filterButtons.forEach((btn) => btn.setAttribute('aria-pressed', String(btn.dataset.filter === filter)));
     render();
-  }
-
-  /* ---------- Alertas y recordatorio ---------- */
-
-  function overdueSignature() {
-    return tasks()
-      .map((t) => `${t.id}:${stalledDays(t)}:${dueInfo(t)?.text}`)
-      .join('|');
-  }
-
-  // Muestra el recordatorio si toca turno, no se ha mostrado aún y hay tareas que lo necesitan.
-  // Espera a que la pestaña esté visible para que el minuto en pantalla no pase sin verse.
-  function showReminderIfDue() {
-    if (document.visibilityState !== 'visible') return;
-    const slot = checkReminder(tasks(), { lastShownId: reminders.lastShown(), features: currentFeatures() });
-    if (!slot) return;
-    reminders.markShown(slot.id);
-    banner.show(slot);
-  }
-
-  // Lleva a las tareas indicadas y las resalta; si el filtro las oculta, se muestran todas.
-  function showTasks(ids) {
-    if (ids.length === 0) return;
-    highlights.highlight(ids);
-    const visible = tasks()
-      .filter((t) => ids.includes(t.id))
-      .every(filtersFor(currentFeatures())[activeFilter]);
-    if (visible) render();
-    else setFilter('all');
-    const card = document.querySelector(`.card[data-id="${CSS.escape(ids[0])}"]`);
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-
-  function renderOverdueAlerts() {
-    lastOverdueSignature = overdueSignature();
-    renderColumnChips(tasks());
-    const groups = attentionGroups(tasks());
-    banner.renderSummary(groups);
-    // Si mientras se muestra se resuelve todo lo pendiente, el aviso sobra.
-    if (groups.length === 0) banner.hide();
-    else showReminderIfDue();
-  }
-
-  // Revisa con la página abierta si alguna tarea superó el límite, si cambió el día o si
-  // empezó un turno de recordatorio. No se redibuja mientras se arrastra una tarjeta.
-  function refreshOverdue() {
-    if (draggedId === null && overdueSignature() !== lastOverdueSignature) render();
-    showReminderIfDue();
   }
 
   /* ---------- Acciones de la tarjeta ---------- */
@@ -205,7 +150,7 @@ export function createBoardPage({ store, reminders }) {
     taskCount.textContent = `${openCount} tarea${openCount === 1 ? '' : 's'} sin completar`;
 
     clearCompletedBtn.disabled = countByStatus(all, 'completed') === 0;
-    renderOverdueAlerts();
+    alerts.render();
 
     const allCompleted = all.length > 0 && openCount === 0;
     allDoneMessage.classList.toggle('hidden', !allCompleted);
@@ -262,10 +207,7 @@ export function createBoardPage({ store, reminders }) {
 
   labelMenu.listen();
 
-  setInterval(refreshOverdue, 15000);
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') refreshOverdue();
-  });
+  alerts.listen();
 
   // Sin conexión a Firestore, sincroniza al menos las pestañas del mismo navegador.
   window.addEventListener('storage', (event) => store.reloadFromStorage(event.key));
