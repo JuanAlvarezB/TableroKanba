@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { userFromData } from './User.js';
+import { deletionKey, markerFromData, userFromData } from './User.js';
 
 describe('userFromData', () => {
   it('un documento legado (solo name) es un miembro activo que nunca ha entrado', () => {
@@ -11,6 +11,7 @@ describe('userFromData', () => {
       uid: null,
       permissions: {},
       deleting: false,
+      doneLogId: null,
     });
   });
 
@@ -45,7 +46,36 @@ describe('userFromData', () => {
     expect(userFromData('a@x.com', { name: 'A', deleting: true }).deleting).toBe(false);
   });
 
+  it('conserva el ID de la entrada delete-done de la marca de eliminación', () => {
+    expect(userFromData('a@x.com', { name: 'A', deleting: { at: 1, doneLogId: 'l1' } }).doneLogId).toBe('l1');
+    expect(userFromData('a@x.com', { name: 'A', deleting: { at: 1, doneLogId: 7 } }).doneLogId).toBeNull();
+    expect(userFromData('a@x.com', { name: 'A', deleting: 'l1' }).doneLogId).toBeNull();
+  });
+
   it('un nombre que no es texto queda vacío', () => {
     expect(userFromData('a@x.com', { name: 7 }).name).toBe('');
+  });
+});
+
+describe('marcador de eliminación', () => {
+  it('la clave es el uid o, si la persona nunca entró, su correo', () => {
+    expect(deletionKey(userFromData('a@x.com', { name: 'A', uid: 'u1' }))).toBe('u1');
+    expect(deletionKey(userFromData('a@x.com', { name: 'A' }))).toBe('a@x.com');
+  });
+
+  it('markerFromData conserva el estado, las tareas y la hora del respaldo', () => {
+    const data = { state: 'backup-ready', taskCount: 21, backupAt: 5, backupHash: 'h', confirmedAt: 'x' };
+    expect(markerFromData('u1', data)).toEqual({ key: 'u1', state: 'backup-ready', taskCount: 21, backupAt: 5 });
+    expect(markerFromData('u1', { ...data, state: 'deleting' })?.state).toBe('deleting');
+  });
+
+  it.each([
+    [{ state: 'listo', taskCount: 1, backupAt: 5 }],
+    [{ state: 'deleting', taskCount: -1, backupAt: 5 }],
+    [{ state: 'deleting', taskCount: 1.5, backupAt: 5 }],
+    [{ state: 'deleting', taskCount: '3', backupAt: 5 }],
+    [{ state: 'deleting', taskCount: 3, backupAt: '5' }],
+  ])('un marcador mal formado se ignora: %j', (data) => {
+    expect(markerFromData('u1', data)).toBeNull();
   });
 });

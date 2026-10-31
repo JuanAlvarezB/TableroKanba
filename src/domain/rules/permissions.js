@@ -11,8 +11,8 @@ export const ACCESS_STATES = ['admin', 'member', 'inactive', 'unauthorized'];
 
 // Estados que pueden hacer cada acción. Nadie, tampoco el administrador, toca tareas ajenas ni
 // cambia su propio rol o estado. El administrador escribe los documentos de otras personas, siempre
-// con su entrada del registro (sección 2); eliminar llega con la eliminación en dos fases y los
-// permisos por función con la sección 3.
+// con su entrada del registro, y elimina a otra persona solo con la eliminación en dos fases
+// (sección 2); los permisos por función llegan con la sección 3.
 const MATRIX = {
   'tasks.own': ['admin', 'member'],
   'tasks.others': [],
@@ -21,7 +21,7 @@ const MATRIX = {
   'users.changeOwn': [],
   'users.readOthers': ['admin'],
   'users.writeOthers': ['admin'],
-  'users.delete': [],
+  'users.delete': ['admin'],
 };
 
 export const ACTIONS = Object.keys(MATRIX);
@@ -45,7 +45,7 @@ export function can(state, action) {
   return Object.hasOwn(MATRIX, action) && MATRIX[action].includes(state);
 }
 
-/** @typedef {'deactivate' | 'reactivate' | 'promote' | 'demote' | 'delete'} ChangeType */
+/** @typedef {'deactivate' | 'reactivate' | 'promote' | 'demote' | 'delete' | 'cancel-delete'} ChangeType */
 
 /**
  * @typedef {'not-admin' | 'self' | 'unknown-role' | 'in-deletion' | 'target-is-admin' | 'target-active'}
@@ -82,6 +82,30 @@ export function canChangeUser(actor, target, change) {
 export function lifecycleOf(user) {
   if (user.deleting) return 'deleting';
   return user.active ? 'active' : 'inactive';
+}
+
+/* ---------- Eliminar a una persona (2.5) ---------- */
+
+export const BACKUP_MAX_AGE = 24 * 60 * 60 * 1000;
+
+/**
+ * El respaldo del marcador tiene menos de 24 horas. Las reglas lo vuelven a comprobar con la hora
+ * del servidor al confirmar.
+ * @param {import('../entities/User.js').DeletionMarker | null} marker
+ * @param {number} now
+ */
+export function isBackupFresh(marker, now) {
+  return Boolean(marker) && now - marker.backupAt < BACKUP_MAX_AGE;
+}
+
+/**
+ * Segunda confirmación de la eliminación: lo escrito es el correo de la persona (sin espacios
+ * alrededor ni mayúsculas, como se guardan los correos).
+ * @param {string} typed
+ * @param {string} email
+ */
+export function matchesEmail(typed, email) {
+  return normalizeEmail(typed) === email;
 }
 
 /* ---------- Autorizar un correo ---------- */

@@ -2,7 +2,10 @@
 // guarda uids, nunca correos, nombres ni contenido de tareas. La hora (at) la pone el servidor al
 // escribirla, y firestore.rules exige que sea la de la propia petición.
 
-/** @typedef {'authorize' | 'deactivate' | 'reactivate' | 'promote' | 'demote'} AdminAction */
+/**
+ * @typedef {'authorize' | 'deactivate' | 'reactivate' | 'promote' | 'demote' | 'delete-start' | 'delete-cancel'
+ *   | 'delete-done'} AdminAction
+ */
 
 /**
  * @typedef {object} LogEntry
