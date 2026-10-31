@@ -403,3 +403,153 @@ describe('boardStore: historial', () => {
     expect(repository.update).toHaveBeenCalledWith('a', { createdAt: NOW }, null);
   });
 });
+
+describe('boardStore: subtareas', () => {
+  const NOW = 1_790_000_000_000;
+  let count;
+  beforeEach(() => {
+    count = 0;
+  });
+  const newEventId = () => `ev-${++count}`;
+  const step = (id, done = false) => ({ id, text: `Paso ${id}`, done });
+  const withSteps = (id, subtasks, fields = {}) =>
+    task(id, { history: [], subtasks, openSubtasks: subtasks.filter((s) => !s.done).length, ...fields });
+
+  function connected(initial) {
+    const store = createBoardStore({ newId, newEventId, now: () => NOW });
+    const cache = fakeCache(initial);
+    store.loadLocal(cache);
+    const repository = fakeRepository();
+    const events = [];
+    ['change', 'notice', 'highlight', 'blocked'].forEach((type) =>
+      store.on(type, (payload) => events.push([type, payload])),
+    );
+    store.connect(repository);
+    const [onChange] = repository.subscribe.mock.calls[0];
+    onChange({ tasks: structuredClone(initial), added: [], fromCache: false });
+    events.length = 0;
+    return { store, cache, repository, events, onChange };
+  }
+  const lastUpdate = (repository) => repository.update.mock.calls.at(-1);
+
+  it('agregar escribe la lista con su contador en una sola escritura, sin evento de historial', () => {
+    const { store, repository, cache, events } = connected([withSteps('a', [])]);
+    const result = store.addSubtask('a', 'Llamar al proveedor');
+    expect(result.ok).toBe(true);
+    const added = { id: 'ev-1', text: 'Llamar al proveedor', done: false };
+    expect(lastUpdate(repository)).toEqual(['a', { subtasks: [added], openSubtasks: 1 }, null]);
+    expect(store.tasks[0]).toMatchObject({ subtasks: [added], openSubtasks: 1 });
+    expect(cache.stored[0].subtasks).toEqual([added]);
+    expect(events.map(([type]) => type)).toEqual(['change']);
+  });
+
+  it('un rechazo no escribe nada y devuelve el motivo para la vista', () => {
+    const { store, repository, events } = connected([withSteps('a', [step('s1')])]);
+    expect(store.addSubtask('a', '   ')).toEqual({ ok: false, reason: 'empty' });
+    expect(store.editSubtask('a', 's1', 'Paso s1')).toEqual({ ok: false, reason: 'unchanged' });
+    expect(store.reorderSubtask('a', 's1', -1)).toEqual({ ok: false, reason: 'edge' });
+    expect(repository.update).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
+  });
+
+  it('marcar escribe la lista, el contador y el evento subtask en la misma escritura', () => {
+    const { store, repository } = connected([withSteps('a', [step('s1'), step('s2')], { status: 'in-progress' })]);
+    store.toggleSubtask('a', 's1', true);
+    expect(lastUpdate(repository)).toEqual([
+      'a',
+      { subtasks: [step('s1', true), step('s2')], openSubtasks: 1 },
+      { mode: 'append', events: [{ id: 'ev-1', type: 'subtask', at: NOW, text: 'Paso s1', to: 'done' }] },
+    ]);
+    expect(store.tasks[0].status).toBe('in-progress');
+  });
+
+  it('terminar la última no completa la tarea', () => {
+    const { store } = connected([withSteps('a', [step('s1')], { status: 'in-progress' })]);
+    store.toggleSubtask('a', 's1', true);
+    expect(store.tasks[0]).toMatchObject({ status: 'in-progress', openSubtasks: 0 });
+  });
+
+  it('desmarcar en una completada sin confirmar no cambia nada', () => {
+    const done = withSteps('a', [step('s1', true)], { status: 'completed', startedAt: 5, completedAt: 9 });
+    const { store, repository } = connected([done]);
+    expect(store.toggleSubtask('a', 's1', false)).toEqual({ ok: false, reason: 'needs-reopen' });
+    expect(repository.update).not.toHaveBeenCalled();
+    expect(store.tasks[0].status).toBe('completed');
+  });
+
+  it('al reabrir, la tarea vuelve a En curso en la misma escritura, con la subtarea y el move', () => {
+    const done = withSteps('a', [step('s1', true)], { status: 'completed', startedAt: 5, completedAt: 9 });
+    const { store, repository } = connected([done, task('b', { order: 1 })]);
+    store.toggleSubtask('a', 's1', false, { reopen: true });
+    const [id, fields, historyWrite] = lastUpdate(repository);
+    expect(id).toBe('a');
+    expect(fields).toEqual({
+      subtasks: [step('s1')],
+      openSubtasks: 1,
+      status: 'in-progress',
+      order: 2,
+      startedAt: NOW,
+      completedAt: null,
+    });
+    expect(historyWrite.events.map((e) => [e.type, e.to])).toEqual([
+      ['subtask', 'pending'],
+      ['move', 'in-progress'],
+    ]);
+    expect(store.tasks.map((t) => t.id)).toEqual(['b', 'a']);
+  });
+
+  it('con En curso lleno no reabre y lo avisa', () => {
+    const full = Array.from({ length: 200 }, (_, i) =>
+      task(`p${i}`, { status: 'in-progress', order: i, startedAt: 2 }),
+    );
+    const done = withSteps('a', [step('s1', true)], { status: 'completed', order: 300, startedAt: 2, completedAt: 3 });
+    const { store, repository, events } = connected([...full, done]);
+    expect(store.toggleSubtask('a', 's1', false, { reopen: true })).toMatchObject({ ok: false, reason: 'wip-limit' });
+    expect(repository.update).not.toHaveBeenCalled();
+    expect(events).toEqual([['notice', BOARD_MESSAGES.subtasks.reopenFull(200)]]);
+  });
+
+  it('completar con pendientes emite blocked con lo que falta y no escribe', () => {
+    const { store, repository, events } = connected([withSteps('a', [step('s1', true), step('s2')])]);
+    store.move('a', 'completed');
+    expect(events).toEqual([['blocked', { id: 'a', open: 1, total: 2, pending: ['Paso s2'] }]]);
+    expect(repository.update).not.toHaveBeenCalled();
+    expect(store.tasks[0].status).toBe('pending');
+  });
+
+  it('si las reglas rechazan completarla, el aviso habla de las subtareas (P-14)', async () => {
+    const { store, repository, events } = connected([withSteps('a', [step('s1', true)], { text: 'Informe' })]);
+    repository.update.mockRejectedValue(new RepositoryError('permission-denied'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    store.move('a', 'completed');
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(events).toContainEqual(['notice', BOARD_MESSAGES.subtasks.completeRejected('Informe')]);
+  });
+
+  it('otros rechazos siguen con el aviso general', async () => {
+    const { store, repository, events } = connected([withSteps('a', [])]);
+    repository.update.mockRejectedValue(new RepositoryError('permission-denied'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    store.move('a', 'in-progress');
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(events).toContainEqual(['notice', expect.stringContaining('reglas de seguridad')]);
+  });
+
+  it('repara una vez por sesión el contador desfasado, salvo en las completadas (P-13)', () => {
+    const open = withSteps('a', [step('s1'), step('s2', true)]);
+    const completed = withSteps('b', [step('s1', true)], { status: 'completed', startedAt: 2, completedAt: 3 });
+    const { repository, onChange } = connected([]);
+    onChange({ tasks: [open, completed], added: [], fromCache: false, drifted: ['a', 'b'] });
+    expect(repository.update.mock.calls).toEqual([
+      ['a', { subtasks: [step('s1'), step('s2', true)], openSubtasks: 1 }],
+    ]);
+    onChange({ tasks: [open, completed], added: [], fromCache: false, drifted: ['a', 'b'] });
+    expect(repository.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('resalta la tarjeta si sus subtareas cambian en otro dispositivo', () => {
+    const { events, onChange } = connected([withSteps('a', [step('s1')]), withSteps('b', [])]);
+    onChange({ tasks: [withSteps('a', [step('s1', true)]), withSteps('b', [])], added: [], fromCache: false });
+    expect(events).toContainEqual(['highlight', ['a']]);
+  });
+});

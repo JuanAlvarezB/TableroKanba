@@ -11,18 +11,27 @@
 //   sync       → estado de la conexión: 'connecting' | 'online' | 'offline'.
 //   access-lost → las reglas rechazaron una operación: quizá la persona fue desactivada, así que
 //                la guardia revalida su acceso (presentation/guards/session.js).
+//   blocked    → no se completó una tarea porque le faltan subtareas: { id, open, total, pending }
+//                (docs/PLAN_SUBTAREAS.md, 2.5); la vista explica qué falta.
 import { missingDates } from '../../domain/entities/Task.js';
 import { sortTasks } from '../../domain/rules/board.js';
 import { historyEventsFor, planHistoryWrite } from '../../domain/rules/history.js';
+import { subtaskChanges } from '../../domain/rules/subtasks.js';
+import { addSubtask } from '../../domain/usecases/AddSubtask.js';
 import { addTask } from '../../domain/usecases/AddTask.js';
 import { completeTaskIndex } from '../../domain/usecases/CompleteTaskIndex.js';
 import { clearCompleted, deleteTask } from '../../domain/usecases/DeleteTasks.js';
+import { editSubtask } from '../../domain/usecases/EditSubtask.js';
 import { migrateLocalTasks } from '../../domain/usecases/MigrateLocalTasks.js';
 import { moveTask } from '../../domain/usecases/MoveTask.js';
+import { removeSubtask } from '../../domain/usecases/RemoveSubtask.js';
+import { reorderSubtask } from '../../domain/usecases/ReorderSubtask.js';
 import { setDueDate } from '../../domain/usecases/SetDueDate.js';
 import { setPriority } from '../../domain/usecases/SetPriority.js';
+import { toggleSubtask } from '../../domain/usecases/ToggleSubtask.js';
 import { SAVED_WITHOUT_HISTORY } from '../../data/repositories/LocalTaskCache.js';
 import { BOARD_MESSAGES } from '../../shared/constants/messages.js';
+import { clipText } from '../format/labels.js';
 
 function createId() {
   return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -57,6 +66,9 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
   // provocaría reintentos sin fin.
   const backfilledIds = new Set();
 
+  // Tareas cuyo contador de subtareas ya se intentó reparar en esta sesión (P-13), por el mismo motivo.
+  const repairedIds = new Set();
+
   // Si la copia local solo cabe sin el historial se avisa una sola vez: el tablero funciona igual.
   let historyNoticeShown = false;
 
@@ -77,7 +89,9 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
     emit('sync', state);
   }
 
-  function handleSyncError(error) {
+  // rejectedNotice: aviso propio de esa escritura si las reglas la rechazan (por ejemplo, completar una
+  // tarea que otro dispositivo dejó con subtareas pendientes); si no hay, el aviso general.
+  function handleSyncError(error, rejectedNotice = null) {
     console.error('Error de sincronización con Firestore:', error.cause ?? error);
 
     // La conexión funciona pero las reglas de seguridad rechazaron el cambio; Firestore lo
@@ -85,7 +99,8 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
     if (error.reason === 'permission-denied' && repository) {
       emit(
         'notice',
-        'El servidor rechazó el cambio (reglas de seguridad de Firestore). Revisa la consola para más detalle.',
+        rejectedNotice ??
+          'El servidor rechazó el cambio (reglas de seguridad de Firestore). Revisa la consola para más detalle.',
       );
       emit('access-lost');
       return;
@@ -101,8 +116,9 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
     if (repository) repository.save(task).catch(handleSyncError);
   }
 
-  function updateRemote(id, fields, historyWrite = null) {
-    if (repository) repository.update(id, fields, historyWrite).catch(handleSyncError);
+  function updateRemote(id, fields, historyWrite = null, rejectedNotice = null) {
+    if (repository)
+      repository.update(id, fields, historyWrite).catch((error) => handleSyncError(error, rejectedNotice));
   }
 
   function deleteRemote(ids) {
@@ -126,13 +142,33 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
     saveLocal();
   }
 
+  // Repara una vez por sesión el contador de subtareas que no coincide con su lista (P-13), escribiendo
+  // los dos desde la lista recién leída. Una tarea completada no se toca: no se mueve nada sin que la
+  // persona lo pida. Es mantenimiento: si falla no se avisa y se reintenta en la siguiente sesión.
+  function repairSubtaskCounters(ids) {
+    if (!repository) return;
+    ids.forEach((id) => {
+      const task = tasks.find((t) => t.id === id);
+      if (!task || task.status === 'completed' || repairedIds.has(id)) return;
+      repairedIds.add(id);
+      repository
+        .update(id, subtaskChanges(task.subtasks))
+        .catch((error) => console.warn('No se pudo reparar el contador de subtareas:', error.cause ?? error));
+    });
+  }
+
   // Compara el tablero anterior con el actual: resalta las tarjetas que cambiaron de texto,
-  // columna o etiqueta en otro dispositivo y avisa de las ediciones de texto.
+  // columna, etiqueta o subtareas en otro dispositivo y avisa de las ediciones de texto.
   function notifyRemoteChanges(previousTasks) {
     const previous = new Map(previousTasks.map((t) => [t.id, t]));
+    const subtasksKey = (task) => JSON.stringify(task.subtasks ?? []);
     const changed = tasks.filter((t) => {
       const before = previous.get(t.id);
-      return before && ['text', 'status', 'priority', 'dueDate'].some((field) => before[field] !== t[field]);
+      return (
+        before &&
+        (['text', 'status', 'priority', 'dueDate'].some((field) => before[field] !== t[field]) ||
+          subtasksKey(before) !== subtasksKey(t))
+      );
     });
     emit(
       'highlight',
@@ -172,16 +208,26 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
   /* ---------- Acciones ---------- */
 
   // Cambia solo los campos indicados, así no pisa lo que otro dispositivo cambie a la vez. Sus
-  // eventos del historial van en la misma escritura.
-  function updateTask(id, fields) {
+  // eventos del historial van en la misma escritura, con la hora at.
+  function updateTask(id, fields, at = now()) {
     const task = tasks.find((t) => t.id === id);
     if (!task) return false;
-    const historyWrite = historyWriteFor(task, fields, now());
+    const historyWrite = historyWriteFor(task, fields, at);
     Object.assign(task, fields);
     applyHistory(task, historyWrite);
     saveLocal();
     updateRemote(id, fields, historyWrite);
     return true;
+  }
+
+  // Aplica el resultado de un caso de uso de subtareas (lista y contador juntos, y al reabrir también la
+  // columna). Devuelve el resultado para que la vista explique un rechazo.
+  function applySubtaskResult(id, result, at = now()) {
+    if (!result.ok) return result;
+    updateTask(id, result.changes, at);
+    if ('order' in result.changes) sortTasks(tasks);
+    emit('change');
+    return result;
   }
 
   return {
@@ -218,6 +264,7 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
     },
 
     // Mueve una tarea a otra columna; si se indica beforeId, la coloca antes de esa tarea.
+    // Con subtareas pendientes no la completa: emite blocked para que la vista explique qué falta.
     move(id, status, beforeId = null) {
       const at = now();
       const before = tasks.find((t) => t.id === id);
@@ -229,13 +276,19 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
             `Límite WIP alcanzado: termina una tarea "En curso" antes de empezar otra (máx. ${result.limit}).`,
           );
         }
+        if (result.reason === 'open-subtasks') {
+          const { open, total, pending } = result;
+          emit('blocked', { id, open, total, pending });
+        }
         return;
       }
       const historyWrite = historyWriteFor(before, result.changes, at);
       applyHistory(result.task, historyWrite);
       tasks = result.tasks;
       saveLocal();
-      updateRemote(id, result.changes, historyWrite);
+      const completing = status === 'completed' && before.status !== 'completed';
+      const rejected = completing ? BOARD_MESSAGES.subtasks.completeRejected(clipText(before.text)) : null;
+      updateRemote(id, result.changes, historyWrite, rejected);
       emit('change');
     },
 
@@ -278,6 +331,35 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
       emit('change');
     },
 
+    /* ---------- Subtareas (docs/PLAN_SUBTAREAS.md, 2.4) ---------- */
+    // Cada acción devuelve el resultado del caso de uso: { ok: true, ... } o { ok: false, reason }, para
+    // que la vista explique el rechazo (BOARD_MESSAGES.subtasks.reasons).
+
+    addSubtask(id, text) {
+      return applySubtaskResult(id, addSubtask(tasks, { id, subtaskId: newEventId(), text }));
+    },
+
+    editSubtask(id, subtaskId, text) {
+      return applySubtaskResult(id, editSubtask(tasks, { id, subtaskId, text }));
+    },
+
+    // Desmarcar una subtarea de una tarea completada necesita reopen (la persona confirmó volver a En
+    // curso); con En curso lleno no se reabre y se avisa.
+    toggleSubtask(id, subtaskId, done, { reopen = false } = {}) {
+      const at = now();
+      const result = toggleSubtask(tasks, { id, subtaskId, done, reopen, now: at });
+      if (!result.ok && result.reason === 'wip-limit') emit('notice', BOARD_MESSAGES.subtasks.reopenFull(result.limit));
+      return applySubtaskResult(id, result, at);
+    },
+
+    removeSubtask(id, subtaskId) {
+      return applySubtaskResult(id, removeSubtask(tasks, { id, subtaskId }));
+    },
+
+    reorderSubtask(id, subtaskId, direction) {
+      return applySubtaskResult(id, reorderSubtask(tasks, { id, subtaskId, direction }));
+    },
+
     /* ---------- Sincronización ---------- */
 
     // Conecta con Firestore y escucha los cambios de cualquier dispositivo. Sin conexión,
@@ -297,6 +379,7 @@ export function createBoardStore({ newId = createId, newEventId = createEventId,
         const previousTasks = tasks;
         tasks = sortTasks(snapshot.tasks);
         backfillDates();
+        repairSubtaskCounters(snapshot.drifted ?? []);
         saveLocal();
         // Los cambios propios ya están en previousTasks, así que solo se detectan los ajenos.
         if (!firstSnapshot) notifyRemoteChanges(previousTasks);
