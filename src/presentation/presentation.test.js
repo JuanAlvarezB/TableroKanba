@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSessionStore } from '../data/repositories/SessionStore.js';
 import { RepositoryError } from '../domain/repositories/RepositoryError.js';
+import { ALL_FEATURES } from '../domain/rules/features.js';
 import { authorizeUser } from '../domain/usecases/AuthorizeUser.js';
 import { deriveHistory } from '../domain/rules/history.js';
 import { newestFirst, stepLabel } from './components/TaskHistory.js';
@@ -137,9 +138,10 @@ describe('authorizeUser y SessionStore', () => {
       name: 'Ana',
       role: 'member',
       permissions: {},
+      features: ALL_FEATURES,
     });
     expect(allowedUsers.find).toHaveBeenCalledWith('ana@x.com');
-    expect(sessionStore.remembered('u1')).toEqual({ name: 'Ana', at: 1000 });
+    expect(sessionStore.remembered('u1')).toEqual({ name: 'Ana', at: 1000, features: ALL_FEATURES });
     expect(store.has('tareas-dev')).toBe(false);
   });
 
@@ -169,20 +171,37 @@ describe('authorizeUser y SessionStore', () => {
     const offline = { find: () => Promise.reject(new RepositoryError('unavailable')) };
     expect(await authorizeUser(user(), { allowedUsers: offline, sessionStore })).toMatchObject({ status: 'offline' });
 
-    sessionStore.remember('u1', 'Ana', 1000);
+    sessionStore.remember('u1', 'Ana', 1000, { ...ALL_FEATURES, history: false });
     expect(await authorizeUser(user(), { allowedUsers: offline, sessionStore, now: 2000 })).toEqual({
       status: 'ok',
       name: 'Ana',
       role: 'member',
       permissions: {},
+      features: { ...ALL_FEATURES, history: false },
       offline: true,
     });
   });
 
-  it('SessionStore guarda la hora de la autorización y sigue leyendo el formato anterior', () => {
+  it('un administrador sin conexión entra como miembro con sus permisos efectivos, sin rol recordado', async () => {
     const sessionStore = createSessionStore(env);
-    sessionStore.remember('u1', 'Ana', 1000);
-    expect(JSON.parse(store.get('lucas-autorizado-dev-u1'))).toEqual({ name: 'Ana', at: 1000 });
+    const admin = allowed(member({ role: 'admin', permissions: { board: false } }));
+    await authorizeUser(user(), { allowedUsers: admin, sessionStore, now: 1000 });
+    expect(JSON.parse(store.get('lucas-autorizado-dev-u1'))).toEqual({ name: 'Ana', at: 1000, features: ALL_FEATURES });
+
+    const offline = { find: () => Promise.reject(new RepositoryError('unavailable')) };
+    expect(await authorizeUser(user(), { allowedUsers: offline, sessionStore, now: 2000 })).toMatchObject({
+      role: 'member',
+      features: ALL_FEATURES,
+    });
+  });
+
+  it('SessionStore guarda la hora y los permisos de la autorización y sigue leyendo el formato anterior', () => {
+    const sessionStore = createSessionStore(env);
+    sessionStore.remember('u1', 'Ana', 1000, ALL_FEATURES);
+    expect(JSON.parse(store.get('lucas-autorizado-dev-u1'))).toEqual({ name: 'Ana', at: 1000, features: ALL_FEATURES });
+
+    store.set('lucas-autorizado-dev-u1', JSON.stringify({ name: 'Ana', at: 1000 }));
+    expect(sessionStore.remembered('u1')).toEqual({ name: 'Ana', at: 1000 });
 
     store.set('lucas-autorizado-dev-u1', JSON.stringify({ name: 'Ana' }));
     expect(sessionStore.remembered('u1')).toEqual({ name: 'Ana' });

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RepositoryError } from '../repositories/RepositoryError.js';
+import { ALL_FEATURES, featureDefaults } from '../rules/features.js';
 import { addTask } from './AddTask.js';
 import { OFFLINE_GRACE_MS, authorizeUser } from './AuthorizeUser.js';
 import { checkReminder } from './CheckReminder.js';
@@ -240,8 +241,8 @@ describe('authorizeUser', () => {
       },
       sessionStore: {
         remembered: () => memory.remembered,
-        remember: vi.fn((uid, name, at) => {
-          memory.remembered = { name, at };
+        remember: vi.fn((uid, name, at, features) => {
+          memory.remembered = { name, at, features };
         }),
         forget: vi.fn(() => {
           memory.remembered = null;
@@ -259,10 +260,28 @@ describe('authorizeUser', () => {
       name: 'Ana',
       role: 'admin',
       permissions: { tablero: true },
+      features: ALL_FEATURES,
     });
     expect(d.allowedUsers.find).toHaveBeenCalledWith('ana@x.com');
-    expect(d.sessionStore.remember).toHaveBeenCalledWith('u1', 'Ana', NOW);
+    expect(d.sessionStore.remember).toHaveBeenCalledWith('u1', 'Ana', NOW, ALL_FEATURES);
     expect(d.sessionStore.clearLegacy).toHaveBeenCalled();
+  });
+
+  it('un miembro recibe sus permisos efectivos con los valores iniciales del ambiente y se recuerdan', async () => {
+    const d = {
+      ...deps({ found: person({ permissions: { priorities: false } }) }),
+      defaults: featureDefaults({ reminders: false }),
+    };
+    const features = { ...ALL_FEATURES, priorities: false, reminders: false };
+    expect(await authorizeUser(user(), d)).toMatchObject({ status: 'ok', role: 'member', features });
+    // Se recuerdan los permisos efectivos, nunca el rol.
+    expect(d.sessionStore.remember).toHaveBeenCalledWith('u1', 'Ana', NOW, features);
+  });
+
+  it('con el tablero apagado, las hijas también lo están', async () => {
+    const d = deps({ found: person({ permissions: { board: false, history: true } }) });
+    const { features } = await authorizeUser(user(), d);
+    expect(Object.values(features).every((value) => value === false)).toBe(true);
   });
 
   it('un documento legado entra como miembro', async () => {
@@ -310,13 +329,32 @@ describe('authorizeUser', () => {
     const unavailable = new RepositoryError('unavailable');
 
     it('con una autorización de menos de 7 días entra, siempre como miembro', async () => {
-      const remembered = { name: 'Ana', at: NOW - OFFLINE_GRACE_MS };
+      const remembered = { name: 'Ana', at: NOW - OFFLINE_GRACE_MS, features: ALL_FEATURES };
       expect(await authorizeUser(user(), deps({ error: unavailable, remembered }))).toEqual({
         status: 'ok',
         name: 'Ana',
         role: 'member',
         permissions: {},
+        features: ALL_FEATURES,
         offline: true,
+      });
+    });
+
+    it('aplica los últimos permisos conocidos', async () => {
+      const remembered = { name: 'Ana', at: NOW, features: { ...ALL_FEATURES, board: false } };
+      const { features } = await authorizeUser(user(), deps({ error: unavailable, remembered }));
+      expect(features.board).toBe(false);
+      expect(features.priorities).toBe(false);
+    });
+
+    it('sin permisos recordados (formato anterior) aplica los valores iniciales del ambiente', async () => {
+      const d = {
+        ...deps({ error: unavailable, remembered: { name: 'Ana', at: NOW } }),
+        defaults: featureDefaults({ history: false }),
+      };
+      expect(await authorizeUser(user(), d)).toMatchObject({
+        status: 'ok',
+        features: { ...ALL_FEATURES, history: false },
       });
     });
 
