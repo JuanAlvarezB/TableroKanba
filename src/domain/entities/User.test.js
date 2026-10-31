@@ -37,8 +37,16 @@ describe('userFromData', () => {
     expect(userFromData('a@x.com', { name: 'A', uid }).uid).toBeNull();
   });
 
-  it.each([['todo'], [['tablero']], [null]])('permissions = %j que no es un mapa queda vacío', (permissions) => {
-    expect(userFromData('a@x.com', { name: 'A', permissions }).permissions).toEqual({});
+  // Las reglas niegan todo el tablero de esa persona (fallan cerradas): la interfaz lo apaga igual (A-52).
+  it.each([['todo'], [['tablero']], [null], [false]])(
+    'permissions = %j que no es un mapa apaga el tablero',
+    (permissions) => {
+      expect(userFromData('a@x.com', { name: 'A', permissions }).permissions).toEqual({ board: false });
+    },
+  );
+
+  it('sin permissions quedan los valores iniciales (mapa vacío)', () => {
+    expect(userFromData('a@x.com', { name: 'A' }).permissions).toEqual({});
   });
 
   it('solo un mapa en deleting marca a la persona en eliminación', () => {

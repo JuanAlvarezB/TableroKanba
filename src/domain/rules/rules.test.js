@@ -3,12 +3,15 @@ import { FILTERS, countByStatus, isColumnFull, nextOrder, orderBefore, sortTasks
 import { businessDaysUntil, calendarDaysSince } from './dates.js';
 import { dueStatus, needsDueAttention, parseDueDate } from './dueDates.js';
 import {
+  ALL_FEATURES,
   FEATURES,
   FEATURE_KEYS,
   applyPermissionChange,
+  canOpenFeature,
   effectivePermissions,
   featureDefaults,
   permissionDiff,
+  rememberedFeatures,
 } from './features.js';
 import {
   HISTORY_KEEP,
@@ -454,6 +457,45 @@ describe('permisos por función: effectivePermissions', () => {
       all(true),
     );
   });
+});
+
+describe('permisos por función: sesión', () => {
+  const all = (value) => Object.fromEntries(FEATURE_KEYS.map((key) => [key, value]));
+
+  it('ALL_FEATURES tiene todas las funciones activas y no se puede cambiar', () => {
+    expect(ALL_FEATURES).toEqual(all(true));
+    expect(Object.isFrozen(ALL_FEATURES)).toBe(true);
+  });
+
+  it('canOpenFeature solo abre una función con permiso efectivo true', () => {
+    expect(canOpenFeature({ features: all(true) }, 'board')).toBe(true);
+    expect(canOpenFeature({ features: { ...all(true), board: false } }, 'board')).toBe(false);
+    expect(canOpenFeature({ features: { board: 'true' } }, 'board')).toBe(false);
+  });
+
+  it('canOpenFeature no abre claves desconocidas ni sesiones sin features', () => {
+    expect(canOpenFeature({ features: all(true) }, 'tablero')).toBe(false);
+    expect(canOpenFeature({ features: all(true) }, 'toString')).toBe(false);
+    expect(canOpenFeature({}, 'board')).toBe(false);
+  });
+
+  it('los permisos recordados se aplican como los de un miembro', () => {
+    expect(rememberedFeatures({ ...all(true), history: false })).toEqual({ ...all(true), history: false });
+    // Un registro incoherente (padre apagado con hijas encendidas) sigue apagando las hijas.
+    expect(rememberedFeatures({ ...all(true), board: false })).toEqual(all(false));
+    expect(rememberedFeatures({ priorities: 'true' }).priorities).toBe(false);
+  });
+
+  it.each([[undefined], [null], ['todo'], [['board']]])(
+    'sin features recordados (%j) valen los iniciales',
+    (stored) => {
+      expect(rememberedFeatures(stored)).toEqual(all(true));
+      expect(rememberedFeatures(stored, featureDefaults({ reminders: false }))).toEqual({
+        ...all(true),
+        reminders: false,
+      });
+    },
+  );
 });
 
 describe('permisos por función: applyPermissionChange', () => {
