@@ -197,6 +197,19 @@ su documento de `taskIndex` en el mismo lote. Unas reglas sin `match /taskIndex/
   grep -q "match /taskIndex/" firestore.rules && echo "Tiene taskIndex" || echo "SIN taskIndex: no la publiques"
   ```
 
+- **Con las reglas estrictas del índice** (PR 6, 2.6 paso 3), crear una tarea **exige** su índice en el
+  mismo lote: un código sin índice ya no puede crear tareas. Para revertir el código del índice, primero
+  vuelve a las reglas de transición (la versión del historial de la consola anterior a las estrictas, o
+  `git show 73056c7:firestore.rules`), compruébalas con `verificar-reglas` y solo después revierte el código.
+  Para deshacer solo las estrictas basta con volver a las de transición: el código actual funciona con las
+  dos. **No uses la etiqueta `pdn-reglas-2026-10-28`**: apunta a un commit con las reglas anteriores, sin
+  `taskIndex`. Para saber cuáles tiene un archivo antes de publicarlo:
+
+  ```bash
+  grep -q "hasOwnIndexAfter" firestore.rules && echo "Estrictas" \
+    || { grep -q "match /taskIndex/" firestore.rules && echo "De transición" || echo "SIN taskIndex: no la publiques"; }
+  ```
+
 ### Comprobar con el script (`verificar-reglas`)
 
 `npm run admin -- verificar-reglas --ambiente dev|pdn` descarga, con la API de Firebase Rules, las
@@ -303,6 +316,7 @@ npm run admin    # sin argumentos: la ayuda con cada comando y sus opciones
 | Comando                                                      | Qué hace                                                                                                                                                                                                                                                                                           | Escribe                   |
 | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
 | `verificar-reglas`                                           | Compara las reglas publicadas con `firestore.rules` (ver arriba)                                                                                                                                                                                                                                   | No                        |
+| `respaldar` (sin `--correo`)                                 | Respaldo completo cifrado y verificado del ambiente, sin tocar índices ni crear marcadores. Se hace antes de publicar reglas en PDN (`docs/PLAN_USUARIOS.md`, 2.16)                                                                                                                                | Solo `adminLog`           |
 | `respaldar --correo <correo>`                                | Prepara la eliminación de una persona **desactivada** que no es administradora: resuelve su `uid` (en Authentication si su documento no lo tiene), completa su índice, hace el respaldo completo cifrado, lo verifica y crea su marcador en `deletions` en estado `backup-ready` (válido 24 horas) | Sí                        |
 | `verificar-indice [--uid <uid>]`                             | Tareas sin índice e índices huérfanos del ambiente (o de un `uid`); termina con 1 si no está completo                                                                                                                                                                                              | No                        |
 | `completar-indice [--uid <uid>]`                             | Crea los índices que faltan, corrige el dueño y borra los huérfanos                                                                                                                                                                                                                                | Sí                        |

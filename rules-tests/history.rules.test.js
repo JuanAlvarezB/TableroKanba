@@ -1,21 +1,21 @@
 // Historial de tareas en firestore.rules (docs/PLAN_USUARIOS.md, 4.3 y 4.7, casos H-1…H-9): history
-// es opcional, una lista de 100 eventos como máximo, y hereda la privacidad de su tarea.
+// es opcional, una lista de 100 eventos como máximo, y hereda la privacidad de su tarea. Las tareas se
+// crean y se borran con su índice en el mismo lote, como hace la app (2.6).
 import { assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import {
-  arrayUnion,
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-  writeBatch,
-} from 'firebase/firestore';
+import { arrayUnion, collection, doc, getDoc, getDocs, query, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ANA, BETO, createTestEnvironment, readRules, seed, signedIn, task } from './helpers.js';
+import {
+  ANA,
+  BETO,
+  createTestEnvironment,
+  indexedTask,
+  readRules,
+  removeTask,
+  saveTask,
+  seed,
+  signedIn,
+  task,
+} from './helpers.js';
 
 const ADMIN = { uid: 'uid-admin', email: 'admin@example.com' };
 const CARLA = { uid: 'uid-carla', email: 'carla@example.com' }; // con cuenta, pero sin autorizar
@@ -39,17 +39,17 @@ beforeEach(async () => {
     'allowedUsers/ana@example.com': { name: 'Ana' },
     'allowedUsers/beto@example.com': { name: 'Beto' },
     'allowedUsers/admin@example.com': { name: 'Admin', role: 'admin', active: true },
-    'tasks/ana-1': task(ANA.uid, { history: [created] }),
-    'tasks/ana-antigua': task(ANA.uid),
-    'tasks/beto-1': task(BETO.uid, { history: [created] }),
+    ...indexedTask('ana-1', task(ANA.uid, { history: [created] })),
+    ...indexedTask('ana-antigua', task(ANA.uid)),
+    ...indexedTask('beto-1', task(BETO.uid, { history: [created] })),
   });
 });
 
 describe('H-1 crear una tarea con historial', () => {
   it('acepta la tarea nueva con su evento create, y también sin historial (clientes anteriores)', async () => {
     const db = signedIn(env, ANA);
-    await assertSucceeds(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid, { history: [created] })));
-    await assertSucceeds(setDoc(doc(db, 'tasks/ana-3'), task(ANA.uid)));
+    await assertSucceeds(saveTask(db, 'ana-2', task(ANA.uid, { history: [created] })));
+    await assertSucceeds(saveTask(db, 'ana-3', task(ANA.uid)));
   });
 });
 
@@ -80,14 +80,14 @@ describe('H-2 actualizar con arrayUnion en la misma escritura', () => {
 describe('H-3 tamaño y tipo de history', () => {
   it('acepta 100 eventos al crear y al reemplazar la lista', async () => {
     const db = signedIn(env, ANA);
-    await assertSucceeds(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid, { history: events(100) })));
+    await assertSucceeds(saveTask(db, 'ana-2', task(ANA.uid, { history: events(100) })));
     await assertSucceeds(updateDoc(doc(db, 'tasks/ana-1'), { history: events(100) }));
   });
 
   it('rechaza 101 al crear, al reemplazar y al añadir con arrayUnion', async () => {
-    await seed(env, { 'tasks/ana-llena': task(ANA.uid, { history: events(100) }) });
+    await seed(env, indexedTask('ana-llena', task(ANA.uid, { history: events(100) })));
     const db = signedIn(env, ANA);
-    await assertFails(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid, { history: events(101) })));
+    await assertFails(saveTask(db, 'ana-2', task(ANA.uid, { history: events(101) })));
     await assertFails(updateDoc(doc(db, 'tasks/ana-1'), { history: events(101) }));
     await assertFails(updateDoc(doc(db, 'tasks/ana-llena'), { history: arrayUnion(event(100)) }));
   });
@@ -99,7 +99,7 @@ describe('H-3 tamaño y tipo de history', () => {
     ['null', null],
   ])('rechaza history como %s', async (_, history) => {
     const db = signedIn(env, ANA);
-    await assertFails(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid, { history })));
+    await assertFails(saveTask(db, 'ana-2', task(ANA.uid, { history })));
     await assertFails(updateDoc(doc(db, 'tasks/ana-1'), { history }));
   });
 });
@@ -124,7 +124,7 @@ describe('H-4 solo el dueño lee o escribe el historial', () => {
 
 describe('H-5 compactación', () => {
   it('reemplaza la lista por una más corta en la misma escritura del cambio', async () => {
-    await seed(env, { 'tasks/ana-llena': task(ANA.uid, { history: events(90) }) });
+    await seed(env, indexedTask('ana-llena', task(ANA.uid, { history: events(90) })));
     const ref = doc(signedIn(env, ANA), 'tasks/ana-llena');
     const compacted = [...events(90).slice(-60), event(200)];
     await assertSucceeds(updateDoc(ref, { text: 'Compactada', history: compacted }));
@@ -135,7 +135,7 @@ describe('H-5 compactación', () => {
 describe('H-6 la lista de campos sigue cerrada', () => {
   it('rechaza un campo desconocido junto al historial, al crear y al editar', async () => {
     const db = signedIn(env, ANA);
-    await assertFails(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid, { history: [created], historial: [] })));
+    await assertFails(saveTask(db, 'ana-2', task(ANA.uid, { history: [created], historial: [] })));
     await assertFails(updateDoc(doc(db, 'tasks/ana-1'), { history: arrayUnion(event(2)), actorId: ANA.uid }));
   });
 });
@@ -146,9 +146,9 @@ describe('H-7 la línea base sigue igual con history presente', () => {
     const db = signedIn(env, ANA);
     await assertSucceeds(getDoc(doc(db, 'tasks/ana-1')));
     await assertSucceeds(getDocs(query(collection(db, 'tasks'), where('ownerId', '==', ANA.uid))));
-    await assertSucceeds(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid, { history: [created] })));
+    await assertSucceeds(saveTask(db, 'ana-2', task(ANA.uid, { history: [created] })));
     await assertSucceeds(updateDoc(doc(db, 'tasks/ana-2'), { status: 'completed', completedAt: 3 }));
-    await assertSucceeds(deleteDoc(doc(db, 'tasks/ana-2')));
+    await assertSucceeds(removeTask(db, 'ana-2'));
   });
 
   it('B-2 y R-7 nadie más las lee, tampoco el administrador', async () => {
@@ -161,10 +161,10 @@ describe('H-7 la línea base sigue igual con history presente', () => {
   it('B-3 nadie las edita, borra ni reasigna', async () => {
     const ana = signedIn(env, ANA);
     await assertFails(updateDoc(doc(ana, 'tasks/ana-1'), { ownerId: BETO.uid, history: arrayUnion(event(2)) }));
-    await assertFails(setDoc(doc(ana, 'tasks/ana-2'), task(BETO.uid, { history: [created] })));
+    await assertFails(saveTask(ana, 'ana-2', task(BETO.uid, { history: [created] })));
     const beto = signedIn(env, BETO);
     await assertFails(updateDoc(doc(beto, 'tasks/ana-1'), { text: 'Cambiada' }));
-    await assertFails(deleteDoc(doc(beto, 'tasks/ana-1')));
+    await assertFails(removeTask(beto, 'ana-1'));
   });
 
   it.each([
@@ -174,14 +174,14 @@ describe('H-7 la línea base sigue igual con history presente', () => {
   ])('B-4 %s: no lee, crea, edita ni borra', async (_, database) => {
     const db = database();
     await assertFails(getDoc(doc(db, 'tasks/ana-1')));
-    await assertFails(setDoc(doc(db, 'tasks/nueva'), task(ANA.uid, { history: [created] })));
+    await assertFails(saveTask(db, 'nueva', task(ANA.uid, { history: [created] })));
     await assertFails(updateDoc(doc(db, 'tasks/ana-1'), { history: arrayUnion(event(2)) }));
-    await assertFails(deleteDoc(doc(db, 'tasks/ana-1')));
+    await assertFails(removeTask(db, 'ana-1'));
   });
 
   it('B-5 los demás campos se siguen validando', async () => {
     const db = signedIn(env, ANA);
-    await assertFails(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid, { text: 'a'.repeat(501), history: [created] })));
+    await assertFails(saveTask(db, 'ana-2', task(ANA.uid, { text: 'a'.repeat(501), history: [created] })));
     await assertFails(updateDoc(doc(db, 'tasks/ana-1'), { status: 'archived', history: arrayUnion(event(2)) }));
   });
 
@@ -198,7 +198,10 @@ describe('H-8 sin llamadas get() adicionales', () => {
     const ids = Array.from({ length: 8 }, (_, i) => `ana-lote-${i}`);
 
     const creates = writeBatch(db);
-    ids.forEach((id) => creates.set(doc(db, `tasks/${id}`), task(ANA.uid, { history: [created] })));
+    ids.forEach((id) => {
+      creates.set(doc(db, `tasks/${id}`), task(ANA.uid, { history: [created] }));
+      creates.set(doc(db, `taskIndex/${id}`), { ownerId: ANA.uid });
+    });
     await assertSucceeds(creates.commit());
 
     const updates = writeBatch(db);
@@ -247,9 +250,9 @@ describe('H-9 con las reglas anteriores, las tareas con history dejan de poder e
 
   it('crear con historial también falla; leer, borrar y las tareas sin history siguen funcionando', async () => {
     const db = signedIn(previous, ANA);
-    await assertFails(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid, { history: [created] })));
+    await assertFails(saveTask(db, 'ana-2', task(ANA.uid, { history: [created] })));
     await assertSucceeds(getDoc(doc(db, 'tasks/ana-1')));
     await assertSucceeds(updateDoc(doc(db, 'tasks/ana-antigua'), { text: 'Cambiada' }));
-    await assertSucceeds(deleteDoc(doc(db, 'tasks/ana-1')));
+    await assertSucceeds(removeTask(db, 'ana-1'));
   });
 });

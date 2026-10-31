@@ -98,7 +98,8 @@ cuentas: la del administrador y una de miembro.
 
 Diseño en `docs/PLAN_USUARIOS.md`, sección 2 (2.6 y 2.9). Todavía no hay página de usuarios: se
 comprueba que las personas actuales siguen trabajando y que el índice se escribe. Los documentos se
-revisan en la consola de Firebase (Firestore), solo con tareas de prueba propias.
+revisan en la consola de Firebase (Firestore), solo con tareas de prueba propias. Desde el PR 6 rigen las
+reglas estrictas del índice (7.5).
 
 - [ ] Una persona actual (documento solo con `name` o sin `uid`) entra y trabaja con su tablero sin
       cambios: ve sus tareas, crea, edita, mueve y borra.
@@ -327,6 +328,48 @@ Accesibilidad:
       al botón **Acciones** de la fila.
 - [ ] Con VoiceOver (o NVDA) se anuncian el título de cada paso, «Borrando tareas: …» y el resultado.
 - [ ] A 320 px de ancho, el comando del respaldo se lee completo sin desplazamiento horizontal de la página.
+
+### 7.5 Reglas estrictas del índice (PR 6)
+
+Diseño en `docs/PLAN_USUARIOS.md`, 2.6 (paso 3 de la transición) y 2.9: crear o borrar una tarea exige su
+documento de `taskIndex` en el mismo lote. Dos cuentas: la del administrador y una de prueba propia (miembro,
+nunca la de una persona real). En los comandos, `<yo>` es tu correo de LUCAS. Los documentos se revisan en la
+consola de Firebase (Firestore), solo con tareas de prueba propias.
+
+Antes de publicar, en cada ambiente:
+- [ ] `npm run admin -- verificar-indice --ambiente <dev|pdn> --admin <yo>` termina en "✔ Índice completo: 0
+      tareas sin índice y 0 índices huérfanos".
+- [ ] Anotar la hora de la versión vigente de las reglas (README, "Publicar reglas paso a paso").
+- [ ] Solo en PDN: `npm run admin -- respaldar --ambiente pdn --admin <yo>` (sin `--correo`) primero sin
+      `--aplicar` (anota el total de documentos) y después con `--aplicar`: termina en "✔ Respaldo cifrado y
+      verificado" con ese mismo total, el archivo queda en `~/Documents/lucas-respaldos/pdn/` y `adminLog`
+      tiene una entrada `backup` con `targetUid: null` y `detail.scope: 'environment'`. La frase, en el gestor
+      de contraseñas.
+- [ ] Solo en PDN: número de tareas por columna del administrador anotado.
+
+En Desarrollo, con las reglas publicadas (antes de publicar en PDN):
+- [ ] `verificar-reglas --ambiente dev` termina en "✔ Coinciden".
+- [ ] Con la cuenta de prueba, crear una tarea: aparece su documento en `taskIndex` con el mismo ID y solo
+      `ownerId`, y la consola del navegador no muestra `permission-denied`.
+- [ ] Editar el texto, mover, poner prioridad y fecha límite funciona y no cambia su documento de `taskIndex`.
+- [ ] Borrar una tarea: desaparecen su documento de `tasks` y el de `taskIndex`.
+- [ ] Límite real de llamadas por lote (A-23): con 10 o más tareas completadas, **Limpiar completadas** las
+      borra todas, con sus índices (lotes de 8: el primero lleno), sin `permission-denied` en la consola.
+- [ ] Sin conexión: crear una tarea y borrar otra; al volver, el tablero queda en "Sincronizado" y en la
+      consola cada tarea y su índice llegaron o se fueron juntos.
+- [ ] Cerrar sesión y volver a entrar (se borra la marca `lucas-indice-…`): no aparece el aviso "No se pudo
+      completar el índice de tareas" en la consola.
+- [ ] Con las dos cuentas, el administrador sigue sin ver las tareas de la cuenta de prueba.
+- [ ] Eliminar la cuenta de prueba de punta a punta (7.4) con estas reglas: termina sin errores y
+      `verificar-indice --ambiente dev --admin <yo> --uid <uid>` informa 0 tareas y 0 índices (2.17, criterio 1).
+- [ ] `verificar-indice --ambiente dev --admin <yo>` sigue en "✔ Índice completo".
+
+En PDN, con las reglas publicadas antes del merge, y otra vez después del merge:
+- [ ] `verificar-reglas --ambiente pdn` termina en "✔ Coinciden".
+- [ ] Crear y borrar una tarea de prueba propia: su índice aparece y desaparece con ella.
+- [ ] Las mismas tareas por columna que antes de publicar.
+- [ ] `verificar-indice --ambiente pdn --admin <yo>` sigue en "✔ Índice completo".
+- [ ] Etiqueta `pdn-reglas-AAAA-MM-DD` con la hora de la versión anterior (las de transición) en el mensaje.
 
 ## 8. Historial de tareas
 

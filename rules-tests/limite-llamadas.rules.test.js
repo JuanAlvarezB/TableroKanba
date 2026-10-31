@@ -1,61 +1,61 @@
-// Medición del límite de llamadas get/exists/existsAfter por lote (docs/PLAN_USUARIOS.md, 2.6 y 2.9,
-// caso P-20, alarma A-23). Usa unas reglas de prueba con la forma de las reglas estrictas del índice
-// (PR 6): cada tarea y cada índice comprueban con existsAfter al otro, y todos leen el mismo documento
-// de quien escribe. Comprueba que el trozo de 8 cabe y registra hasta dónde llega el emulador.
+// Medición del límite de llamadas get/exists/getAfter/existsAfter por lote (docs/PLAN_USUARIOS.md, 2.6 y
+// 2.9, caso P-20, alarma A-23) con las reglas estrictas del índice de firestore.rules: cada tarea y cada
+// índice comprueban al otro, y todos leen el mismo documento de quien escribe (y, en el borrado del
+// administrador, el mismo marcador). Comprueba que los trozos de la app caben y registra hasta dónde
+// llega el emulador.
 import { assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, setDoc, writeBatch } from 'firebase/firestore';
+import { doc, writeBatch } from 'firebase/firestore';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestEnvironment } from './helpers.js';
+import { TASK_CHUNK_SIZE } from '../src/data/repositories/FirestoreTaskRepository.js';
+import { DELETION_CHUNK_SIZE } from '../src/domain/usecases/admin/RunUserDeletion.js';
+import { ANA, createTestEnvironment, seed, signedIn, task } from './helpers.js';
 
-// Tamaño del trozo de FirestoreTaskRepository (TASK_CHUNK_SIZE).
-const CHUNK = 8;
-
-const PROBE_RULES = `rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    function caller() {
-      return exists(/databases/$(database)/documents/callers/$(request.auth.uid));
-    }
-    match /tasks/{id} {
-      allow create, delete: if caller()
-        && existsAfter(/databases/$(database)/documents/taskIndex/$(id)) == (request.method == 'create');
-    }
-    match /taskIndex/{id} {
-      allow create, delete: if caller()
-        && existsAfter(/databases/$(database)/documents/tasks/$(id)) == (request.method == 'create');
-    }
-  }
-}`;
+const ADMIN = { uid: 'uid-admin', email: 'admin@example.com' };
+const INES = { uid: 'uid-ines', email: 'ines@example.com' }; // en eliminación
+const MAX = 30;
 
 let env;
 
 beforeAll(async () => {
-  env = await createTestEnvironment({ rules: PROBE_RULES });
+  env = await createTestEnvironment();
   await env.clearFirestore();
-  await env.withSecurityRulesDisabled((context) => setDoc(doc(context.firestore(), 'callers/uid-ana'), { ok: true }));
+  await seed(env, {
+    'allowedUsers/ana@example.com': { name: 'Ana' },
+    'allowedUsers/admin@example.com': { name: 'Admin', role: 'admin', active: true, uid: ADMIN.uid },
+    'deletions/uid-ines': { state: 'deleting', taskCount: 0, backupAt: Date.now(), backupHash: 'huella-ficticia' },
+  });
 });
 
-afterAll(async () => {
-  await env?.cleanup();
-  // Deja otra vez las reglas de firestore.rules en el emulador.
-  await (await createTestEnvironment()).cleanup();
-});
+afterAll(() => env?.cleanup());
 
-function createPairs(db, prefix, count) {
+const ids = (prefix, count) => Array.from({ length: count }, (_, i) => `${prefix}-${i}`);
+
+// Crea o borra las tareas con su índice en un lote, como FirestoreTaskRepository y deleteTaskChunk.
+function writePairs(db, taskIds, ownerId, { remove = false } = {}) {
   const batch = writeBatch(db);
-  for (let i = 0; i < count; i++) {
-    batch.set(doc(db, `tasks/${prefix}-${i}`), { ownerId: 'uid-ana' });
-    batch.set(doc(db, `taskIndex/${prefix}-${i}`), { ownerId: 'uid-ana' });
-  }
+  taskIds.forEach((id) => {
+    if (remove) {
+      batch.delete(doc(db, `tasks/${id}`));
+      batch.delete(doc(db, `taskIndex/${id}`));
+    } else {
+      batch.set(doc(db, `tasks/${id}`), task(ownerId));
+      batch.set(doc(db, `taskIndex/${id}`), { ownerId });
+    }
+  });
   return batch.commit();
 }
 
-// Mayor número de tareas (con su índice) que las reglas aceptan en un lote, probando de 1 a max.
-async function largestAcceptedBatch(db, max) {
+// Tareas de Inés con su índice, escritas sin reglas en un solo lote.
+function seedPairs(taskIds) {
+  return env.withSecurityRulesDisabled((context) => writePairs(context.firestore(), taskIds, INES.uid));
+}
+
+// Mayor número de tareas (con su índice) por lote que las reglas aceptan, probando de 1 a MAX.
+async function largestAccepted(write) {
   let largest = 0;
-  for (let count = 1; count <= max; count++) {
+  for (let count = 1; count <= MAX; count++) {
     try {
-      await createPairs(db, `lote-${count}`, count);
+      await write(count);
       largest = count;
     } catch {
       break;
@@ -64,17 +64,31 @@ async function largestAcceptedBatch(db, max) {
   return largest;
 }
 
-describe('P-20 llamadas por lote en el emulador', () => {
-  it(`un trozo de ${CHUNK} tareas con su índice cabe`, async () => {
-    const db = env.authenticatedContext('uid-ana').firestore();
-    await assertSucceeds(createPairs(db, 'trozo', CHUNK));
+// Medido el 31 de octubre de 2026 con firebase-tools 15.33.0 y las reglas estrictas: el emulador aceptó
+// las 30 tareas por lote en los dos casos (más de 60 llamadas), así que no aplica el límite de 20 de
+// producción. Los trozos se quedan en 8 según la documentación (17 y 18 llamadas) y el límite real se
+// comprueba en Desarrollo al publicar estas reglas (VERIFICACION_MANUAL.md, 7.5).
+describe('P-20 llamadas por lote en el emulador, con las reglas estrictas', () => {
+  it(`el dueño crea y borra ${TASK_CHUNK_SIZE} tareas con su índice por lote`, async () => {
+    const db = signedIn(env, ANA);
+    await assertSucceeds(writePairs(db, ids('trozo', TASK_CHUNK_SIZE), ANA.uid));
+    await assertSucceeds(writePairs(db, ids('trozo', TASK_CHUNK_SIZE), ANA.uid, { remove: true }));
 
-    const largest = await largestAcceptedBatch(db, 30);
-    console.info(`Límite medido: ${largest} tareas con su índice por lote (trozo usado: ${CHUNK}).`);
-    // Medido el 27 de octubre de 2026 con firebase-tools 15.33.0: el emulador aceptó las 30 tareas
-    // (60 llamadas existsAfter), así que no aplica el límite de 20 llamadas por lote de producción.
-    // El trozo se queda en 8 según la documentación (1 + 2 × 8 = 17 ≤ 20) y el límite real se
-    // comprueba en Desarrollo al publicar las reglas estrictas (A-23).
-    expect(largest).toBeGreaterThanOrEqual(CHUNK);
+    const largest = await largestAccepted((count) => writePairs(db, ids(`lote-${count}`, count), ANA.uid));
+    console.info(`Dueño: ${largest} tareas con su índice por lote (trozo usado: ${TASK_CHUNK_SIZE}).`);
+    expect(largest).toBeGreaterThanOrEqual(TASK_CHUNK_SIZE);
+  });
+
+  it(`el administrador borra ${DELETION_CHUNK_SIZE} tareas con su índice de una persona en eliminación`, async () => {
+    const db = signedIn(env, ADMIN);
+    await seedPairs(ids('ines-trozo', DELETION_CHUNK_SIZE));
+    await assertSucceeds(writePairs(db, ids('ines-trozo', DELETION_CHUNK_SIZE), INES.uid, { remove: true }));
+
+    const largest = await largestAccepted(async (count) => {
+      await seedPairs(ids(`ines-lote-${count}`, count));
+      await writePairs(db, ids(`ines-lote-${count}`, count), INES.uid, { remove: true });
+    });
+    console.info(`Administrador: ${largest} tareas con su índice por lote (trozo usado: ${DELETION_CHUNK_SIZE}).`);
+    expect(largest).toBeGreaterThanOrEqual(DELETION_CHUNK_SIZE);
   });
 });

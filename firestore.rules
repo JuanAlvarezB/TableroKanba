@@ -3,9 +3,9 @@ rules_version = '2';
 // Reglas de seguridad de Firestore de LUCAS (tablero de tareas).
 // Solo entran las personas activas de allowedUsers, y cada una solo lee y escribe sus propias
 // tareas; el rol de administrador no da acceso a tareas ajenas (docs/PLAN_USUARIOS.md, 1.7).
-// Gestión de usuarios (2.9), reglas de transición: el administrador escribe allowedUsers siempre
-// con su entrada en adminLog, y solo borra tareas ajenas (sin leerlas) de quien está en
-// eliminación. Las tareas se aceptan todavía con o sin su documento de taskIndex.
+// Gestión de usuarios (2.9): el administrador escribe allowedUsers siempre con su entrada en
+// adminLog, y solo borra tareas ajenas (sin leerlas) de quien está en eliminación. Reglas estrictas
+// del índice (2.6, paso 3): cada tarea se crea y se borra junto con su documento de taskIndex.
 // Se publican con `firebase deploy --only firestore:rules --project dev|pdn`; este archivo no
 // se despliega con GitHub Pages. Se prueban con npm run test:rules (rules-tests/).
 service cloud.firestore {
@@ -136,6 +136,20 @@ service cloud.firestore {
       return data.keys().hasOnly(['ownerId']) && data.ownerId is string;
     }
 
+    // Reglas estrictas del índice (2.6, paso 3): getAfter y existsAfter ven el resultado de todo el
+    // lote, así que la tarea y su índice solo se crean o se borran juntos. Cada tarea del lote cuesta
+    // dos llamadas (una por pieza): el trozo de 8 tareas de la app suma 1 + 16 = 17 de las 20 por lote
+    // (18 en el borrado del administrador, que lee además el marcador).
+    function hasOwnIndexAfter(taskId) {
+      let entry = getAfter(/databases/$(database)/documents/taskIndex/$(taskId));
+      return entry != null && isOwner(entry.data);
+    }
+
+    function hasOwnTaskAfter(taskId) {
+      let taskDoc = getAfter(/databases/$(database)/documents/tasks/$(taskId));
+      return taskDoc != null && isOwner(taskDoc.data);
+    }
+
     // Fecha del historial de estados: milisegundos desde 1970, o null si la tarea
     // aún no ha pasado por ese estado. Los documentos antiguos pueden no tener el campo.
     function isDate(data, field) {
@@ -179,31 +193,40 @@ service cloud.firestore {
 
     // Nadie ve ni edita tareas ajenas, tampoco el administrador: isAdmin() solo aparece en el
     // borrado, y solo con el marcador de eliminación de su dueño. Al actualizar se comprueba el
-    // dueño antes y después, para que nadie pueda reasignar una tarea a otro ownerId.
+    // dueño antes y después, para que nadie pueda reasignar una tarea a otro ownerId. Editar o
+    // mover no toca el índice.
     match /tasks/{taskId} {
       allow read: if isAuthorized() && isOwner(resource.data);
-      // Borrar una tarea que otro dispositivo ya borró no es un error (resource == null).
-      allow delete: if (isAuthorized() && (resource == null || isOwner(resource.data)))
-        || (isAdmin() && isDeletingOwner(resource.data.ownerId));
+      // Borrar una tarea que otro dispositivo ya borró no es un error (resource == null). Su índice
+      // se borra en el mismo lote: ninguna tarea borrada deja su documento de taskIndex.
+      allow delete: if ((isAuthorized() && (resource == null || isOwner(resource.data)))
+          || (isAdmin() && isDeletingOwner(resource.data.ownerId)))
+        && !existsAfter(/databases/$(database)/documents/taskIndex/$(taskId));
+      // Toda tarea nueva llega con su índice, del mismo dueño, en el mismo lote.
       allow create: if isAuthorized() && isValidTask(request.resource.data)
-        && isOwner(request.resource.data);
+        && isOwner(request.resource.data)
+        && hasOwnIndexAfter(taskId);
       allow update: if isAuthorized() && isValidTask(request.resource.data)
         && isOwner(resource.data) && isOwner(request.resource.data);
     }
 
     // Índice de tareas (2.6): un documento por tarea, con el mismo ID, que solo guarda ownerId. Lo
     // lee el dueño y el administrador, que así borra los datos de alguien sin leer sus tareas.
-    // Reglas de transición: las tareas se aceptan con o sin índice.
     match /taskIndex/{taskId} {
       allow read: if isAuthorized() && (isOwner(resource.data) || isAdmin());
+      // Solo con su tarea, del mismo dueño, al terminar el lote: nueva en el mismo lote o anterior al
+      // índice (completar el índice de las tareas que ya existían).
       allow create: if isAuthorized() && isIndexEntry(request.resource.data)
-        && isOwner(request.resource.data);
+        && isOwner(request.resource.data)
+        && hasOwnTaskAfter(taskId);
       // Reescribir el mismo contenido (un lote repetido, dos pestañas que completan el índice a la
       // vez): el documento queda igual, con el mismo dueño. Nada más se puede cambiar.
       allow update: if isAuthorized() && isIndexEntry(request.resource.data)
         && isOwner(resource.data) && isOwner(request.resource.data);
-      allow delete: if (isAuthorized() && (resource == null || isOwner(resource.data)))
-        || (isAdmin() && isDeletingOwner(resource.data.ownerId));
+      // Solo si su tarea ya no existe al terminar el lote (borrada en el mismo lote o antes).
+      allow delete: if ((isAuthorized() && (resource == null || isOwner(resource.data)))
+          || (isAdmin() && isDeletingOwner(resource.data.ownerId)))
+        && !existsAfter(/databases/$(database)/documents/tasks/$(taskId));
     }
 
     // Marcador de eliminación (2.5): lo crea solo el script administrativo (Admin SDK) tras un
