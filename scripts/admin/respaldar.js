@@ -2,6 +2,8 @@
 // persona desactivada. Resuelve su uid, completa su índice, hace el respaldo completo cifrado del ambiente,
 // lo verifica y solo entonces crea el marcador deletions/{clave} en 'backup-ready' con su entrada en
 // adminLog. Sin ese marcador, las reglas no dejan al administrador borrar tareas ajenas.
+// Sin --correo (PBI-2.11, 2.16 «Respaldo previo en PDN»), solo hace el respaldo completo antes de publicar
+// reglas: no toca índices ni crea marcadores, y deja su entrada en adminLog.
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { userFromData } from '../../src/domain/entities/User.js';
@@ -83,9 +85,70 @@ function frozenTaskCount(content, uid) {
   return tasks.length;
 }
 
+/**
+ * Respaldo completo del ambiente, cifrado en un archivo nuevo y verificado: se descifra lo escrito en el
+ * disco y se compara con lo leído.
+ * @param {CommandContext} context
+ * @param {string} passphrase
+ */
+async function writeVerifiedBackup({ options, projectId, store, log, now, backupDir, kdf }, passphrase) {
+  const { plaintext, documentCount } = serializeBackup(await store.readAll(), {
+    projectId,
+    ambiente: options.ambiente,
+    now: now(),
+  });
+  const hash = fingerprint(plaintext);
+  const path = await writeBackupFile(
+    join(backupDir, options.ambiente),
+    backupFileName(options.ambiente, now()),
+    encryptBackup(plaintext, passphrase, kdf),
+  );
+  const content = verifyBackup(await readFile(path, 'utf8'), passphrase, { hash, documentCount });
+  log(`✔ Respaldo cifrado y verificado: ${documentCount} documentos, sha256 ${hash}`);
+  log(`  ${path}`);
+  return { content, documentCount, hash };
+}
+
+// Simulación: cuántos documentos tendría el respaldo completo, por colección.
+async function logBackupSize(store, log) {
+  const counts = await store.countAll();
+  const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
+  const detail = Object.entries(counts).map(([name, n]) => `${name} ${n}`);
+  log(`El respaldo completo tendría ${total} documentos (${detail.join(', ')}).`);
+}
+
+/**
+ * respaldar: con --correo prepara la eliminación de esa persona; sin él, solo respalda el ambiente.
+ * @param {CommandContext} context
+ */
+export function backup(context) {
+  return context.options.correo ? backupUser(context) : backupEnvironment(context);
+}
+
+/**
+ * Respaldo previo a un cambio de reglas (2.16): todo el ambiente, sin tocar índices ni marcadores.
+ * @param {CommandContext} context
+ */
+export async function backupEnvironment(context) {
+  const { store, terminal, log } = context;
+  const admin = await requireAdmin(store, context.options.admin);
+  log('Respaldo completo del ambiente: no toca índices ni crea marcadores de eliminación.');
+  if (!context.options.aplicar) {
+    await logBackupSize(store, log);
+    return simulated(log);
+  }
+
+  await confirmWrite(context);
+  const passphrase = await askNewPassphrase(terminal);
+  const { documentCount } = await writeVerifiedBackup(context, passphrase);
+  await store.commit([logOp(store, 'backup', admin.uid, null, { documentCount, scope: 'environment' })]);
+  log('✔ Entrada en adminLog. Guarda la frase en el gestor de contraseñas: sin ella no se puede leer.');
+  return 0;
+}
+
 /** @param {CommandContext} context */
 export async function backupUser(context) {
-  const { options, projectId, store, terminal, log, now, backupDir, kdf } = context;
+  const { options, projectId, store, terminal, log, now } = context;
   const admin = await requireAdmin(store, options.admin);
   const email = normalizeEmail(options.correo);
   const data = await store.get('allowedUsers', email);
@@ -114,10 +177,7 @@ export async function backupUser(context) {
   if (marker) log('Ya tiene un respaldo listo: se reemplazará por este.');
 
   if (!options.aplicar) {
-    const counts = await store.countAll();
-    const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
-    const detail = Object.entries(counts).map(([name, n]) => `${name} ${n}`);
-    log(`El respaldo completo tendría ${total} documentos (${detail.join(', ')}).`);
+    await logBackupSize(store, log);
     return simulated(log);
   }
 
@@ -134,24 +194,9 @@ export async function backupUser(context) {
     await commitInChunks(store, ops);
     if (ops.length > 0) log(`✔ uid e índice al día (${ops.length} escrituras).`);
 
-    // 2. Respaldo completo, cifrado, en un archivo nuevo.
-    const { plaintext, documentCount } = serializeBackup(await store.readAll(), {
-      projectId,
-      ambiente: options.ambiente,
-      now: now(),
-    });
-    const hash = fingerprint(plaintext);
-    const path = await writeBackupFile(
-      join(backupDir, options.ambiente),
-      backupFileName(options.ambiente, now()),
-      encryptBackup(plaintext, passphrase, kdf),
-    );
-
-    // 3. Verificación: se descifra lo escrito en el disco y se compara con lo leído.
-    const content = verifyBackup(await readFile(path, 'utf8'), passphrase, { hash, documentCount });
+    // 2 y 3. Respaldo completo, cifrado en un archivo nuevo, y su verificación.
+    const { content, documentCount, hash } = await writeVerifiedBackup(context, passphrase);
     const taskCount = frozenTaskCount(content, uid);
-    log(`✔ Respaldo cifrado y verificado: ${documentCount} documentos, sha256 ${hash}`);
-    log(`  ${path}`);
 
     // 4. Marcador y entrada del registro, en el mismo lote.
     await store.commit([

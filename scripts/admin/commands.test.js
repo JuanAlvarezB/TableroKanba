@@ -11,7 +11,7 @@ import { cleanOrphanAccounts } from './cuentas-huerfanas.js';
 import { purgeBackups } from './limpiar-respaldos.js';
 import { purgeUser } from './limpiar-usuario.js';
 import { purgeLog } from './purgar-registro.js';
-import { backupUser } from './respaldar.js';
+import { backup, backupEnvironment, backupUser } from './respaldar.js';
 import { restoreUser } from './restaurar.js';
 import { fingerprint } from './rules.js';
 import { verifyIndex } from './verificar-indice.js';
@@ -312,6 +312,73 @@ describe('respaldar', () => {
       action: 'backup',
       detail: { completed: false, indexCreated: 1, indexRemoved: 1, uidRegistered: false },
     });
+  });
+});
+
+describe('respaldar sin --correo: respaldo del ambiente antes de publicar reglas', () => {
+  const apply = (extra = {}) => setup({ aplicar: true, answers: [PASSPHRASE, PASSPHRASE], ...extra });
+
+  it('en simulación cuenta los documentos sin escribir nada', async () => {
+    const { context, store, output } = setup();
+    expect(await backup(context)).toBe(0);
+    expect(store.commits).toEqual([]);
+    expect(await backupFiles()).toEqual([]);
+    expect(output()).toContain('El respaldo completo tendría 11 documentos');
+    expect(output()).toContain('Simulación: no se escribió nada');
+    expect(output()).not.toContain(PRIVATE_TEXT);
+  });
+
+  it('con --aplicar cifra y verifica todo el ambiente, sin tocar índices ni crear marcadores', async () => {
+    const { context, store, output } = apply();
+    const before = seed();
+    expect(await backup(context)).toBe(0);
+
+    const [name] = await backupFiles();
+    const path = join(dir, 'dev', name);
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    const file = await readFile(path, 'utf8');
+    expect(file).not.toContain(PRIVATE_TEXT);
+    const { colecciones } = parseBackup(decryptBackup(file, PASSPHRASE));
+    expect(Object.keys(colecciones)).toEqual(['adminLog', 'allowedUsers', 'taskIndex', 'tasks']);
+    expect(colecciones.tasks.map((doc) => doc.id)).toEqual(['t1', 't2', 't3']);
+
+    expect(store.docs('taskIndex')).toEqual(before.taskIndex);
+    expect(store.docs('deletions')).toEqual({});
+    expect(store.commits).toHaveLength(1);
+    expect(lastEntry(store)).toEqual({
+      action: 'backup',
+      actorUid: 'admin-uid',
+      targetUid: null,
+      detail: { documentCount: 11, scope: 'environment' },
+    });
+    expect(output()).toContain('✔ Respaldo cifrado y verificado: 11 documentos');
+    expect(output()).not.toContain(PRIVATE_TEXT);
+  });
+
+  it('en PDN exige escribir el identificador del proyecto', async () => {
+    const wrong = apply({ ambiente: 'pdn', answers: ['tablero-equivocado'] });
+    await expect(backupEnvironment(wrong.context)).rejects.toThrow('no coincide');
+    expect(wrong.store.commits).toEqual([]);
+    expect(await backupFiles('pdn')).toEqual([]);
+
+    const right = apply({ ambiente: 'pdn', answers: ['demo-lucas', PASSPHRASE, PASSPHRASE] });
+    expect(await backupEnvironment(right.context)).toBe(0);
+    expect(await backupFiles('pdn')).toHaveLength(1);
+  });
+
+  it('solo lo hace un administrador activo, y con una frase válida', async () => {
+    const member = apply({ admin: 'activa@ejemplo.test' });
+    await expect(backupEnvironment(member.context)).rejects.toThrow('no es un administrador activo');
+    const short = apply({ answers: ['corta', 'corta'] });
+    await expect(backupEnvironment(short.context)).rejects.toThrow('al menos 12');
+    expect(await backupFiles()).toEqual([]);
+    expect([...member.store.commits, ...short.store.commits]).toEqual([]);
+  });
+
+  it('con --correo sigue preparando la eliminación de esa persona', async () => {
+    const { context, store } = apply({ correo: PERSONA });
+    expect(await backup(context)).toBe(0);
+    expect(store.doc('deletions', 'u1')).toMatchObject({ state: 'backup-ready', taskCount: 2 });
   });
 });
 

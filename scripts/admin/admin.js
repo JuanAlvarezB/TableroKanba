@@ -4,7 +4,8 @@
 //
 // Comandos (los que escriben solo simulan sin --aplicar; en PDN piden además el identificador del proyecto):
 //   verificar-reglas   Compara las reglas de Firestore publicadas con firestore.rules (solo lee).
-//   respaldar          Respaldo cifrado y verificado antes de eliminar a una persona; crea su marcador.
+//   respaldar          Respaldo cifrado y verificado del ambiente; con --correo, antes de eliminar a esa
+//                      persona (crea su marcador).
 //   verificar-indice   Tareas sin índice e índices huérfanos (solo lee).
 //   completar-indice   Crea los índices que faltan y borra los huérfanos.
 //   limpiar-usuario    Borra las tareas e índices que queden de una persona eliminada.
@@ -25,7 +26,7 @@ import { connect } from './firebase.js';
 import { purgeBackups } from './limpiar-respaldos.js';
 import { purgeUser } from './limpiar-usuario.js';
 import { purgeLog } from './purgar-registro.js';
-import { backupUser } from './respaldar.js';
+import { backup } from './respaldar.js';
 import { restoreUser } from './restaurar.js';
 import { createStore } from './store.js';
 import { createTerminal } from './terminal.js';
@@ -40,7 +41,7 @@ const BACKUP_DIR = join(homedir(), 'Documents', 'lucas-respaldos');
 /** @type {Record<string, import('./cli.js').CommandSpec & { run?: Function, local?: boolean }>} */
 const COMMANDS = {
   'verificar-reglas': {},
-  respaldar: { required: ['admin', 'correo'], writes: true, run: backupUser },
+  respaldar: { required: ['admin'], optional: ['correo'], writes: true, run: backup },
   'verificar-indice': { required: ['admin'], optional: ['uid'], run: verifyIndex },
   'completar-indice': { required: ['admin'], optional: ['uid'], writes: true, run: completeIndex },
   'limpiar-usuario': { required: ['admin', 'uid'], writes: true, run: purgeUser },
