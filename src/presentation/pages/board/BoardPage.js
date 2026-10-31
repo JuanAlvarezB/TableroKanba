@@ -8,6 +8,7 @@ import { createTaskCard } from '../../components/TaskCard.js';
 import { currentFeatures } from '../../state/features.js';
 import { createAlertsController } from './alertsController.js';
 import { createBoardNotices } from './boardNotices.js';
+import { createDragController } from './dragController.js';
 import { createEditingController } from './editingController.js';
 import { createHighlights } from './highlights.js';
 import { createLabelMenuController } from './labelMenuController.js';
@@ -33,7 +34,6 @@ export function createBoardPage({ store, reminders }) {
   });
 
   let activeFilter = 'all';
-  let draggedId = null;
   const highlights = createHighlights();
 
   const tasks = () => store.tasks;
@@ -45,12 +45,13 @@ export function createBoardPage({ store, reminders }) {
     },
   });
   const editor = createEditingController({ store, showNotice, render, beforeStart: () => labelMenu.forget() });
+  const drag = createDragController({ store, lists });
   const alerts = createAlertsController({
     store,
     reminders,
     highlights,
     render,
-    isDragging: () => draggedId !== null,
+    isDragging: () => drag.isDragging,
     filter: { current: () => activeFilter, showAll: () => setFilter('all') },
   });
 
@@ -93,13 +94,8 @@ export function createBoardPage({ store, reminders }) {
     setPriority: (id, priority) => store.setPriority(id, priority),
     setDueDate: (id, dueDate) => store.setDueDate(id, dueDate),
     closeLabelMenu: labelMenu.close,
-    dragStart: (id) => {
-      draggedId = id;
-    },
-    dragEnd: () => {
-      draggedId = null;
-      lists.forEach((list) => list.classList.remove('drag-over'));
-    },
+    dragStart: drag.start,
+    dragEnd: drag.end,
   };
 
   function createCard(task) {
@@ -168,29 +164,7 @@ export function createBoardPage({ store, reminders }) {
   store.on('edited', notices.announceEditedTasks);
   store.on('sync', notices.setSyncStatus);
 
-  lists.forEach((list) => {
-    list.addEventListener('dragover', (event) => {
-      // preventDefault es necesario para que el evento drop se dispare.
-      event.preventDefault();
-      list.classList.add('drag-over');
-    });
-
-    list.addEventListener('dragleave', (event) => {
-      if (!list.contains(event.relatedTarget)) list.classList.remove('drag-over');
-    });
-
-    list.addEventListener('drop', (event) => {
-      event.preventDefault();
-      list.classList.remove('drag-over');
-      if (draggedId === null) return;
-
-      const dragged = tasks().find((t) => t.id === draggedId);
-      if (!dragged) return;
-      const afterCard = getCardAfterCursor(list, event.clientY, dragged.priority);
-      const beforeId = afterCard ? afterCard.dataset.id : null;
-      store.move(draggedId, list.dataset.status, beforeId);
-    });
-  });
+  drag.listen();
 
   taskForm.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -213,19 +187,4 @@ export function createBoardPage({ store, reminders }) {
   window.addEventListener('storage', (event) => store.reloadFromStorage(event.key));
 
   return { render };
-}
-
-// Devuelve la tarjeta del mismo grupo de etiqueta situada justo debajo del cursor, para
-// insertar antes de ella. Arrastrar no cambia la etiqueta: si se suelta en otro grupo, la
-// tarea queda al principio o al final del suyo. Con la función priorities apagada no hay
-// grupos: la columna sigue solo el orden manual (docs/PLAN_USUARIOS.md, 3.1).
-function getCardAfterCursor(list, y, priority) {
-  const grouped = currentFeatures().priorities;
-  const cards = [...list.querySelectorAll('.card:not(.dragging)')].filter(
-    (card) => !grouped || card.dataset.priority === (priority ?? ''),
-  );
-  return cards.find((card) => {
-    const box = card.getBoundingClientRect();
-    return y < box.top + box.height / 2;
-  });
 }

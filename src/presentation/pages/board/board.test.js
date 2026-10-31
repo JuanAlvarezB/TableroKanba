@@ -1,6 +1,7 @@
 // Pruebas de la lógica propia de los controladores del tablero (pages/board/), sin navegador.
 import { describe, expect, it } from 'vitest';
 import { overdueSignature } from './alertsController.js';
+import { cardAfterY } from './dragController.js';
 import { editOutcome, editingConflict } from './editingController.js';
 import { HIGHLIGHT_DURATION, createHighlights } from './highlights.js';
 
@@ -96,5 +97,48 @@ describe('firma de las alertas', () => {
     expect(overdueSignature(board)).toBe(overdueSignature([task('a'), task('b')]));
     expect(overdueSignature(board)).not.toBe(overdueSignature([task('a')]));
     expect(overdueSignature([])).toBe('');
+  });
+});
+
+describe('tarjeta bajo el cursor al soltar', () => {
+  // Tarjetas de 100 px de alto, una debajo de otra desde y = 0.
+  const column = (...priorities) =>
+    priorities.map((priority, index) => ({
+      card: `c${index}`,
+      priority,
+      box: () => ({ top: index * 100, height: 100 }),
+    }));
+
+  it('devuelve la primera tarjeta cuya mitad queda por debajo del cursor', () => {
+    const cards = column('', '', '');
+    expect(cardAfterY(cards, 10, null, false)).toBe('c0');
+    expect(cardAfterY(cards, 49, null, false)).toBe('c0');
+    expect(cardAfterY(cards, 50, null, false)).toBe('c1');
+    expect(cardAfterY(cards, 249, null, false)).toBe('c2');
+  });
+
+  it('sin tarjeta debajo, la tarea va al final', () => {
+    expect(cardAfterY(column('', ''), 150, null, false)).toBeUndefined();
+    expect(cardAfterY([], 0, null, false)).toBeUndefined();
+  });
+
+  it('agrupada por etiqueta, solo cuenta las tarjetas de su grupo', () => {
+    const cards = column('urgent', 'urgent', '', 'low');
+    expect(cardAfterY(cards, 10, null, true)).toBe('c2');
+    expect(cardAfterY(cards, 260, 'urgent', true)).toBeUndefined();
+    expect(cardAfterY(cards, 10, 'low', true)).toBe('c3');
+  });
+
+  it('con priorities apagada sigue el orden manual, sin grupos', () => {
+    const cards = column('urgent', '', 'low');
+    expect(cardAfterY(cards, 10, 'low', false)).toBe('c0');
+    expect(cardAfterY(cards, 160, null, false)).toBe('c2');
+  });
+
+  it('pide la caja solo de las tarjetas que revisa', () => {
+    const asked = [];
+    const cards = column('', '', '').map((entry) => ({ ...entry, box: () => (asked.push(entry.card), entry.box()) }));
+    cardAfterY(cards, 10, null, false);
+    expect(asked).toEqual(['c0']);
   });
 });
