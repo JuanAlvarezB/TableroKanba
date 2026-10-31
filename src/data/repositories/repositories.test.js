@@ -173,6 +173,32 @@ describe('FirestoreTaskRepository', () => {
     expect(onChange.mock.calls[0][0].tasks[0].history).toEqual([event('e1')]);
   });
 
+  it('subscribe lee las subtareas e informa los contadores que no coinciden con su lista', () => {
+    const { db, fs } = fakeFirestore();
+    const onChange = vi.fn();
+    createFirestoreTaskRepository({ db, fs }, 'u').subscribe(onChange, vi.fn());
+    const steps = [
+      { id: 's1', text: 'Paso 1', done: true },
+      { id: 's2', text: 'Paso 2', done: false },
+    ];
+    const doc = (id, fields) => ({ id, data: () => ({ text: id, ...fields }), metadata: {} });
+    fs.listener.next({
+      docs: [
+        doc('bien', { subtasks: steps, openSubtasks: 1 }),
+        doc('de-mas', { subtasks: steps, openSubtasks: 2 }),
+        doc('de-menos', { subtasks: steps, openSubtasks: 0 }),
+        doc('sin-contador', { subtasks: steps }),
+        doc('sin-subtareas', {}),
+      ],
+      docChanges: () => [],
+      metadata: { fromCache: false },
+    });
+    const snapshot = onChange.mock.calls[0][0];
+    expect(snapshot.tasks[0]).toMatchObject({ subtasks: steps, openSubtasks: 1 });
+    expect(snapshot.tasks[1].openSubtasks).toBe(1);
+    expect(snapshot.drifted).toEqual(['de-mas', 'de-menos', 'sin-contador']);
+  });
+
   it('update ignora las tareas que otro dispositivo ya borró', async () => {
     const { db, fs } = fakeFirestore();
     fs.failWith = firebaseError('not-found');

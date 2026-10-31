@@ -1,7 +1,7 @@
 // Reglas de las subtareas (docs/PLAN_SUBTAREAS.md, 2.4): progreso, si una tarea se puede completar y la
 // única forma de escribir la lista, siempre junto con su contador de pendientes. Las reglas de Firestore
 // exigen las mismas 20 subtareas y que una tarea completada no tenga pendientes.
-import { SUBTASK_LIMIT, SUBTASK_TEXT_LIMIT, countOpenSubtasks } from '../entities/Task.js';
+import { SUBTASK_LIMIT, SUBTASK_TEXT_LIMIT, countOpenSubtasks, readSubtasks } from '../entities/Task.js';
 
 export { SUBTASK_LIMIT, SUBTASK_TEXT_LIMIT, countOpenSubtasks };
 
@@ -40,6 +40,17 @@ export function completionBlock(task) {
  */
 export function subtaskChanges(subtasks) {
   return { subtasks, openSubtasks: countOpenSubtasks(subtasks) };
+}
+
+/**
+ * Si el contador guardado en el documento no coincide con su lista (dato manipulado o error de un cliente):
+ * la tarea se lee con el contador recalculado y se repara al escribir los dos (docs/PLAN_SUBTAREAS.md, P-13).
+ * Sin ninguno de los dos campos no hay nada que reparar.
+ * @param {object} data Campos del documento guardado.
+ */
+export function counterDrifts(data) {
+  if (!('subtasks' in data) && !('openSubtasks' in data)) return false;
+  return data.openSubtasks !== readSubtasks(data).openSubtasks;
 }
 
 // Texto de una subtarea tal como se guarda: una sola línea, sin espacios en los extremos.

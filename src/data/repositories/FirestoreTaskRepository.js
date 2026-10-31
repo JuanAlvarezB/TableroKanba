@@ -4,6 +4,7 @@
 // Cada tarea tiene además su documento en "taskIndex" (mismo ID, solo ownerId), que se crea y se
 // borra en el mismo lote que la tarea; editar o mover no lo toca (docs/PLAN_USUARIOS.md, 2.6).
 import { countOpenSubtasks, taskFromData } from '../../domain/entities/Task.js';
+import { counterDrifts } from '../../domain/rules/subtasks.js';
 import { toRepositoryError } from './firebaseErrors.js';
 
 const TASKS_COLLECTION = 'tasks';
@@ -131,6 +132,8 @@ export function createFirestoreTaskRepository({ db, fs }, ownerId) {
               .filter((change) => change.type === 'added' && !change.doc.metadata.hasPendingWrites)
               .map((change) => fromDoc(change.doc)),
             fromCache: snapshot.metadata.fromCache,
+            // Tareas cuyo contador de subtareas guardado no coincide con su lista (P-13).
+            drifted: snapshot.docs.filter((doc) => counterDrifts(doc.data())).map((doc) => doc.id),
           });
         },
         (error) => onError(toRepositoryError(error)),
