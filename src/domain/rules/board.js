@@ -1,5 +1,6 @@
 // Reglas del tablero: orden manual, límites de trabajo en curso y filtros.
 import { needsDueAttention } from './dueDates.js';
+import { ALL_FEATURES } from './features.js';
 
 // Límite de trabajo en curso (WIP) por columna. Kanban limita lo que está
 // "en curso" para terminar tareas antes de empezar otras nuevas.
@@ -43,3 +44,28 @@ export const FILTERS = {
   none: (t) => t.priority === null,
   due: (t) => needsDueAttention(t),
 };
+
+// Función de la que depende cada filtro (docs/PLAN_USUARIOS.md, 3.2); "Todas" no depende de ninguna.
+export const FILTER_FEATURES = {
+  urgent: 'priorities',
+  high: 'priorities',
+  low: 'priorities',
+  none: 'priorities',
+  due: 'dueDates',
+};
+
+/**
+ * Filtros con los permisos de la persona: el de una función apagada muestra todas las tareas, como
+ * "Todas". Su botón está oculto (data-feature) y, si era el filtro activo, el tablero vuelve a mostrarlo
+ * todo.
+ * @param {import('./features.js').FeatureFlags} [features] Permisos efectivos de la persona.
+ * @returns {typeof FILTERS}
+ */
+export function filtersFor(features = ALL_FEATURES) {
+  return Object.fromEntries(
+    Object.entries(FILTERS).map(([key, filter]) => {
+      const feature = FILTER_FEATURES[key];
+      return [key, feature === undefined || features[feature] === true ? filter : FILTERS.all];
+    }),
+  );
+}

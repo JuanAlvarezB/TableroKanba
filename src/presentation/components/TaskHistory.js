@@ -6,6 +6,7 @@ import { effectiveHistory } from '../../domain/rules/history.js';
 import { stalledDays } from '../../domain/rules/stalledTasks.js';
 import { formatDate, fullDateFormat, historyEventText, shortDateFormat } from '../format/dates.js';
 import { HISTORY_TEXTS, PENDING_SINCE_LABEL, STATUS_LABELS } from '../format/labels.js';
+import { currentFeatures } from '../state/features.js';
 
 // Tareas con el historial completo desplegado. El tablero vuelve a crear las tarjetas en cada cambio
 // (también al sincronizar), así que se recuerda aquí para que no se plieguen solas.
@@ -26,11 +27,12 @@ export function newestFirst(events) {
 }
 
 export function createTaskHistory(task) {
-  // Permiso history (docs/PLAN_USUARIOS.md, 3.2 y 3.4): todavía no existe. El PR 8 lo conectará aquí
-  // con presentation/state/features.js; apagado, la tarjeta no muestra el historial, que se sigue
-  // registrando.
+  // Permiso history (docs/PLAN_USUARIOS.md, 3.2 y 3.4): apagado, la tarjeta no muestra el historial, que se
+  // sigue registrando (presentation/state/boardStore.js) y aparece completo al reactivarlo.
+  const features = currentFeatures();
   const fragment = document.createDocumentFragment();
-  fragment.append(createTimeline(task));
+  if (!features.history) return fragment;
+  fragment.append(createTimeline(task, features));
   if (wasInProgress(task)) fragment.append(createReturnNote(task));
 
   const events = effectiveHistory(task);
@@ -46,7 +48,7 @@ function createTime(ms) {
   return time;
 }
 
-function createTimeline(task) {
+function createTimeline(task, features) {
   const list = document.createElement('ol');
   list.className = 'task-history';
   list.setAttribute('aria-label', 'Historial de estados');
@@ -60,8 +62,10 @@ function createTimeline(task) {
     const item = document.createElement('li');
     item.className = 'history-step';
     item.dataset.status = status;
-    // Marca la fecha desde la que se cuenta la alerta de la tarea.
-    if (status === task.status && stalledDays(task) !== null) item.classList.add('is-overdue');
+    // Marca la fecha desde la que se cuenta la alerta de la tarea (solo con stalledAlerts activa).
+    if (features.stalledAlerts && status === task.status && stalledDays(task) !== null) {
+      item.classList.add('is-overdue');
+    }
 
     const label = document.createElement('span');
     label.className = 'history-label';

@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSessionStore } from '../data/repositories/SessionStore.js';
 import { RepositoryError } from '../domain/repositories/RepositoryError.js';
+import { ALL_FEATURES } from '../domain/rules/features.js';
 import { authorizeUser } from '../domain/usecases/AuthorizeUser.js';
 import { deriveHistory } from '../domain/rules/history.js';
+import { applyFeatureVisibility, isVisibleFor, showFeatureNotice } from './components/FeatureVisibility.js';
+import { labelMenuName } from './components/LabelMenu.js';
+import { currentFeatures, setFeatures } from './state/features.js';
 import { newestFirst, stepLabel } from './components/TaskHistory.js';
 import { backupCommand, cleanupCommand } from './components/DeleteWizard.js';
 import { actionLabel, actionsFor, deletionNote, displayedName } from './components/UserList.js';
 import { dueInfo, formatDate, historyEventText } from './format/dates.js';
 import { HISTORY_TEXTS, plural } from './format/labels.js';
+import { FEATURE_MESSAGES } from '../shared/constants/messages.js';
 
 const WEDNESDAY = new Date(2026, 9, 7, 10, 30);
 const pending = (dueDate) => ({ status: 'pending', dueDate });
@@ -137,9 +142,10 @@ describe('authorizeUser y SessionStore', () => {
       name: 'Ana',
       role: 'member',
       permissions: {},
+      features: ALL_FEATURES,
     });
     expect(allowedUsers.find).toHaveBeenCalledWith('ana@x.com');
-    expect(sessionStore.remembered('u1')).toEqual({ name: 'Ana', at: 1000 });
+    expect(sessionStore.remembered('u1')).toEqual({ name: 'Ana', at: 1000, features: ALL_FEATURES });
     expect(store.has('tareas-dev')).toBe(false);
   });
 
@@ -169,20 +175,37 @@ describe('authorizeUser y SessionStore', () => {
     const offline = { find: () => Promise.reject(new RepositoryError('unavailable')) };
     expect(await authorizeUser(user(), { allowedUsers: offline, sessionStore })).toMatchObject({ status: 'offline' });
 
-    sessionStore.remember('u1', 'Ana', 1000);
+    sessionStore.remember('u1', 'Ana', 1000, { ...ALL_FEATURES, history: false });
     expect(await authorizeUser(user(), { allowedUsers: offline, sessionStore, now: 2000 })).toEqual({
       status: 'ok',
       name: 'Ana',
       role: 'member',
       permissions: {},
+      features: { ...ALL_FEATURES, history: false },
       offline: true,
     });
   });
 
-  it('SessionStore guarda la hora de la autorización y sigue leyendo el formato anterior', () => {
+  it('un administrador sin conexión entra como miembro con sus permisos efectivos, sin rol recordado', async () => {
     const sessionStore = createSessionStore(env);
-    sessionStore.remember('u1', 'Ana', 1000);
-    expect(JSON.parse(store.get('lucas-autorizado-dev-u1'))).toEqual({ name: 'Ana', at: 1000 });
+    const admin = allowed(member({ role: 'admin', permissions: { board: false } }));
+    await authorizeUser(user(), { allowedUsers: admin, sessionStore, now: 1000 });
+    expect(JSON.parse(store.get('lucas-autorizado-dev-u1'))).toEqual({ name: 'Ana', at: 1000, features: ALL_FEATURES });
+
+    const offline = { find: () => Promise.reject(new RepositoryError('unavailable')) };
+    expect(await authorizeUser(user(), { allowedUsers: offline, sessionStore, now: 2000 })).toMatchObject({
+      role: 'member',
+      features: ALL_FEATURES,
+    });
+  });
+
+  it('SessionStore guarda la hora y los permisos de la autorización y sigue leyendo el formato anterior', () => {
+    const sessionStore = createSessionStore(env);
+    sessionStore.remember('u1', 'Ana', 1000, ALL_FEATURES);
+    expect(JSON.parse(store.get('lucas-autorizado-dev-u1'))).toEqual({ name: 'Ana', at: 1000, features: ALL_FEATURES });
+
+    store.set('lucas-autorizado-dev-u1', JSON.stringify({ name: 'Ana', at: 1000 }));
+    expect(sessionStore.remembered('u1')).toEqual({ name: 'Ana', at: 1000 });
 
     store.set('lucas-autorizado-dev-u1', JSON.stringify({ name: 'Ana' }));
     expect(sessionStore.remembered('u1')).toEqual({ name: 'Ana' });
@@ -276,5 +299,100 @@ describe('acciones de cada fila de la página de usuarios', () => {
 
   it('sin nombre se muestra el correo', () => {
     expect(displayedName({ name: '', email: 'a@x.com' })).toBe('a@x.com');
+  });
+});
+
+describe('FeatureVisibility', () => {
+  const member = (features = {}) => ({ role: 'member', features: { ...ALL_FEATURES, ...features } });
+  const admin = { role: 'admin', features: ALL_FEATURES };
+
+  // DOM de prueba: elementos con dataset y hidden, y un contenedor que los busca por selector.
+  function fakeElement(dataset = {}, hidden = false) {
+    return { dataset, hidden, textContent: '' };
+  }
+  function fakeRoot(elements, empty = null) {
+    const gated = () => elements.filter((el) => 'feature' in el.dataset || 'role' in el.dataset);
+    const container = { querySelectorAll: () => gated() };
+    if (empty) empty.parentElement = container;
+    return { querySelectorAll: () => gated(), querySelector: () => empty };
+  }
+
+  it('un elemento sin marcas siempre se ve', () => {
+    expect(isVisibleFor({}, member({ board: false }))).toBe(true);
+  });
+
+  it('data-feature se ve solo con la función habilitada', () => {
+    expect(isVisibleFor({ feature: 'board' }, member())).toBe(true);
+    expect(isVisibleFor({ feature: 'board' }, member({ board: false }))).toBe(false);
+    expect(isVisibleFor({ feature: 'priorities' }, member({ priorities: false }))).toBe(false);
+    expect(isVisibleFor({ feature: 'desconocida' }, admin)).toBe(false);
+  });
+
+  it('data-role="admin" se ve solo con ese rol', () => {
+    expect(isVisibleFor({ role: 'admin' }, admin)).toBe(true);
+    expect(isVisibleFor({ role: 'admin' }, member())).toBe(false);
+  });
+
+  it('oculta y muestra los elementos marcados según la sesión', () => {
+    const board = fakeElement({ feature: 'board' }, true);
+    const users = fakeElement({ role: 'admin' }, true);
+    const plain = fakeElement();
+    applyFeatureVisibility(fakeRoot([board, users, plain]), member());
+    expect([board.hidden, users.hidden, plain.hidden]).toEqual([false, true, false]);
+
+    applyFeatureVisibility(fakeRoot([board, users, plain]), admin);
+    expect([board.hidden, users.hidden]).toEqual([false, false]);
+  });
+
+  it('sin ninguna función visible, el lanzador muestra el aviso', () => {
+    const board = fakeElement({ feature: 'board' });
+    const users = fakeElement({ role: 'admin' }, true);
+    const empty = fakeElement({}, true);
+    applyFeatureVisibility(fakeRoot([board, users], empty), member({ board: false }));
+    expect(board.hidden).toBe(true);
+    expect(empty.hidden).toBe(false);
+    expect(empty.textContent).toBe(FEATURE_MESSAGES.none);
+    expect(empty.textContent).toBe('No tienes funciones habilitadas. Habla con el administrador.');
+  });
+
+  it('con alguna función visible, el aviso de "sin funciones" queda oculto', () => {
+    const empty = fakeElement({}, true);
+    applyFeatureVisibility(fakeRoot([fakeElement({ feature: 'board' }, true)], empty), member());
+    expect(empty.hidden).toBe(true);
+    expect(empty.textContent).toBe('');
+  });
+
+  it('muestra el aviso de la función deshabilitada solo si lo hay', () => {
+    const notice = fakeElement({}, true);
+    showFeatureNotice(notice, null);
+    expect(notice.hidden).toBe(true);
+    showFeatureNotice(notice, FEATURE_MESSAGES.disabled.board);
+    expect(notice).toMatchObject({ hidden: false, textContent: FEATURE_MESSAGES.disabled.board });
+    expect(FEATURE_MESSAGES.disabled.board).toBe(
+      'El tablero de tareas no está habilitado para tu cuenta. Habla con el administrador.',
+    );
+  });
+});
+
+describe('proveedor de permisos del tablero', () => {
+  afterEach(() => setFeatures({}));
+
+  it('sin inicializar no hay ninguna función habilitada', () => {
+    expect(Object.values(currentFeatures()).every((value) => value === false)).toBe(true);
+  });
+
+  it('guarda solo las funciones del catálogo, solo true las enciende y no se puede cambiar', () => {
+    setFeatures({ ...ALL_FEATURES, history: 'true', otra: true });
+    expect(currentFeatures()).toEqual({ ...ALL_FEATURES, history: false });
+    expect(Object.isFrozen(currentFeatures())).toBe(true);
+  });
+});
+
+describe('menú de etiquetas con permisos', () => {
+  it('su nombre sigue las secciones activas; sin ninguna, no hay botón', () => {
+    expect(labelMenuName(ALL_FEATURES)).toBe('Etiqueta y fecha límite');
+    expect(labelMenuName({ ...ALL_FEATURES, dueDates: false })).toBe('Etiqueta de prioridad');
+    expect(labelMenuName({ ...ALL_FEATURES, priorities: false })).toBe('Fecha límite');
+    expect(labelMenuName({ ...ALL_FEATURES, priorities: false, dueDates: false })).toBeNull();
   });
 });

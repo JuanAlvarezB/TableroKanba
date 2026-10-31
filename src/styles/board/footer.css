@@ -14,6 +14,12 @@
   display: none;
 }
 
+/* Lo que depende de una función apagada (FeatureVisibility.js). Sin esta regla, un display propio
+   (por ejemplo, el flex del recordatorio) anularía el atributo hidden. */
+[data-feature][hidden] {
+  display: none;
+}
+
 .footer {
   display: flex;
   justify-content: space-between;

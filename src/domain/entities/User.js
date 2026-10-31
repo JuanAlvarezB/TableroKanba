@@ -11,13 +11,21 @@ export const ROLES = ['admin', 'member'];
  * @property {'admin' | 'member'} role
  * @property {boolean} active
  * @property {string | null} uid null si la persona nunca ha entrado.
- * @property {Record<string, unknown>} permissions Permisos por función (sección 3 del plan); vacío si no hay.
+ * @property {Record<string, unknown>} permissions Permisos por función (sección 3 del plan); vacío si no hay
+ *   y { board: false } si el campo existe pero no es un mapa (A-52).
  * @property {boolean} deleting true si la persona está en eliminación (marca deleting, sección 2.2).
  * @property {string | null} doneLogId ID de la entrada delete-done que se escribe al terminar la
  *   eliminación (deleting.doneLogId, generado al confirmarla); null si no está en eliminación.
  */
 
 const isMap = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+// Un permissions que existe pero no es un mapa (solo posible desde la consola) hace que firestore.rules
+// niegue todo el tablero de la persona; aquí vale lo mismo: el tablero apagado, que apaga sus hijas (A-52).
+function permissionsFromData(data) {
+  if (!('permissions' in data)) return {};
+  return isMap(data.permissions) ? data.permissions : { board: false };
+}
 
 /**
  * Solo el texto exacto 'admin' da el rol y solo true (o ningún valor) deja activa a la persona:
@@ -33,7 +41,7 @@ export function userFromData(email, data) {
     role: data.role === 'admin' ? 'admin' : 'member',
     active: !('active' in data) || data.active === true,
     uid: typeof data.uid === 'string' && data.uid !== '' ? data.uid : null,
-    permissions: isMap(data.permissions) ? data.permissions : {},
+    permissions: permissionsFromData(data),
     deleting: isMap(data.deleting),
     doneLogId: isMap(data.deleting) && typeof data.deleting.doneLogId === 'string' ? data.deleting.doneLogId : null,
   };

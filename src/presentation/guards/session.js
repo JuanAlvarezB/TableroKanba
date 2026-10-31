@@ -6,16 +6,24 @@ import { createAllowedUsersRepository } from '../../data/repositories/AllowedUse
 import { createFirebaseAuthRepository } from '../../data/repositories/FirebaseAuthRepository.js';
 import { createSessionStore } from '../../data/repositories/SessionStore.js';
 import { displayName, hasPasswordProvider } from '../../domain/entities/Session.js';
+import { canOpenFeature, featureDefaults } from '../../domain/rules/features.js';
 import { accessChanged, accessState } from '../../domain/rules/permissions.js';
 import { authorizeUser } from '../../domain/usecases/AuthorizeUser.js';
+import { FEATURE_DEFAULTS } from '../../shared/config/features.config.js';
 import { APP_ENV } from '../../shared/config/firebase.config.js';
-import { LOGIN_MESSAGES } from '../../shared/constants/messages.js';
+import { FEATURE_MESSAGES, LOGIN_MESSAGES } from '../../shared/constants/messages.js';
 
 const LOGIN_PAGE = 'login.html';
 export const HOME_PAGE = 'index.html';
 
 // Aviso que login.html muestra al llegar (por ejemplo, "cuenta sin acceso").
 const LOGIN_MESSAGE_KEY = 'lucas-mensaje-login';
+
+// Función deshabilitada de la que viene la persona, para que index.html muestre su aviso al llegar.
+const HOME_MESSAGE_KEY = 'lucas-mensaje-inicio';
+
+// Valores iniciales de los permisos por función en este ambiente (docs/PLAN_USUARIOS.md, 3.3).
+const ENV_FEATURE_DEFAULTS = featureDefaults(FEATURE_DEFAULTS[APP_ENV.name]);
 
 // Al volver a la pestaña se revalida el acceso como máximo una vez por minuto.
 const REVALIDATE_INTERVAL = 60 * 1000;
@@ -55,10 +63,16 @@ export async function loadAuth() {
 /* ---------- Autorización ---------- */
 
 // Comprueba si la persona está en allowedUsers, activa y con el correo verificado (ver
-// domain/usecases/AuthorizeUser.js), y registra su uid la primera vez que entra.
+// domain/usecases/AuthorizeUser.js), y registra su uid la primera vez que entra. El resultado trae sus
+// permisos efectivos (features) con los valores iniciales de este ambiente.
 export async function authorize(user) {
   const { allowedUsers } = await loadServices();
-  const result = await authorizeUser(user, { allowedUsers, sessionStore, now: Date.now() });
+  const result = await authorizeUser(user, {
+    allowedUsers,
+    sessionStore,
+    now: Date.now(),
+    defaults: ENV_FEATURE_DEFAULTS,
+  });
   if (result.status === 'offline') console.error('No se pudo comprobar la autorización:', result.error);
   if (result.claimError) {
     console.warn('No se pudo registrar el uid; se reintenta en el siguiente acceso:', result.claimError);
@@ -74,10 +88,24 @@ export function takeLoginMessage() {
   return Object.hasOwn(LOGIN_MESSAGES, reason) ? LOGIN_MESSAGES[reason] : null;
 }
 
+// Devuelve el aviso de la función deshabilitada de la que viene la persona (y lo borra), o null.
+export function takeHomeMessage() {
+  const feature = takeSessionValue(HOME_MESSAGE_KEY);
+  return Object.hasOwn(FEATURE_MESSAGES.disabled, feature) ? FEATURE_MESSAGES.disabled[feature] : null;
+}
+
 // Con replace, el botón "atrás" no vuelve a una página protegida.
 function goToLogin() {
   leaving = true;
   location.replace(LOGIN_PAGE);
+}
+
+// Lleva al inicio sin mostrar la página protegida; si viene de una función deshabilitada, el inicio
+// muestra su aviso.
+function goHome(feature = null) {
+  if (feature) writeSessionValue(HOME_MESSAGE_KEY, feature);
+  leaving = true;
+  location.replace(HOME_PAGE);
 }
 
 // Dirección del login de este ambiente, para los correos de Firebase (botón "Continuar").
@@ -194,11 +222,13 @@ function watchAccess() {
 /**
  * Protege una página: devuelve la sesión si la persona está autorizada. Si no, la lleva al
  * login o muestra la pantalla sin conexión, y la promesa no se resuelve. Con { role: 'admin' },
- * quien no es administrador (o está sin conexión) vuelve al inicio sin ver la página.
- * @param {{ role?: 'admin' }} [options]
+ * quien no es administrador (o está sin conexión) vuelve al inicio sin ver la página. Con
+ * { feature: 'board' }, quien no tiene esa función habilitada vuelve al inicio con su aviso
+ * (docs/PLAN_USUARIOS.md, 3.4); sin conexión cuentan los últimos permisos conocidos.
+ * @param {{ role?: 'admin', feature?: import('../../domain/rules/features.js').FeatureKey }} [options]
  * @returns {Promise<import('../../domain/entities/Session.js').Session>}
  */
-export async function requireSession({ role } = {}) {
+export async function requireSession({ role, feature } = {}) {
   let firebase;
   let auth;
   try {
@@ -232,8 +262,11 @@ export async function requireSession({ role } = {}) {
     return halt();
   }
   if (role && accessState(result) !== role) {
-    leaving = true;
-    location.replace(HOME_PAGE);
+    goHome();
+    return halt();
+  }
+  if (feature && !canOpenFeature(result, feature)) {
+    goHome(feature);
     return halt();
   }
 
@@ -251,6 +284,7 @@ export async function requireSession({ role } = {}) {
     name: displayName(user, result.name),
     role: result.role,
     permissions: result.permissions,
+    features: result.features,
     photoURL: user.photoURL,
     hasPassword: hasPasswordProvider(user),
     offline: Boolean(result.offline),

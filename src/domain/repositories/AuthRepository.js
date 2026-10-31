@@ -28,9 +28,11 @@
  * @typedef {object} SessionStore Lo que el navegador recuerda de cada persona (data/repositories/SessionStore.js).
  * @property {(uid: string) => { tasks: string, migrated: string, authorized: string, index: string }} keysFor
  *   Claves de localStorage.
- * @property {(uid: string) => { name: string, at?: number } | null} remembered Última autorización confirmada
- *   y su hora (las guardadas antes de los roles no tienen `at`). Nunca guarda el rol.
- * @property {(uid: string, name: string, at: number) => void} remember
+ * @property {(uid: string) => { name: string, at?: number, features?: unknown } | null} remembered Última
+ *   autorización confirmada, su hora y los permisos efectivos de entonces (las guardadas antes de los roles
+ *   no tienen `at`, y las de antes de los permisos, `features`). Nunca guarda el rol.
+ * @property {(uid: string, name: string, at: number,
+ *   features: import('../rules/features.js').FeatureFlags) => void} remember
  * @property {(uid: string) => void} forget Borra todo lo de esa persona en este navegador.
  * @property {() => void} clearLegacy Borra las copias del tablero anónimo anterior.
  */

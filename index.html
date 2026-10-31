@@ -33,6 +33,9 @@
     </header>
 
     <main class="home-main">
+      <!-- Aviso al llegar desde una función deshabilitada (guards/session.js, docs/PLAN_USUARIOS.md 3.4) -->
+      <p id="home-notice" class="home-notice" role="alert" hidden></p>
+
       <section class="hero">
         <div>
           <p class="eyebrow">Tu espacio en LUCAS</p>
@@ -62,13 +65,18 @@
         </svg>
       </section>
 
-      <!-- Solo se listan funciones reales; las nuevas se agregan como otra tarjeta -->
+      <!-- Solo se listan funciones reales; las nuevas se agregan como otra tarjeta. Cada tarjeta lleva
+           data-feature (su permiso) o data-role, y FeatureVisibility.js muestra solo las que corresponden.
+           Ocultarlas no es seguridad: cada página tiene su guardia y las reglas de Firestore son la barrera. -->
       <section class="functions" aria-labelledby="functions-heading">
         <div class="section-head">
           <h2 id="functions-heading">Tus funciones</h2>
         </div>
 
-        <article class="function-card">
+        <!-- Sin ninguna tarjeta visible, muestra "No tienes funciones habilitadas…" -->
+        <p class="functions-empty" data-feature-empty hidden></p>
+
+        <article class="function-card" data-feature="board" hidden>
           <!-- Miniatura del tablero: Pendiente, En curso y Completada -->
           <div class="mockup" aria-hidden="true">
             <div class="mockup-bar"><i></i><i></i><i></i></div>
@@ -103,9 +111,8 @@
           </div>
         </article>
 
-        <!-- Solo para administradores: home/main.js la muestra según el rol. Ocultarla no es
-             seguridad; la página exige el rol y las reglas de Firestore son la barrera real. -->
-        <article id="users-card" class="function-card" hidden>
+        <!-- Solo para administradores: la página exige el rol. -->
+        <article class="function-card" data-role="admin" hidden>
           <!-- Miniatura de la lista de personas con su rol y su estado -->
           <div class="mockup" aria-hidden="true">
             <div class="mockup-bar"><i></i><i></i><i></i></div>

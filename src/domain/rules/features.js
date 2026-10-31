@@ -35,6 +35,13 @@ export const FEATURES = [
 /** @type {FeatureKey[]} */
 export const FEATURE_KEYS = FEATURES.map(({ key }) => key);
 
+/**
+ * Todas las funciones activas: lo que tiene un administrador y el valor por omisión de las reglas del
+ * tablero que reciben los permisos (sortForView, filtersFor, attentionIds y checkReminder).
+ * @type {Readonly<FeatureFlags>}
+ */
+export const ALL_FEATURES = Object.freeze(Object.fromEntries(FEATURE_KEYS.map((key) => [key, true])));
+
 const PARENT = Object.fromEntries(FEATURES.map(({ key, parent }) => [key, parent]));
 
 /**
@@ -67,6 +74,29 @@ export function effectivePermissions(user, defaults = featureDefaults()) {
   const isOn = (key) =>
     user.role === 'admin' || (ownValue(user.permissions, key, defaults) && (PARENT[key] === null || isOn(PARENT[key])));
   return Object.fromEntries(FEATURE_KEYS.map((key) => [key, isOn(key)]));
+}
+
+/**
+ * Permisos efectivos recordados en este navegador para entrar sin conexión (3.5). Se interpretan como los
+ * de un miembro: el formato anterior (sin features) toma los valores iniciales, solo true enciende y el
+ * padre apagado apaga las hijas. Nada de esto concede algo en el servidor, que vuelve a comprobarlo todo.
+ * @param {unknown} stored El campo features de la autorización recordada.
+ * @param {FeatureFlags} [defaults] Valores iniciales del ambiente (featureDefaults).
+ * @returns {FeatureFlags}
+ */
+export function rememberedFeatures(stored, defaults = featureDefaults()) {
+  const isMap = stored !== null && typeof stored === 'object' && !Array.isArray(stored);
+  return effectivePermissions({ role: 'member', permissions: isMap ? stored : {} }, defaults);
+}
+
+/**
+ * La persona puede abrir la función (guardia de las páginas y lanzador del inicio): su permiso efectivo
+ * es true. Una clave desconocida, o una sesión sin features, no abre nada.
+ * @param {{ features?: Partial<FeatureFlags> }} session Sesión o autorización.
+ * @param {string} key
+ */
+export function canOpenFeature(session, key) {
+  return Object.hasOwn(session.features ?? {}, key) && session.features[key] === true;
 }
 
 /**

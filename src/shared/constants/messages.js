@@ -10,6 +10,15 @@ export const LOGIN_MESSAGES = {
   inactive: 'Tu acceso a LUCAS fue desactivado. Habla con el administrador.',
 };
 
+// Permisos por función (docs/PLAN_USUARIOS.md, 3.4): el inicio sin funciones y el aviso que muestra al
+// llegar desde una función deshabilitada (la guardia lleva al inicio). Solo los ve la propia persona.
+export const FEATURE_MESSAGES = {
+  none: 'No tienes funciones habilitadas. Habla con el administrador.',
+  disabled: {
+    board: 'El tablero de tareas no está habilitado para tu cuenta. Habla con el administrador.',
+  },
+};
+
 // Avisos del tablero (presentation/state/boardStore.js).
 export const BOARD_MESSAGES = {
   // La copia local no cupo con el historial (docs/PLAN_USUARIOS.md, A-42).

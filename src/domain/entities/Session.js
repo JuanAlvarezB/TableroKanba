@@ -6,7 +6,9 @@
  * @property {string} email
  * @property {string} name Nombre visible: el de allowedUsers, el de Google o el correo sin dominio.
  * @property {'admin' | 'member'} role Sin conexión siempre es 'member'.
- * @property {Record<string, unknown>} permissions Permisos por función (sección 3 del plan).
+ * @property {Record<string, unknown>} permissions Permisos por función guardados (sección 3 del plan).
+ * @property {import('../rules/features.js').FeatureFlags} features Permisos efectivos: los que aplica la
+ *   interfaz. Un administrador los tiene todos; sin conexión, los últimos conocidos.
  * @property {string | null} photoURL
  * @property {boolean} hasPassword true si entra con correo y contraseña (puede cambiarla).
  * @property {boolean} offline true si la autorización se tomó de la última confirmada (sin red).

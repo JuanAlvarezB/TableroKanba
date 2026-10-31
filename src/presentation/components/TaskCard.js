@@ -1,8 +1,11 @@
-// Tarjeta de una tarea: texto, etiquetas, alerta de tarea detenida, historial y acciones.
+// Tarjeta de una tarea: texto, etiquetas, alerta de tarea detenida, historial y acciones. Lo que
+// depende de una función apagada no se muestra (docs/PLAN_USUARIOS.md, 3.4): el borde y el atenuado
+// de la prioridad, la alerta de tarea detenida y el botón 🏷️ si no queda ninguna de sus secciones.
 import { STATUSES } from '../../domain/entities/Task.js';
 import { STALLED_DAYS, stalledDays } from '../../domain/rules/stalledTasks.js';
 import { OVERDUE_COLUMNS } from '../format/labels.js';
-import { createLabelMenu } from './LabelMenu.js';
+import { currentFeatures } from '../state/features.js';
+import { createLabelMenu, labelMenuName } from './LabelMenu.js';
 import { createTaskHistory } from './TaskHistory.js';
 import { createTaskTags } from './TaskTags.js';
 
@@ -20,13 +23,17 @@ export function isEditable(task) {
  *   del menú de etiquetas (setPriority, setDueDate, closeLabelMenu).
  */
 export function createTaskCard(task, { menuOpen, highlightElapsed, actions }) {
+  const features = currentFeatures();
+  const priority = features.priorities ? task.priority : null;
+  const labelName = labelMenuName(features);
+
   const li = document.createElement('li');
   li.className = `card ${task.status}`;
   // Con el menú de etiquetas abierto no se arrastra, para poder usar la fecha con el ratón.
   li.draggable = !menuOpen;
   li.dataset.id = task.id;
-  li.dataset.priority = task.priority ?? '';
-  if (task.priority) li.classList.add(`priority-${task.priority}`);
+  li.dataset.priority = priority ?? '';
+  if (priority) li.classList.add(`priority-${priority}`);
 
   // El resaltado continúa donde iba aunque la tarjeta se haya vuelto a crear.
   if (highlightElapsed !== null) {
@@ -83,8 +90,8 @@ export function createTaskCard(task, { menuOpen, highlightElapsed, actions }) {
   const labelBtn = document.createElement('button');
   labelBtn.className = 'label-btn';
   labelBtn.textContent = '🏷️';
-  labelBtn.title = 'Etiqueta y fecha límite';
-  labelBtn.setAttribute('aria-label', 'Etiqueta y fecha límite');
+  labelBtn.title = labelName ?? '';
+  labelBtn.setAttribute('aria-label', labelName ?? '');
   labelBtn.setAttribute('aria-expanded', String(menuOpen));
   labelBtn.addEventListener('click', () => actions.toggleLabelMenu(task.id));
 
@@ -96,13 +103,14 @@ export function createTaskCard(task, { menuOpen, highlightElapsed, actions }) {
   deleteBtn.addEventListener('click', () => actions.remove(task.id));
 
   actionsBar.append(backBtn, forwardBtn);
-  if (isEditable(task)) actionsBar.append(labelBtn, editBtn);
+  if (isEditable(task) && labelName) actionsBar.append(labelBtn);
+  if (isEditable(task)) actionsBar.append(editBtn);
   actionsBar.append(deleteBtn);
 
   const tags = createTaskTags(task);
   if (tags) li.append(tags);
 
-  const days = stalledDays(task);
+  const days = features.stalledAlerts ? stalledDays(task) : null;
   if (days !== null) {
     li.classList.add('overdue');
     const badge = document.createElement('p');
@@ -113,7 +121,7 @@ export function createTaskCard(task, { menuOpen, highlightElapsed, actions }) {
   }
 
   li.append(span, createTaskHistory(task), actionsBar);
-  if (menuOpen) {
+  if (menuOpen && labelName) {
     li.append(
       createLabelMenu(task, {
         onPriority: (priority) => actions.setPriority(task.id, priority),
