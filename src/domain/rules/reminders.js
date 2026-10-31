@@ -1,6 +1,7 @@
 // Recordatorio de tareas que necesitan atención: sale de lunes a viernes una vez en la mañana
 // (desde las 10:00) y otra en la tarde (desde las 15:00).
 import { dueStatus } from './dueDates.js';
+import { ALL_FEATURES } from './features.js';
 import { STALLED_STATUSES, stalledDays } from './stalledTasks.js';
 
 export const REMINDER_SLOTS = [
@@ -20,20 +21,22 @@ export function currentReminderSlot(now = new Date()) {
 
 /**
  * Ids de las tareas que el recordatorio menciona: detenidas por columna, urgentes, vencidas y
- * próximas a vencer (sin contar las completadas).
+ * próximas a vencer (sin contar las completadas). Cada grupo solo cuenta con su función activa
+ * (stalledAlerts, priorities y dueDates); apagada, queda vacío (docs/PLAN_USUARIOS.md, 3.4).
+ * @param {import('../entities/Task.js').Task[]} tasks
+ * @param {Date} [now]
+ * @param {import('./features.js').FeatureFlags} [features] Permisos efectivos de la persona.
  */
-export function attentionIds(tasks, now = new Date()) {
+export function attentionIds(tasks, now = new Date(), features = ALL_FEATURES) {
   const open = tasks.filter((t) => t.status !== 'completed');
-  const idsOf = (list) => list.map((t) => t.id);
+  const idsOf = (feature, list) => (features[feature] === true ? list.map((t) => t.id) : []);
+  const stalledIn = (status) => tasks.filter((t) => t.status === status && stalledDays(t, now) !== null);
+  const dueKind = (kind) => open.filter((t) => dueStatus(t, now)?.kind === kind);
+  const urgentTasks = open.filter((t) => t.priority === 'urgent');
   return {
-    stalled: Object.fromEntries(
-      STALLED_STATUSES.map((status) => [
-        status,
-        idsOf(tasks.filter((t) => t.status === status && stalledDays(t, now) !== null)),
-      ]),
-    ),
-    urgent: idsOf(open.filter((t) => t.priority === 'urgent')),
-    overdueDue: idsOf(open.filter((t) => dueStatus(t, now)?.kind === 'overdue')),
-    soonDue: idsOf(open.filter((t) => dueStatus(t, now)?.kind === 'soon')),
+    stalled: Object.fromEntries(STALLED_STATUSES.map((status) => [status, idsOf('stalledAlerts', stalledIn(status))])),
+    urgent: idsOf('priorities', urgentTasks),
+    overdueDue: idsOf('dueDates', dueKind('overdue')),
+    soonDue: idsOf('dueDates', dueKind('soon')),
   };
 }

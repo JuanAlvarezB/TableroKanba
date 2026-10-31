@@ -214,6 +214,22 @@ describe('checkReminder', () => {
   it('no lo muestra si no hay nada que atender', () => {
     expect(checkReminder([task('a', { createdAt: now.getTime() })], { lastShownId: null, now })).toBeNull();
   });
+
+  it('con reminders apagada no muestra nada', () => {
+    expect(
+      checkReminder(urgent, { lastShownId: null, now, features: { ...ALL_FEATURES, reminders: false } }),
+    ).toBeNull();
+  });
+
+  it('solo cuentan los grupos de las funciones activas', () => {
+    const features = { ...ALL_FEATURES, priorities: false };
+    expect(checkReminder(urgent, { lastShownId: null, now, features })).toBeNull();
+    const dueToday = [task('v', { dueDate: '2026-10-07', createdAt: now.getTime() })];
+    expect(checkReminder(dueToday, { lastShownId: null, now, features })).toEqual({
+      id: '2026-10-7@10',
+      label: 'de la mañana',
+    });
+  });
 });
 
 describe('authorizeUser', () => {

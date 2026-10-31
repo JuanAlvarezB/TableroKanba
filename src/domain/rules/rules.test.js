@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { FILTERS, countByStatus, isColumnFull, nextOrder, orderBefore, sortTasks } from './board.js';
+import {
+  FILTERS,
+  FILTER_FEATURES,
+  countByStatus,
+  filtersFor,
+  isColumnFull,
+  nextOrder,
+  orderBefore,
+  sortTasks,
+} from './board.js';
 import { businessDaysUntil, calendarDaysSince } from './dates.js';
 import { dueStatus, needsDueAttention, parseDueDate } from './dueDates.js';
 import {
@@ -40,7 +49,7 @@ import {
   normalizeEmail,
   validateNewUser,
 } from './permissions.js';
-import { priorityRank, sortByPriority } from './priority.js';
+import { priorityRank, sortByPriority, sortForView } from './priority.js';
 import { attentionIds, currentReminderSlot } from './reminders.js';
 import { stalledDays } from './stalledTasks.js';
 
@@ -139,6 +148,16 @@ describe('prioridad', () => {
     expect(sortByPriority(list).map((t) => t.id)).toEqual(['3', '5', '4', '2', '1']);
     expect(priorityRank(task({ priority: null }))).toBe(3);
   });
+
+  it('sortForView agrupa por etiqueta solo con priorities activa; si no, deja el orden manual', () => {
+    const list = () => [task({ id: '1' }), task({ id: '2', priority: 'urgent' }), task({ id: '3', priority: 'low' })];
+    expect(sortForView(list()).map((t) => t.id)).toEqual(['2', '3', '1']);
+    expect(sortForView(list(), { ...ALL_FEATURES, priorities: false }).map((t) => t.id)).toEqual(['1', '2', '3']);
+    // Apagar el padre apaga las hijas: llega priorities en false.
+    expect(
+      sortForView(list(), effectivePermissions({ role: 'member', permissions: { board: false } })).map((t) => t.id),
+    ).toEqual(['1', '2', '3']);
+  });
 });
 
 describe('tablero', () => {
@@ -171,6 +190,28 @@ describe('tablero', () => {
     // filter() pasa el índice como segundo argumento; el filtro de vencimiento debe ignorarlo.
     expect([task({ dueDate: '2000-01-01' })].filter(FILTERS.due)).toHaveLength(1);
   });
+
+  it('cada filtro, salvo Todas, depende de una función del catálogo', () => {
+    expect(Object.keys(FILTERS).filter((key) => !(key in FILTER_FEATURES))).toEqual(['all']);
+    Object.values(FILTER_FEATURES).forEach((feature) => expect(FEATURE_KEYS).toContain(feature));
+  });
+
+  it('filtersFor con todo activo son los mismos filtros', () => {
+    expect(filtersFor(ALL_FEATURES)).toEqual(FILTERS);
+    expect(filtersFor()).toEqual(FILTERS);
+  });
+
+  it('filtersFor: el filtro de una función apagada muestra todas las tareas, como Todas', () => {
+    const list = [task({ id: '1', priority: 'urgent' }), task({ id: '2', dueDate: '2000-01-01' })];
+    const noPriorities = filtersFor({ ...ALL_FEATURES, priorities: false });
+    ['urgent', 'high', 'low', 'none'].forEach((key) => expect(noPriorities[key]).toBe(FILTERS.all));
+    expect(list.filter(noPriorities.urgent)).toHaveLength(2);
+    expect(noPriorities.due).toBe(FILTERS.due);
+
+    const noDueDates = filtersFor({ ...ALL_FEATURES, dueDates: false });
+    expect(noDueDates.due).toBe(FILTERS.all);
+    expect(noDueDates.urgent).toBe(FILTERS.urgent);
+  });
 });
 
 describe('recordatorios', () => {
@@ -195,6 +236,26 @@ describe('recordatorios', () => {
       overdueDue: ['vencida'],
       soonDue: ['pronto'],
     });
+  });
+
+  it('cada grupo solo cuenta con su función activa', () => {
+    const list = [
+      task({ id: 'detenida', createdAt: day(1) }),
+      task({ id: 'urgente', createdAt: day(7), priority: 'urgent' }),
+      task({ id: 'vencida', createdAt: day(7), dueDate: '2026-10-06' }),
+      task({ id: 'pronto', createdAt: day(7), dueDate: '2026-10-08' }),
+    ];
+    const without = (key) => attentionIds(list, WEDNESDAY, { ...ALL_FEATURES, [key]: false });
+    expect(without('stalledAlerts')).toEqual({
+      stalled: { pending: [], 'in-progress': [] },
+      urgent: ['urgente'],
+      overdueDue: ['vencida'],
+      soonDue: ['pronto'],
+    });
+    expect(without('priorities')).toMatchObject({ stalled: { pending: ['detenida'] }, urgent: [] });
+    expect(without('dueDates')).toMatchObject({ urgent: ['urgente'], overdueDue: [], soonDue: [] });
+    // reminders no cambia los grupos: solo decide si sale el recordatorio (checkReminder).
+    expect(without('reminders')).toEqual(attentionIds(list, WEDNESDAY));
   });
 });
 
