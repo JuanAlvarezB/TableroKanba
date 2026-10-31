@@ -201,7 +201,7 @@ describe('R-9 y R-10 registro del uid propio', () => {
 });
 
 describe('R-11 y R-12 nadie más escribe en allowedUsers', () => {
-  it.each([[{ role: 'admin' }], [{ active: true }], [{ active: false }], [{ permissions: { tablero: true } }]])(
+  it.each([[{ role: 'admin' }], [{ active: true }], [{ active: false }], [{ permissions: { board: true } }]])(
     'R-11 un miembro no cambia su documento: %j',
     async (change) => {
       await assertFails(updateDoc(doc(signedIn(env, ANA), 'allowedUsers/ana@example.com'), change));

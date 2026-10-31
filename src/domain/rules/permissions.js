@@ -11,8 +11,8 @@ export const ACCESS_STATES = ['admin', 'member', 'inactive', 'unauthorized'];
 
 // Estados que pueden hacer cada acción. Nadie, tampoco el administrador, toca tareas ajenas ni
 // cambia su propio rol o estado. El administrador escribe los documentos de otras personas, siempre
-// con su entrada del registro, y elimina a otra persona solo con la eliminación en dos fases
-// (sección 2); los permisos por función llegan con la sección 3.
+// con su entrada del registro (también sus permisos por función, sección 3), y elimina a otra persona
+// solo con la eliminación en dos fases (sección 2).
 const MATRIX = {
   'tasks.own': ['admin', 'member'],
   'tasks.others': [],
@@ -45,7 +45,10 @@ export function can(state, action) {
   return Object.hasOwn(MATRIX, action) && MATRIX[action].includes(state);
 }
 
-/** @typedef {'deactivate' | 'reactivate' | 'promote' | 'demote' | 'delete' | 'cancel-delete'} ChangeType */
+/**
+ * @typedef {'deactivate' | 'reactivate' | 'promote' | 'demote' | 'delete' | 'cancel-delete' | 'permissions'}
+ *   ChangeType
+ */
 
 /**
  * @typedef {'not-admin' | 'self' | 'unknown-role' | 'in-deletion' | 'target-is-admin' | 'target-active'}
@@ -56,7 +59,8 @@ export function can(state, action) {
  * Un administrador activo puede cambiar el rol o el estado de otra persona, o eliminarla, pero nunca
  * los suyos: así no se puede quedar el sistema sin el último administrador. Límite aceptado: dos
  * administradores que se degradan entre sí a la vez. Una persona en eliminación no admite cambios, y
- * para eliminar a alguien tiene que estar desactivada y sin rol de administrador.
+ * para eliminar a alguien tiene que estar desactivada y sin rol de administrador. Los permisos por
+ * función solo se cambian a miembros: un administrador tiene siempre todas las funciones (3.1).
  * @param {import('../entities/User.js').AllowedUser} actor
  * @param {import('../entities/User.js').AllowedUser} target
  * @param {{ type: ChangeType, role?: string }} change
@@ -67,7 +71,8 @@ export function canChangeUser(actor, target, change) {
   if (actor.email === target.email) return { ok: false, reason: 'self' };
   if ('role' in change && !ROLES.includes(change.role)) return { ok: false, reason: 'unknown-role' };
   if (target.deleting) return { ok: false, reason: 'in-deletion' };
-  if (change.type === 'delete' && target.role === 'admin') return { ok: false, reason: 'target-is-admin' };
+  const needsMember = change.type === 'delete' || change.type === 'permissions';
+  if (needsMember && target.role === 'admin') return { ok: false, reason: 'target-is-admin' };
   if (change.type === 'delete' && target.active) return { ok: false, reason: 'target-active' };
   return { ok: true };
 }

@@ -371,6 +371,46 @@ En PDN, con las reglas publicadas antes del merge, y otra vez después del merge
 - [ ] `verificar-indice --ambiente pdn --admin <yo>` sigue en "✔ Índice completo".
 - [ ] Etiqueta `pdn-reglas-AAAA-MM-DD` con la hora de la versión anterior (las de transición) en el mensaje.
 
+### 7.6 Permisos por función: reglas (PR 7)
+
+Diseño en `docs/PLAN_USUARIOS.md`, 3.4: sin el tablero no se leen ni escriben `tasks` ni `taskIndex`, y con
+`priorities` o `dueDates` apagadas no se cambia su campo. Todavía no hay interfaz (PR 8) ni panel (PR 9): los
+permisos se ponen a mano en la consola de Firebase (Firestore → `allowedUsers` → el documento → campo
+`permissions`, de tipo **map**, con valores **boolean**), solo en la cuenta de prueba propia y solo en
+Desarrollo. Dos cuentas: la del administrador y la de prueba (miembro, nunca la de una persona real).
+
+Antes de publicar, en cada ambiente:
+- [ ] Anotar la hora de la versión vigente de las reglas (README, "Publicar reglas paso a paso").
+- [ ] Ningún documento de `allowedUsers` tiene el campo `permissions` (así nadie pierde acceso al publicar).
+- [ ] Solo en PDN: número de tareas por columna del administrador anotado.
+
+En Desarrollo, con las reglas publicadas (antes de publicar en PDN):
+- [ ] `verificar-reglas --ambiente dev` termina en "✔ Coinciden".
+- [ ] Con la cuenta de prueba, sin `permissions`: ve sus tareas, crea, edita, mueve, pone prioridad y fecha
+      límite y borra, sin `permission-denied` en la consola del navegador.
+- [ ] Ponerle `permissions` = `{ board: false }` y recargar el tablero: no cargan sus tareas del servidor, aparece
+      el aviso "El servidor rechazó el cambio (reglas de seguridad de Firestore)…" y la consola muestra
+      `permission-denied`. Es lo esperado hasta el PR 8, que oculta la tarjeta y lleva al inicio con su aviso.
+- [ ] Con la cuenta de prueba así, el administrador sigue trabajando con su tablero sin cambios.
+- [ ] Cambiar a `{ priorities: false }` y recargar: las tareas cargan; mover y editar el texto funcionan; poner,
+      cambiar o quitar una prioridad muestra el aviso de reglas y la etiqueta vuelve a la anterior. La fecha
+      límite sigue funcionando.
+- [ ] Cambiar a `{ dueDates: false }`: lo mismo con la fecha límite; la prioridad sigue funcionando.
+- [ ] Cambiar a `{ board: false, priorities: true }`: no cargan las tareas (manda el padre).
+- [ ] Borrar el campo `permissions` y recargar: todo vuelve a funcionar y las tareas, prioridades, fechas e
+      historial siguen como estaban.
+- [ ] Con el administrador, `permissions` = `{ board: false }` en su propio documento (desde la consola) no le
+      quita nada: sigue con su tablero, prioridades y fechas. Borrar el campo al terminar.
+- [ ] Al terminar, ningún documento de `allowedUsers` de Desarrollo tiene `permissions`.
+
+En PDN, con las reglas publicadas antes del merge, y otra vez después del merge:
+- [ ] `verificar-reglas --ambiente pdn` termina en "✔ Coinciden".
+- [ ] Crear, editar, poner prioridad y fecha, y borrar una tarea de prueba propia, sin `permission-denied`.
+- [ ] Las mismas tareas por columna que antes de publicar.
+- [ ] Etiqueta `pdn-reglas-AAAA-MM-DD` con la hora de la versión anterior (las estrictas del índice) en el
+      mensaje. Si ya existe una etiqueta con esa fecha (la de las estrictas es `pdn-reglas-2026-10-31`), añade
+      `-permisos` al nombre.
+
 ## 8. Historial de tareas
 
 Diseño en `docs/PLAN_USUARIOS.md`, sección 4. Los eventos guardados se revisan en la consola de Firebase

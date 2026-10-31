@@ -4,7 +4,7 @@
 
 /**
  * @typedef {'authorize' | 'deactivate' | 'reactivate' | 'promote' | 'demote' | 'delete-start' | 'delete-cancel'
- *   | 'delete-done'} AdminAction
+ *   | 'delete-done' | 'set-permissions'} AdminAction
  */
 
 /**
@@ -12,8 +12,9 @@
  * @property {AdminAction} action
  * @property {string} actorUid uid de quien hace la acción.
  * @property {string | null} targetUid uid de la persona afectada, o null si nunca ha entrado.
- * @property {Record<string, string | number | boolean>} [detail] Mapa pequeño, por ejemplo
- *   { from: 'member', to: 'admin' }.
+ * @property {Record<string, string | number | boolean | string[]>} [detail] Mapa pequeño (cinco claves
+ *   como máximo), por ejemplo { from: 'member', to: 'admin' } o, en set-permissions,
+ *   { off: ['board'], on: ['history'] }.
  *
  * @typedef {LogEntry & { id: string }} NewLogEntry Entrada con el ID de su documento, que el
  *   cambio guarda en lastChange.
@@ -23,7 +24,7 @@
  * @param {AdminAction} action
  * @param {string} actorUid
  * @param {string | null} targetUid
- * @param {Record<string, string | number | boolean>} [detail]
+ * @param {Record<string, string | number | boolean | string[]>} [detail]
  * @returns {LogEntry}
  */
 export function buildLogEntry(action, actorUid, targetUid, detail) {

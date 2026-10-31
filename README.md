@@ -210,6 +210,21 @@ su documento de `taskIndex` en el mismo lote. Unas reglas sin `match /taskIndex/
     || { grep -q "match /taskIndex/" firestore.rules && echo "De transición" || echo "SIN taskIndex: no la publiques"; }
   ```
 
+#### Permisos por función: el servidor los cumple solo con estas reglas
+
+Desde los permisos por función (`docs/PLAN_USUARIOS.md`, sección 3) las reglas niegan `tasks` y `taskIndex` a
+quien tiene el tablero apagado y no dejan cambiar `priority` ni `dueDate` con su función apagada. Mientras
+ningún documento de `allowedUsers` tenga `permissions`, se comportan igual que las anteriores, así que
+revertirlas es seguro. Después de apagar funciones a alguien, unas reglas sin permisos ya no las cumplen en el
+servidor (la pantalla las seguiría ocultando): antes de publicar una versión anterior, comprueba cuál tienes:
+
+```bash
+grep -q "function boardOn" firestore.rules && echo "Con permisos" || echo "Sin permisos: el servidor no los cumple"
+```
+
+Para devolver todas las funciones a una persona basta con borrar su campo `permissions` en la consola: vuelven
+los valores iniciales (todo activo).
+
 ### Comprobar con el script (`verificar-reglas`)
 
 `npm run admin -- verificar-reglas --ambiente dev|pdn` descarga, con la API de Firebase Rules, las

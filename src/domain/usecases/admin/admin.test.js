@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { RepositoryError } from '../../repositories/RepositoryError.js';
+import { featureDefaults } from '../../rules/features.js';
 import { authorizeEmail } from './AuthorizeEmail.js';
 import { cancelUserDeletion } from './CancelUserDeletion.js';
 import { deactivateUser } from './DeactivateUser.js';
@@ -7,6 +8,7 @@ import { demoteUser } from './DemoteUser.js';
 import { promoteUser } from './PromoteUser.js';
 import { reactivateUser } from './ReactivateUser.js';
 import { DELETION_CHUNK_SIZE, runUserDeletion } from './RunUserDeletion.js';
+import { setUserPermissions } from './SetUserPermissions.js';
 import { startUserDeletion } from './StartUserDeletion.js';
 
 const person = (email, fields = {}) => ({
@@ -180,6 +182,106 @@ describe('cambios sobre otra persona', () => {
     const adminUsers = fakeAdminUsers();
     await deactivateUser(admin, { ...ana, uid: null }, deps(adminUsers));
     expect(adminUsers.writes[0][3].targetUid).toBeNull();
+  });
+});
+
+/* ---------- Permisos por función (sección 3) ---------- */
+
+describe('setUserPermissions', () => {
+  it('escribe el mapa nuevo con su entrada set-permissions, sin correos ni nombres', async () => {
+    const adminUsers = fakeAdminUsers();
+    expect(await setUserPermissions(admin, ana, { board: false }, deps(adminUsers))).toEqual({ ok: true });
+    expect(adminUsers.writes).toEqual([
+      [
+        'update',
+        'ana@ejemplo.test',
+        { permissions: { board: false } },
+        { id: 'log-1', action: 'set-permissions', actorUid: 'u-admin', targetUid: 'u-ana', detail: { off: ['board'] } },
+      ],
+    ]);
+    expectNoPersonalData(adminUsers.writes[0][3]);
+  });
+
+  it('apagar el tablero conserva el valor guardado de las hijas', async () => {
+    const adminUsers = fakeAdminUsers();
+    const target = { ...ana, permissions: { priorities: false, history: true } };
+    await setUserPermissions(admin, target, { board: false }, deps(adminUsers));
+    expect(adminUsers.writes[0][2]).toEqual({ permissions: { priorities: false, history: true, board: false } });
+  });
+
+  it('varios cambios van en una sola escritura, con lo que se apaga y lo que se enciende', async () => {
+    const adminUsers = fakeAdminUsers();
+    const target = { ...ana, permissions: { reminders: false } };
+    const changes = { board: false, priorities: false, dueDates: false, stalledAlerts: false, reminders: true };
+    await setUserPermissions(admin, target, changes, deps(adminUsers));
+    expect(adminUsers.writes).toHaveLength(1);
+    expect(adminUsers.writes[0][3].detail).toEqual({
+      off: ['board', 'priorities', 'dueDates', 'stalledAlerts'],
+      on: ['reminders'],
+    });
+  });
+
+  it('sin cambios reales no escribe nada', async () => {
+    const adminUsers = fakeAdminUsers();
+    const target = { ...ana, permissions: { board: false } };
+    expect(await setUserPermissions(admin, target, { board: false }, deps(adminUsers))).toEqual({
+      ok: true,
+      unchanged: true,
+    });
+    // Guardar explícito el valor inicial de una clave ausente tampoco es un cambio.
+    expect(await setUserPermissions(admin, ana, { history: true }, deps(adminUsers))).toEqual({
+      ok: true,
+      unchanged: true,
+    });
+    expect(await setUserPermissions(admin, ana, {}, deps(adminUsers))).toEqual({ ok: true, unchanged: true });
+    expect(adminUsers.writes).toEqual([]);
+  });
+
+  it('usa los valores iniciales del ambiente para decidir qué cambia', async () => {
+    const adminUsers = fakeAdminUsers();
+    const defaults = featureDefaults({ reminders: false });
+    const result = await setUserPermissions(admin, ana, { reminders: false }, { ...deps(adminUsers), defaults });
+    expect(result).toEqual({ ok: true, unchanged: true });
+    expect(await setUserPermissions(admin, ana, { reminders: true }, { ...deps(adminUsers), defaults })).toEqual({
+      ok: true,
+    });
+    expect(adminUsers.writes[0][3].detail).toEqual({ on: ['reminders'] });
+  });
+
+  it('quita del mapa las claves desconocidas y deja en false los valores corruptos', async () => {
+    const adminUsers = fakeAdminUsers();
+    const target = { ...ana, permissions: { tablero: true, dueDates: 'false' } };
+    await setUserPermissions(admin, target, { history: false }, deps(adminUsers));
+    expect(adminUsers.writes[0][2]).toEqual({ permissions: { dueDates: false, history: false } });
+    expect(adminUsers.writes[0][3].detail).toEqual({ off: ['history'] });
+  });
+
+  it.each([
+    ['a sí mismo', admin, admin, { board: false }, 'self'],
+    ['a un administrador', admin, { ...ana, role: 'admin' }, { board: false }, 'target-is-admin'],
+    ['siendo miembro', ana, person('b@ejemplo.test'), { board: false }, 'not-admin'],
+    ['a una persona en eliminación', admin, { ...ana, active: false, deleting: true }, { board: false }, 'in-deletion'],
+    ['con una clave desconocida', admin, ana, { tablero: false }, 'unknown-feature'],
+    ['con una clave desconocida junto a una válida', admin, ana, { board: false, notas: true }, 'unknown-feature'],
+    ['con un valor que no es booleano', admin, ana, { board: 'false' }, 'invalid-value'],
+    ['con un valor null', admin, ana, { history: null }, 'invalid-value'],
+  ])('se rechaza sin escribir %s', async (_, actor, target, changes, reason) => {
+    const adminUsers = fakeAdminUsers();
+    expect(await setUserPermissions(actor, target, changes, deps(adminUsers))).toEqual({ ok: false, reason });
+    expect(adminUsers.writes).toEqual([]);
+  });
+
+  it('una persona que nunca ha entrado queda en el registro sin uid', async () => {
+    const adminUsers = fakeAdminUsers();
+    await setUserPermissions(admin, { ...ana, uid: null }, { dueDates: false }, deps(adminUsers));
+    expect(adminUsers.writes[0][3].targetUid).toBeNull();
+  });
+
+  it('los fallos de infraestructura llegan como RepositoryError', async () => {
+    const adminUsers = fakeAdminUsers({ failWith: new RepositoryError('permission-denied') });
+    await expect(setUserPermissions(admin, ana, { board: false }, deps(adminUsers))).rejects.toMatchObject({
+      reason: 'permission-denied',
+    });
   });
 });
 
