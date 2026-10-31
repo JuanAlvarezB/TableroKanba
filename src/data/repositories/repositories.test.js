@@ -291,19 +291,35 @@ describe('FirestoreTaskRepository', () => {
 describe('AdminUsersRepository', () => {
   const entry = { id: 'log-1', action: 'deactivate', actorUid: 'u-admin', targetUid: 'u-ana' };
 
-  // SDK falso con lo que usa la gestión de usuarios: lotes, transacciones, escucha y hora del servidor.
-  function fakeAdminFirestore({ existing = [] } = {}) {
+  // SDK falso con lo que usa la gestión de usuarios: lotes, transacciones, escucha, consultas del
+  // índice y hora del servidor. indexed son los IDs de taskIndex que devuelve el servidor.
+  function fakeAdminFirestore({ existing = [], indexed = [] } = {}) {
     const calls = [];
     const fs = {
       failWith: null,
       doc: (db, collection, id) => `${collection}/${id}`,
       collection: (db, name) => name,
+      where: (field, op, value) => ({ field, op, value }),
+      limit: (count) => ({ limit: count }),
+      query: (collection, ...constraints) => ({ collection, constraints }),
       serverTimestamp: () => 'SERVER_TIME',
+      getCountFromServer: async (query) => {
+        calls.push(['count', query]);
+        if (fs.failWith) throw fs.failWith;
+        return { data: () => ({ count: indexed.length }) };
+      },
+      getDocsFromServer: async (query) => {
+        calls.push(['getFromServer', query]);
+        if (fs.failWith) throw fs.failWith;
+        const max = query.constraints.find((constraint) => 'limit' in constraint)?.limit ?? indexed.length;
+        return { docs: indexed.slice(0, max).map((id) => ({ id })) };
+      },
       writeBatch: () => {
         const ops = [];
         return {
           set: (ref, data) => ops.push(['set', ref, data]),
           update: (ref, data) => ops.push(['update', ref, data]),
+          delete: (ref) => ops.push(['delete', ref]),
           commit: async () => {
             calls.push(['batch', ops]);
             if (fs.failWith) throw fs.failWith;
@@ -418,6 +434,119 @@ describe('AdminUsersRepository', () => {
 
     stop();
     expect(calls).toEqual([['unsubscribe']]);
+  });
+
+  describe('eliminación en dos fases', () => {
+    const logAt = (id, action, targetUid = 'u-ana') => [
+      'set',
+      `adminLog/${id}`,
+      { action, actorUid: 'u-admin', targetUid, at: 'SERVER_TIME' },
+    ];
+
+    it('startDeletion confirma el marcador, marca a la persona y escribe delete-start en el mismo lote', async () => {
+      const { db, fs, calls } = fakeAdminFirestore();
+      const start = { ...entry, id: 'log-2', action: 'delete-start' };
+      await createAdminUsersRepository({ db, fs }).startDeletion('ana@x.com', 'u-ana', start, 'log-3');
+      expect(calls).toEqual([
+        [
+          'batch',
+          [
+            ['update', 'deletions/u-ana', { state: 'deleting', confirmedAt: 'SERVER_TIME' }],
+            [
+              'update',
+              'allowedUsers/ana@x.com',
+              { deleting: { at: 'SERVER_TIME', doneLogId: 'log-3' }, lastChange: 'log-2' },
+            ],
+            logAt('log-2', 'delete-start'),
+          ],
+        ],
+      ]);
+    });
+
+    it('cancelDeletion borra el marcador y escribe delete-cancel en el mismo lote', async () => {
+      const { db, fs, calls } = fakeAdminFirestore();
+      await createAdminUsersRepository({ db, fs }).cancelDeletion('u-ana', { ...entry, action: 'delete-cancel' });
+      expect(calls).toEqual([['batch', [['delete', 'deletions/u-ana'], logAt('log-1', 'delete-cancel')]]]);
+    });
+
+    it('finishDeletion borra el documento y el marcador y escribe delete-done en el mismo lote', async () => {
+      const { db, fs, calls } = fakeAdminFirestore();
+      const done = { ...entry, id: 'log-3', action: 'delete-done', targetUid: null };
+      await createAdminUsersRepository({ db, fs }).finishDeletion('nunca@x.com', 'nunca@x.com', done);
+      expect(calls).toEqual([
+        [
+          'batch',
+          [
+            ['delete', 'allowedUsers/nunca@x.com'],
+            ['delete', 'deletions/nunca@x.com'],
+            logAt('log-3', 'delete-done', null),
+          ],
+        ],
+      ]);
+    });
+
+    it('countIndexed cuenta en el servidor los índices de esa persona', async () => {
+      const { db, fs, calls } = fakeAdminFirestore({ indexed: ['t1', 't2', 't3'] });
+      expect(await createAdminUsersRepository({ db, fs }).countIndexed('u-ana')).toBe(3);
+      expect(calls).toEqual([
+        ['count', { collection: 'taskIndex', constraints: [{ field: 'ownerId', op: '==', value: 'u-ana' }] }],
+      ]);
+    });
+
+    it('deleteTaskChunk lee el índice del servidor con el límite y borra cada tarea con su índice', async () => {
+      const ids = Array.from({ length: 10 }, (_, i) => `t${i}`);
+      const { db, fs, calls } = fakeAdminFirestore({ indexed: ids });
+      expect(await createAdminUsersRepository({ db, fs }).deleteTaskChunk('u-ana', 8)).toEqual({ deleted: 8 });
+      expect(calls[0]).toEqual([
+        'getFromServer',
+        {
+          collection: { collection: 'taskIndex', constraints: [{ field: 'ownerId', op: '==', value: 'u-ana' }] },
+          constraints: [{ limit: 8 }],
+        },
+      ]);
+      expect(calls[1]).toEqual([
+        'batch',
+        ids.slice(0, 8).flatMap((id) => [
+          ['delete', `tasks/${id}`],
+          ['delete', `taskIndex/${id}`],
+        ]),
+      ]);
+    });
+
+    it('deleteTaskChunk sin índices no escribe nada', async () => {
+      const { db, fs, calls } = fakeAdminFirestore();
+      expect(await createAdminUsersRepository({ db, fs }).deleteTaskChunk('u-ana', 8)).toEqual({ deleted: 0 });
+      expect(calls.map(([type]) => type)).toEqual(['getFromServer']);
+    });
+
+    it('traduce los errores de las consultas y de los lotes a RepositoryError', async () => {
+      const { db, fs } = fakeAdminFirestore({ indexed: ['t1'] });
+      fs.failWith = firebaseError('permission-denied');
+      const repository = createAdminUsersRepository({ db, fs });
+      await expect(repository.deleteTaskChunk('u-ana', 8)).rejects.toMatchObject({ reason: 'permission-denied' });
+      fs.failWith = firebaseError('unavailable');
+      await expect(repository.countIndexed('u-ana')).rejects.toMatchObject({ reason: 'unavailable' });
+      await expect(repository.finishDeletion('a@x.com', 'u', entry)).rejects.toBeInstanceOf(RepositoryError);
+    });
+
+    it('watchDeletions entrega los marcadores válidos y traduce los errores', () => {
+      const { db, fs } = fakeAdminFirestore();
+      const onChange = vi.fn();
+      const onError = vi.fn();
+      createAdminUsersRepository({ db, fs }).watchDeletions(onChange, onError);
+      expect(fs.listener.ref).toBe('deletions');
+
+      fs.listener.next({
+        docs: [
+          { id: 'u-ana', data: () => ({ state: 'backup-ready', taskCount: 2, backupAt: 5, backupHash: 'h' }) },
+          { id: 'u-raro', data: () => ({ state: 'otro' }) },
+        ],
+      });
+      expect(onChange).toHaveBeenCalledWith([{ key: 'u-ana', state: 'backup-ready', taskCount: 2, backupAt: 5 }]);
+
+      fs.listener.error(firebaseError('permission-denied'));
+      expect(onError.mock.calls[0][0]).toMatchObject({ name: 'RepositoryError', reason: 'permission-denied' });
+    });
   });
 });
 
