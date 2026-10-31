@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, writeBatch } from 'firebase/firestore';
 
 const RULES = resolve(import.meta.dirname, '..', 'firestore.rules');
 
@@ -61,6 +61,30 @@ export function task(ownerId, fields = {}) {
     ownerId,
     ...fields,
   };
+}
+
+// La tarea y su documento de taskIndex van siempre en el mismo lote, como en FirestoreTaskRepository
+// (docs/PLAN_USUARIOS.md, 2.6): así las pruebas valen con las reglas de transición y con las estrictas.
+
+/** Crea (o reemplaza) la tarea con su índice en un solo lote. */
+export function saveTask(db, id, data) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, `tasks/${id}`), data);
+  batch.set(doc(db, `taskIndex/${id}`), { ownerId: data.ownerId });
+  return batch.commit();
+}
+
+/** Borra la tarea y su índice en un solo lote. */
+export function removeTask(db, id) {
+  const batch = writeBatch(db);
+  batch.delete(doc(db, `tasks/${id}`));
+  batch.delete(doc(db, `taskIndex/${id}`));
+  return batch.commit();
+}
+
+/** Tarea con su índice, para seed(): { 'tasks/id': datos, 'taskIndex/id': { ownerId } }. */
+export function indexedTask(id, data) {
+  return { [`tasks/${id}`]: data, [`taskIndex/${id}`]: { ownerId: data.ownerId } };
 }
 
 /** Escribe documentos con las reglas desactivadas: { 'ruta/del/doc': datos }. */

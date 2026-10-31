@@ -1,9 +1,20 @@
 // Línea base de firestore.rules (docs/PLAN_USUARIOS.md, 1.8, casos B-1…B-8): el comportamiento actual,
-// que debe seguir igual cuando se agreguen los roles.
+// que debe seguir igual cuando se agreguen los roles. Desde la sección 2 (2.6), las tareas se crean y se
+// borran con su documento de taskIndex en el mismo lote, como hace la app.
 import { assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
-import { ANA, BETO, createTestEnvironment, seed, signedIn, task } from './helpers.js';
+import {
+  ANA,
+  BETO,
+  createTestEnvironment,
+  indexedTask,
+  removeTask,
+  saveTask,
+  seed,
+  signedIn,
+  task,
+} from './helpers.js';
 
 const CARLA = { uid: 'uid-carla', email: 'carla@example.com' }; // con cuenta, pero sin autorizar
 const ANONIMA = { uid: 'uid-anonima' };
@@ -21,10 +32,10 @@ beforeEach(async () => {
   await seed(env, {
     'allowedUsers/ana@example.com': { name: 'Ana' },
     'allowedUsers/beto@example.com': { name: 'Beto' },
-    'tasks/ana-1': task(ANA.uid),
-    'tasks/beto-1': task(BETO.uid),
-    'tasks/carla-1': task(CARLA.uid),
-    'tasks/anonima-1': task(ANONIMA.uid),
+    ...indexedTask('ana-1', task(ANA.uid)),
+    ...indexedTask('beto-1', task(BETO.uid)),
+    ...indexedTask('carla-1', task(CARLA.uid)),
+    ...indexedTask('anonima-1', task(ANONIMA.uid)),
     'config/general': { valor: 1 },
   });
 });
@@ -38,13 +49,13 @@ describe('B-1 un miembro trabaja con sus tareas', () => {
 
   it('crea, edita y borra su tarea', async () => {
     const db = signedIn(env, ANA);
-    await assertSucceeds(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid)));
+    await assertSucceeds(saveTask(db, 'ana-2', task(ANA.uid)));
     await assertSucceeds(updateDoc(doc(db, 'tasks/ana-2'), { status: 'in-progress', startedAt: 2 }));
-    await assertSucceeds(deleteDoc(doc(db, 'tasks/ana-2')));
+    await assertSucceeds(removeTask(db, 'ana-2'));
   });
 
   it('borrar una tarea que ya no existe no es un error', async () => {
-    await assertSucceeds(deleteDoc(doc(signedIn(env, ANA), 'tasks/no-existe')));
+    await assertSucceeds(removeTask(signedIn(env, ANA), 'no-existe'));
   });
 });
 
@@ -65,7 +76,7 @@ describe('B-2 nadie lee tareas ajenas', () => {
 
 describe('B-3 nadie escribe tareas ajenas ni las reasigna', () => {
   it('no crea una tarea con ownerId ajeno', async () => {
-    await assertFails(setDoc(doc(signedIn(env, ANA), 'tasks/ana-2'), task(BETO.uid)));
+    await assertFails(saveTask(signedIn(env, ANA), 'ana-2', task(BETO.uid)));
   });
 
   it('no cambia el ownerId de su tarea', async () => {
@@ -77,7 +88,7 @@ describe('B-3 nadie escribe tareas ajenas ni las reasigna', () => {
   });
 
   it('no borra una tarea ajena', async () => {
-    await assertFails(deleteDoc(doc(signedIn(env, ANA), 'tasks/beto-1')));
+    await assertFails(removeTask(signedIn(env, ANA), 'beto-1'));
   });
 });
 
@@ -98,29 +109,29 @@ describe('B-4 sin sesión válida y autorizada no hay acceso a tareas', () => {
     const db = database();
     await assertFails(getDoc(doc(db, `tasks/${taskId}`)));
     await assertFails(getDocs(query(collection(db, 'tasks'), where('ownerId', '==', ownerId))));
-    await assertFails(setDoc(doc(db, 'tasks/nueva'), task(ownerId)));
+    await assertFails(saveTask(db, 'nueva', task(ownerId)));
     await assertFails(updateDoc(doc(db, `tasks/${taskId}`), { text: 'Cambiada' }));
-    await assertFails(deleteDoc(doc(db, `tasks/${taskId}`)));
+    await assertFails(removeTask(db, taskId));
   });
 });
 
 describe('B-5 lista cerrada de campos y valores de la tarea', () => {
   it('acepta un texto de 500 caracteres (límite)', async () => {
-    await assertSucceeds(setDoc(doc(signedIn(env, ANA), 'tasks/ana-2'), task(ANA.uid, { text: 'a'.repeat(500) })));
+    await assertSucceeds(saveTask(signedIn(env, ANA), 'ana-2', task(ANA.uid, { text: 'a'.repeat(500) })));
   });
 
   it('rechaza un campo extra al crear y al editar', async () => {
     const db = signedIn(env, ANA);
-    await assertFails(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid, { secreto: 'x' })));
+    await assertFails(saveTask(db, 'ana-2', task(ANA.uid, { secreto: 'x' })));
     await assertFails(updateDoc(doc(db, 'tasks/ana-1'), { secreto: 'x' }));
   });
 
   it('rechaza un estado inválido', async () => {
-    await assertFails(setDoc(doc(signedIn(env, ANA), 'tasks/ana-2'), task(ANA.uid, { status: 'archived' })));
+    await assertFails(saveTask(signedIn(env, ANA), 'ana-2', task(ANA.uid, { status: 'archived' })));
   });
 
   it('rechaza un texto de más de 500 caracteres', async () => {
-    await assertFails(setDoc(doc(signedIn(env, ANA), 'tasks/ana-2'), task(ANA.uid, { text: 'a'.repeat(501) })));
+    await assertFails(saveTask(signedIn(env, ANA), 'ana-2', task(ANA.uid, { text: 'a'.repeat(501) })));
   });
 });
 
@@ -151,7 +162,7 @@ describe('B-7 el correo del token se compara en minúsculas', () => {
     const db = signedIn(env, { uid: ANA.uid, email: 'Ana@Example.COM' });
     await assertSucceeds(getDoc(doc(db, 'allowedUsers/ana@example.com')));
     await assertSucceeds(getDoc(doc(db, 'tasks/ana-1')));
-    await assertSucceeds(setDoc(doc(db, 'tasks/ana-2'), task(ANA.uid)));
+    await assertSucceeds(saveTask(db, 'ana-2', task(ANA.uid)));
   });
 });
 

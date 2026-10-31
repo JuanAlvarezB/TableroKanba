@@ -17,7 +17,17 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ANA, BETO, createTestEnvironment, seed, signedIn, task } from './helpers.js';
+import {
+  ANA,
+  BETO,
+  createTestEnvironment,
+  indexedTask,
+  removeTask,
+  saveTask,
+  seed,
+  signedIn,
+  task,
+} from './helpers.js';
 
 const ADMIN = { uid: 'uid-admin', email: 'admin@example.com' };
 const INES = { uid: 'uid-ines', email: 'ines@example.com' }; // desactivada
@@ -38,24 +48,24 @@ beforeEach(async () => {
     'allowedUsers/beto@example.com': { name: 'Beto' },
     'allowedUsers/admin@example.com': { name: 'Admin', role: 'admin', active: true },
     'allowedUsers/ines@example.com': { name: 'Inés', role: 'member', active: false },
-    'tasks/ana-1': task(ANA.uid),
-    'tasks/beto-1': task(BETO.uid),
-    'tasks/admin-1': task(ADMIN.uid),
-    'tasks/ines-1': task(INES.uid),
+    ...indexedTask('ana-1', task(ANA.uid)),
+    ...indexedTask('beto-1', task(BETO.uid)),
+    ...indexedTask('admin-1', task(ADMIN.uid)),
+    ...indexedTask('ines-1', task(INES.uid)),
   });
 });
 
 // Cambia el documento de autorización de una persona antes de la prueba.
 const authorize = (person, data) => seed(env, { [`allowedUsers/${person.email}`]: data });
 
-// Lee, consulta, crea, edita y borra sus propias tareas, una operación tras otra, y comprueba
-// cada una con assertSucceeds o assertFails.
+// Lee, consulta, crea, edita y borra sus propias tareas (con su índice), una operación tras otra, y
+// comprueba cada una con assertSucceeds o assertFails.
 async function checkOwnTasks(assert, db, person, taskId) {
   await assert(getDoc(doc(db, `tasks/${taskId}`)));
   await assert(getDocs(query(collection(db, 'tasks'), where('ownerId', '==', person.uid))));
-  await assert(setDoc(doc(db, `tasks/${taskId}-nueva`), task(person.uid)));
+  await assert(saveTask(db, `${taskId}-nueva`, task(person.uid)));
   await assert(updateDoc(doc(db, `tasks/${taskId}`), { text: 'Cambiada' }));
-  await assert(deleteDoc(doc(db, `tasks/${taskId}`)));
+  await assert(removeTask(db, taskId));
 }
 
 describe('R-1 documento legado', () => {
@@ -121,11 +131,11 @@ describe('R-7 y R-8 el administrador y las tareas', () => {
     await assertFails(updateDoc(doc(db, 'tasks/ana-1'), { text: 'Cambiada' }));
     await assertFails(updateDoc(doc(db, 'tasks/ana-1'), { ownerId: ADMIN.uid }));
     await assertFails(updateDoc(doc(db, 'tasks/admin-1'), { ownerId: ANA.uid }));
-    await assertFails(deleteDoc(doc(db, 'tasks/ana-1')));
+    await assertFails(removeTask(db, 'ana-1'));
   });
 
   it('R-7 no crea una tarea a nombre de otra persona', async () => {
-    await assertFails(setDoc(doc(signedIn(env, ADMIN), 'tasks/admin-2'), task(ANA.uid)));
+    await assertFails(saveTask(signedIn(env, ADMIN), 'admin-2', task(ANA.uid)));
   });
 
   // Desde la sección 2 (2.9), isAdmin() solo aparece en el borrado, atado al marcador de eliminación.
