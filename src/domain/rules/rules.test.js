@@ -16,13 +16,16 @@ import {
 import {
   ACCESS_STATES,
   ACTIONS,
+  BACKUP_MAX_AGE,
   NAME_MAX_LENGTH,
   accessChanged,
   accessState,
   can,
   canChangeUser,
+  isBackupFresh,
   isValidEmail,
   lifecycleOf,
+  matchesEmail,
   normalizeEmail,
   validateNewUser,
 } from './permissions.js';
@@ -194,7 +197,7 @@ describe('matriz de permisos', () => {
     'users.changeOwn': [false, false, false, false],
     'users.readOthers': [true, false, false, false],
     'users.writeOthers': [true, false, false, false],
-    'users.delete': [false, false, false, false],
+    'users.delete': [true, false, false, false],
   };
 
   it('cubre todas las acciones', () => {
@@ -285,6 +288,32 @@ describe('canChangeUser', () => {
     });
     expect(canChangeUser(admin, ana, { type: 'delete' })).toEqual({ ok: false, reason: 'target-active' });
     expect(canChangeUser(admin, person('b@x.com', { active: false }), { type: 'delete' })).toEqual({ ok: true });
+  });
+
+  it('cancelar una eliminación no confirmada no exige que la persona siga desactivada ni sea miembro', () => {
+    expect(canChangeUser(admin, ana, { type: 'cancel-delete' })).toEqual({ ok: true });
+    expect(canChangeUser(admin, person('c@x.com', { role: 'admin' }), { type: 'cancel-delete' })).toEqual({ ok: true });
+    expect(canChangeUser(admin, admin, { type: 'cancel-delete' })).toEqual({ ok: false, reason: 'self' });
+    const confirmed = person('e@x.com', { active: false, deleting: true });
+    expect(canChangeUser(admin, confirmed, { type: 'cancel-delete' })).toEqual({ ok: false, reason: 'in-deletion' });
+  });
+});
+
+describe('eliminar a una persona', () => {
+  const NOW = 1_800_000_000_000;
+  const marker = (backupAt) => ({ key: 'u1', state: 'backup-ready', taskCount: 3, backupAt });
+
+  it('isBackupFresh: el respaldo vale menos de 24 horas', () => {
+    expect(isBackupFresh(marker(NOW - 60_000), NOW)).toBe(true);
+    expect(isBackupFresh(marker(NOW - BACKUP_MAX_AGE + 1), NOW)).toBe(true);
+    expect(isBackupFresh(marker(NOW - BACKUP_MAX_AGE), NOW)).toBe(false);
+    expect(isBackupFresh(null, NOW)).toBe(false);
+  });
+
+  it('matchesEmail compara el correo escrito sin espacios alrededor ni mayúsculas', () => {
+    expect(matchesEmail(' Ana@Ejemplo.TEST ', 'ana@ejemplo.test')).toBe(true);
+    expect(matchesEmail('ana@ejemplo.tes', 'ana@ejemplo.test')).toBe(false);
+    expect(matchesEmail('', 'ana@ejemplo.test')).toBe(false);
   });
 });
 

@@ -1,5 +1,6 @@
-// Confirmaciones de la página de usuarios (docs/PLAN_USUARIOS.md, 2.4, flujos 2 a 4): desactivar,
-// reactivar, dar y quitar el rol de administrador. Un solo diálogo que cambia de texto según la
+// Confirmaciones de la página de usuarios (docs/PLAN_USUARIOS.md, 2.4, flujos 2 a 4 y 6): desactivar,
+// reactivar, dar y quitar el rol de administrador y cancelar una eliminación preparada (eliminar
+// tiene su propio asistente, DeleteWizard.js). Un solo diálogo que cambia de texto según la
 // acción. El foco empieza en Cancelar, para que Enter no aplique el cambio sin querer; si el cambio
 // falla, el motivo se muestra dentro del diálogo.
 import { createButton, createDialog } from './Dialog.js';
@@ -33,6 +34,13 @@ const CONFIRMATIONS = {
     text: 'Seguirá entrando como miembro, con su tablero.',
     warning: null,
     confirm: 'Quitar rol',
+    danger: false,
+  }),
+  'cancel-delete': (user, name) => ({
+    title: '¿Cancelar la eliminación?',
+    text: `Se descarta el respaldo preparado para ${name}. No se borra nada.`,
+    warning: null,
+    confirm: 'Cancelar eliminación',
     danger: false,
   }),
 };

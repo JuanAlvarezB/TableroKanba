@@ -120,7 +120,7 @@ revisan en la consola de Firebase (Firestore), solo con tareas de prueba propias
 
 Diseño en `docs/PLAN_USUARIOS.md`, sección 2 (2.3, 2.4 y 2.10). Se necesitan la cuenta del administrador
 y una segunda cuenta de prueba propia (sin datos de personas reales en Desarrollo). Eliminar a una
-persona todavía no está en la página (llega con el PR 4b y el script administrativo).
+persona se verifica en 7.4.
 
 Acceso:
 - [ ] Una cuenta de miembro que escribe `usuarios.html` va al inicio sin ver nada de la página (ni
@@ -216,8 +216,8 @@ Respaldo (`respaldar`):
       frase `restaurar` dice "la frase no es correcta".
 - [ ] `deletions/<uid>` queda en `backup-ready` con `taskCount` = sus tareas, `backupAt` y `backupHash` igual
       a la huella que imprimió; en `adminLog`, la entrada `backup` en el mismo momento.
-- [ ] La página Usuarios sigue igual (el flujo de eliminar llega con el PR 4b); el marcador se borra a mano
-      en la consola si no se va a eliminar.
+- [ ] En la página Usuarios, sin recargar, su fila muestra «Respaldo listo: n tareas, fecha» (sigue en 7.4);
+      si no se va a eliminar, **Cancelar eliminación** borra el marcador.
 
 Authentication con tus credenciales (A-19), anotando el resultado:
 - [ ] `cuentas-huerfanas` lista las cuentas sin documento en `allowedUsers` (correo enmascarado), o explica
@@ -231,12 +231,10 @@ Limpieza y purgas:
 - [ ] `limpiar-usuario` con el `uid` de una persona autorizada se niega.
 - [ ] `purgar-registro` y `limpiar-respaldos` informan la cantidad vencida (en Desarrollo lo normal es 0).
 
-Ensayo de restauración (PBI-2.12). Mientras no exista el flujo de eliminar de la página (PR 4b), la
-eliminación se simula a mano:
-- [ ] Con la cuenta de prueba desactivada, `respaldar --aplicar`.
-- [ ] En la consola, borrar `allowedUsers/<correo de prueba>` y `deletions/<uid>`; después
-      `limpiar-usuario --uid <uid> --aplicar` borra sus tareas e índices (entrada `purge-leftovers`) y
-      `verificar-indice --uid <uid>` informa 0 tareas y 0 índices.
+Ensayo de restauración (PBI-2.12), después de eliminar la cuenta de prueba con la página (7.4) y antes de
+reautorizar su correo (`restaurar` se niega si el correo ya está autorizado):
+- [ ] Anotar antes su `uid` (en su documento de `allowedUsers`) y el archivo del respaldo que hizo `respaldar`.
+- [ ] Tras la eliminación, `verificar-indice --uid <uid>` informa 0 tareas y 0 índices.
 - [ ] `restaurar` (simulación) informa sus tareas; con `--aplicar` vuelve a crear su documento desactivado,
       sus tareas y sus índices, con la entrada `restore`.
 - [ ] En la página Usuarios aparece Inactiva; al reactivarla, la cuenta de prueba entra y ve todas sus
@@ -246,6 +244,89 @@ eliminación se simula a mano:
 En PDN, después del merge:
 - [ ] `verificar-indice` y, si hay faltantes, `completar-indice --aplicar` hasta "✔ Índice completo" (requisito
       del PR 6).
+
+### 7.4 Eliminar a una persona (`usuarios.html` y script)
+
+Diseño en `docs/PLAN_USUARIOS.md`, sección 2 (2.4, flujo 5, y 2.5). Todo **primero en Desarrollo**, con la
+cuenta del administrador y una cuenta de prueba propia (nunca la de una persona real) con **unas 30 tareas**
+(algunas movidas de columna, para que tengan historial): así el borrado son varios trozos de 8 y se puede
+interrumpir. En los comandos, `<yo>` es tu correo de LUCAS y `<correo>` el de la cuenta de prueba. Antes de
+empezar, anota su `uid` (en su documento de `allowedUsers`).
+
+Condiciones:
+- [ ] Con la cuenta de prueba activa, su menú no ofrece **Eliminar…**; tampoco el de una persona inactiva que
+      es administradora (hay que quitarle antes el rol). La fila propia sigue sin acciones.
+- [ ] Desactivada, el menú ofrece **Reactivar** y **Eliminar…**.
+
+Respaldo:
+- [ ] **Eliminar…** sin respaldo abre «Primero, el respaldo» con el comando exacto (`--ambiente dev`, tu
+      correo en `--admin` y el suyo en `--correo`); el foco está en **Entendido**.
+- [ ] Ejecutar ese comando en la terminal (primero sin `--aplicar`). Sin recargar la página, la fila muestra
+      «Respaldo listo: n tareas, fecha» con n = sus tareas, y el menú ofrece **Cancelar eliminación** y
+      **Eliminar definitivamente…**.
+- [ ] **Cancelar eliminación** pide confirmación y avisa «Eliminación cancelada.»; en la consola desaparece
+      `deletions/<uid>` y `adminLog` tiene una entrada `delete-cancel`. Repetir `respaldar --aplicar`.
+- [ ] (Opcional) En la consola, cambiar `backupAt` del marcador a un valor de hace más de 24 horas: la fila
+      dice «Respaldo de más de 24 horas» y **Eliminar…** pide repetir el respaldo. Repetirlo.
+
+Confirmaciones:
+- [ ] **Eliminar definitivamente…** muestra las consecuencias (tareas, historial, permisos y autorización; la
+      cuenta de Authentication no se borra), la fecha del respaldo y el número de tareas, con el foco en
+      **Cancelar**. Cancelar no escribe nada.
+- [ ] **Continuar** pide escribir el correo: el botón **Eliminar definitivamente** sigue deshabilitado hasta
+      que coincide (sin importar mayúsculas ni espacios alrededor) y un texto distinto muestra «El correo
+      escrito no coincide.».
+
+Borrado, interrupción y reanudación (TK-2.9.4):
+- [ ] En las herramientas del navegador (F12 → Network) elegir una conexión lenta («Slow 4G» o «3G») para que
+      el borrado dure unos segundos.
+- [ ] **Eliminar definitivamente**: el diálogo pasa a «Eliminando…» y avanza «Borrando tareas: 8 de n», «16
+      de n»…; Esc y el clic fuera no lo cierran.
+- [ ] Interrumpir a mitad: cerrar la pestaña (el navegador pregunta si quieres salir; acepta) en cuanto se
+      vea «8 de n».
+- [ ] Volver a abrir `usuarios.html`: la fila está «En eliminación», con la nota «Eliminación sin terminar»
+      y solo **Reanudar eliminación**. En la consola, su documento tiene `deleting` (`at` y `doneLogId`), el
+      marcador está en `state: deleting` con `confirmedAt` y quedan tareas e índices suyos.
+- [ ] **Reanudar eliminación**: el avance sigue desde lo ya borrado (no desde 0) y termina con «Se eliminaron
+      los datos de la persona. Recuerda borrar su cuenta en Authentication.» y el enlace a Authentication. Al
+      cerrar, la fila ya no está y el foco queda en la búsqueda.
+
+Comprobación en la consola (criterios 1 y 4 de PBI-2.9):
+- [ ] No existen `allowedUsers/<correo>` ni `deletions/<uid>`.
+- [ ] Firestore → `tasks` filtrado por `ownerId == <uid>`: ningún documento; igual en `taskIndex`.
+      `npm run admin -- verificar-indice --ambiente dev --admin <yo> --uid <uid>` informa 0 tareas y 0 índices.
+- [ ] Tus propias tareas y las de las demás personas siguen ahí.
+- [ ] `adminLog` tiene `backup`, `delete-start` (con `detail.taskCount`) y `delete-done` (su ID es el
+      `doneLogId` que tenía el documento), todas con tu `uid` como `actorUid`, el `uid` de prueba como
+      `targetUid` y ningún correo ni nombre.
+
+Datos que sobran (opcional):
+- [ ] Repetir con otra cuenta de prueba y, después de `respaldar`, crear en la consola una tarea y su
+      documento de `taskIndex` con su `ownerId`. Al confirmar, el diálogo dice «Quedan datos de la persona.
+      Ejecuta el script de limpieza antes de terminar.» con el comando de `limpiar-usuario` y no borra nada.
+      Ejecutarlo con su `uid` y `--aplicar`; **Reanudar eliminación** termina.
+
+Quien nunca entró (criterio 5):
+- [ ] Autorizar un correo de prueba que no vaya a entrar, desactivarlo y ejecutar `respaldar`: crea
+      `deletions/<correo>` con `taskCount: 0`. Eliminarlo con las dos confirmaciones: el progreso termina sin
+      tareas, desaparecen su documento y `deletions/<correo>`, y la entrada `delete-done` tiene `targetUid`
+      vacío (null).
+
+Reautorizar el mismo correo (criterio 6; si vas a ensayar la restauración de 7.3, hazla antes):
+- [ ] **Autorizar correo** con el correo de la cuenta de prueba eliminada: el documento nuevo solo tiene
+      `name`, `role`, `active` y `lastChange` (sin `uid`, `permissions` ni `deleting`).
+- [ ] La cuenta de prueba entra (su cuenta de Authentication sigue si no se borró), ve el tablero vacío y su
+      `uid` vuelve a aparecer en su documento; ningún dato anterior reaparece, tampoco desde la copia local del
+      navegador.
+
+Cuenta de Authentication:
+- [ ] Al final, borrar su cuenta en Authentication → Users → ⋮ → Delete account (o con `cuentas-huerfanas`).
+
+Accesibilidad:
+- [ ] Todo el asistente se hace con teclado; Esc cierra los pasos de respaldo y confirmación, y el foco vuelve
+      al botón **Acciones** de la fila.
+- [ ] Con VoiceOver (o NVDA) se anuncian el título de cada paso, «Borrando tareas: …» y el resultado.
+- [ ] A 320 px de ancho, el comando del respaldo se lee completo sin desplazamiento horizontal de la página.
 
 ## 8. Historial de tareas
 

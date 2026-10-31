@@ -4,7 +4,8 @@ import { RepositoryError } from '../domain/repositories/RepositoryError.js';
 import { authorizeUser } from '../domain/usecases/AuthorizeUser.js';
 import { deriveHistory } from '../domain/rules/history.js';
 import { newestFirst, stepLabel } from './components/TaskHistory.js';
-import { actionsFor, displayedName } from './components/UserList.js';
+import { backupCommand, cleanupCommand } from './components/DeleteWizard.js';
+import { actionLabel, actionsFor, deletionNote, displayedName } from './components/UserList.js';
 import { dueInfo, formatDate, historyEventText } from './format/dates.js';
 import { HISTORY_TEXTS, plural } from './format/labels.js';
 
@@ -209,7 +210,7 @@ describe('authorizeUser y SessionStore', () => {
 });
 
 describe('acciones de cada fila de la página de usuarios', () => {
-  const row = (fields, lifecycle = 'active', self = false) => ({
+  const row = (fields, lifecycle = 'active', self = false, deletion = {}) => ({
     user: {
       email: 'a@x.com',
       name: 'A',
@@ -218,15 +219,20 @@ describe('acciones de cada fila de la página de usuarios', () => {
       uid: 'u',
       permissions: {},
       deleting: false,
+      doneLogId: null,
       ...fields,
     },
     lifecycle,
     self,
+    marker: null,
+    backupReady: false,
+    ...deletion,
   });
+  const ready = { key: 'u', state: 'backup-ready', taskCount: 21, backupAt: new Date(2026, 9, 30, 9, 12).getTime() };
 
-  it('la fila propia y la de una persona en eliminación no tienen acciones', () => {
+  it('la fila propia no tiene acciones; la de una persona en eliminación solo puede reanudarse', () => {
     expect(actionsFor(row({ role: 'admin' }, 'active', true))).toEqual([]);
-    expect(actionsFor(row({ active: false, deleting: true }, 'deleting'))).toEqual([]);
+    expect(actionsFor(row({ active: false, deleting: true }, 'deleting'))).toEqual(['resume']);
   });
 
   it('activos: dar o quitar el rol y desactivar', () => {
@@ -234,9 +240,38 @@ describe('acciones de cada fila de la página de usuarios', () => {
     expect(actionsFor(row({ role: 'admin' }))).toEqual(['demote', 'deactivate']);
   });
 
-  it('inactivos: reactivar y, si es administrador, quitarle el rol', () => {
-    expect(actionsFor(row({ active: false }, 'inactive'))).toEqual(['reactivate']);
+  it('inactivos: reactivar, eliminar si es miembro y, si es administrador, quitarle el rol', () => {
+    expect(actionsFor(row({ active: false }, 'inactive'))).toEqual(['reactivate', 'delete']);
     expect(actionsFor(row({ active: false, role: 'admin' }, 'inactive'))).toEqual(['reactivate', 'demote']);
+  });
+
+  it('con un respaldo preparado se puede cancelar la eliminación, y eliminar es definitivo', () => {
+    const prepared = row({ active: false }, 'inactive', false, { marker: ready, backupReady: true });
+    expect(actionsFor(prepared)).toEqual(['reactivate', 'cancel-delete', 'delete']);
+    expect(actionLabel('delete', prepared)).toBe('Eliminar definitivamente…');
+    expect(actionLabel('delete', row({ active: false }, 'inactive'))).toBe('Eliminar…');
+    // Si la persona se reactivó tras el respaldo, el marcador sobrante también se puede cancelar.
+    expect(actionsFor(row({}, 'active', false, { marker: ready }))).toEqual(['promote', 'deactivate', 'cancel-delete']);
+  });
+
+  it('la nota de la fila muestra el respaldo (número de tareas y fecha), si venció o si quedó sin terminar', () => {
+    expect(deletionNote(row({ active: false }, 'inactive'))).toBeNull();
+    expect(deletionNote(row({ active: false }, 'inactive', false, { marker: ready, backupReady: true }))).toMatch(
+      /^Respaldo listo: 21 tareas, 30 oct/,
+    );
+    expect(deletionNote(row({ active: false }, 'inactive', false, { marker: ready }))).toBe(
+      'Respaldo de más de 24 horas',
+    );
+    expect(deletionNote(row({ deleting: true }, 'deleting'))).toBe('Eliminación sin terminar');
+  });
+
+  it('los comandos del script llevan el ambiente, el correo de quien administra y nunca un uid real', () => {
+    expect(backupCommand({ ambiente: 'dev', admin: 'yo@x.com', email: 'a@x.com' })).toBe(
+      'npm run admin -- respaldar --ambiente dev --admin yo@x.com --correo a@x.com --aplicar',
+    );
+    expect(cleanupCommand({ ambiente: 'pdn', admin: 'yo@x.com' })).toBe(
+      'npm run admin -- limpiar-usuario --ambiente pdn --admin yo@x.com --uid <su uid> --aplicar',
+    );
   });
 
   it('sin nombre se muestra el correo', () => {

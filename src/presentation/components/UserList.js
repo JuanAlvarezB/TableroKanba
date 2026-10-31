@@ -1,6 +1,9 @@
 // Lista de personas autorizadas de la página de usuarios: tabla en escritorio y tarjetas en celular
 // (ver usuarios.css). Cada fila muestra nombre, correo, rol y estado, nunca tareas ni uid, y sus
-// acciones en un menú operable con teclado. La fila propia aparece como "Tú" y sin acciones.
+// acciones en un menú operable con teclado. La fila propia aparece como "Tú" y sin acciones. De la
+// eliminación solo se ve el respaldo preparado (fecha y número de tareas), nunca su contenido.
+import { formatDate } from '../format/dates.js';
+import { plural } from '../format/labels.js';
 
 const ROLE_LABELS = { admin: 'Administrador', member: 'Miembro' };
 
@@ -16,17 +19,50 @@ export const ACTION_LABELS = {
   reactivate: 'Reactivar',
   promote: 'Dar rol de administrador',
   demote: 'Quitar rol de administrador',
+  'cancel-delete': 'Cancelar eliminación',
+  delete: 'Eliminar…',
+  resume: 'Reanudar eliminación',
 };
 
+const DANGER_ACTIONS = ['deactivate', 'delete'];
+
 /**
- * Acciones de una fila según su estado. La eliminación llega con su propio flujo (PR 4b).
+ * Acciones de una fila según su estado. Solo se elimina a una persona desactivada que no es
+ * administradora; un respaldo preparado sin confirmar se puede cancelar, y una eliminación
+ * confirmada solo se puede reanudar (2.4, flujos 5 y 6).
  * @param {import('../state/usersStore.js').UserRow} row
  * @returns {(keyof typeof ACTION_LABELS)[]}
  */
-export function actionsFor({ user, lifecycle, self }) {
-  if (self || lifecycle === 'deleting') return [];
-  if (lifecycle === 'inactive') return user.role === 'admin' ? ['reactivate', 'demote'] : ['reactivate'];
-  return user.role === 'admin' ? ['demote', 'deactivate'] : ['promote', 'deactivate'];
+export function actionsFor({ user, lifecycle, self, marker }) {
+  if (self) return [];
+  if (lifecycle === 'deleting') return ['resume'];
+  const admin = user.role === 'admin';
+  const inactive = lifecycle === 'inactive';
+  const changes = inactive
+    ? ['reactivate', ...(admin ? ['demote'] : [])]
+    : [admin ? 'demote' : 'promote', 'deactivate'];
+  const cancel = marker?.state === 'backup-ready' ? ['cancel-delete'] : [];
+  return [...changes, ...cancel, ...(inactive && !admin ? ['delete'] : [])];
+}
+
+/**
+ * Texto de la acción: con un respaldo listo, eliminar ya es definitivo.
+ * @param {keyof typeof ACTION_LABELS} action
+ * @param {import('../state/usersStore.js').UserRow} row
+ */
+export function actionLabel(action, row) {
+  return action === 'delete' && row.backupReady ? 'Eliminar definitivamente…' : ACTION_LABELS[action];
+}
+
+/**
+ * Nota de la eliminación bajo el estado de la fila, o null.
+ * @param {import('../state/usersStore.js').UserRow} row
+ */
+export function deletionNote({ lifecycle, marker, backupReady }) {
+  if (lifecycle === 'deleting') return 'Eliminación sin terminar';
+  if (marker?.state !== 'backup-ready') return null;
+  if (!backupReady) return 'Respaldo de más de 24 horas';
+  return `Respaldo listo: ${plural(marker.taskCount, 'tarea', 'tareas')}, ${formatDate(marker.backupAt)}`;
 }
 
 export const displayedName = (user) => user.name || user.email;
@@ -64,7 +100,7 @@ function tag(kind, label, prefix, icon) {
 
 /**
  * @param {HTMLElement} container Lista (ul) donde van las filas.
- * @param {{ onAction: (action: string, user: import('../../domain/entities/User.js').AllowedUser, opener: HTMLElement) => void }} handlers
+ * @param {{ onAction: (action: string, row: import('../state/usersStore.js').UserRow, opener: HTMLElement) => void }} handlers
  */
 export function createUserList(container, { onAction }) {
   let openMenu = null;
@@ -113,13 +149,13 @@ export function createUserList(container, { onAction }) {
     menu.setAttribute('aria-label', `Acciones para ${displayedName(user)}`);
 
     actions.forEach((action) => {
-      const item = element('button', action === 'deactivate' ? 'danger' : '', ACTION_LABELS[action]);
+      const item = element('button', DANGER_ACTIONS.includes(action) ? 'danger' : '', actionLabel(action, row));
       item.type = 'button';
       item.tabIndex = -1;
       item.setAttribute('role', 'menuitem');
       item.addEventListener('click', () => {
         closeMenu();
-        onAction(action, user, toggle);
+        onAction(action, row, toggle);
       });
       menu.append(item);
     });
@@ -179,17 +215,15 @@ export function createUserList(container, { onAction }) {
     const [icon, label] = LIFECYCLE_LABELS[lifecycle];
     state.append(tag(lifecycle, label, 'Estado', icon));
     if (!user.uid) state.append(element('span', 'state-note', 'Nunca ha entrado'));
+    const note = deletionNote(row);
+    if (note) state.append(element('span', 'state-note', note));
 
-    const actions = actionsFor(row);
     let cell;
     if (self) {
       cell = element('div', 'row-actions row-note');
       cell.append(element('span', 'self-note', 'No puedes cambiar tu propio rol ni estado.'));
-    } else if (actions.length === 0) {
-      cell = element('div', 'row-actions row-note');
-      cell.append(element('span', 'self-note', 'Sin acciones mientras está en eliminación.'));
     } else {
-      cell = createMenu(row, actions);
+      cell = createMenu(row, actionsFor(row));
     }
 
     item.append(person, role, state, cell);
@@ -213,12 +247,13 @@ export function createUserList(container, { onAction }) {
       if (focusKey) this.focusActions(focusKey);
     },
 
-    // Pone el foco en el botón de acciones de esa persona, si sigue en la lista.
+    // Pone el foco en el botón de acciones de esa persona, si sigue en la lista; false si ya no está.
     focusActions(email) {
       const toggle = [...container.querySelectorAll('[data-focus-key]')].find(
         (node) => node.dataset.focusKey === email,
       );
       toggle?.focus();
+      return Boolean(toggle);
     },
   };
 }
