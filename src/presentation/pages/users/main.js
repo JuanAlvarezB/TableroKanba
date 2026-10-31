@@ -4,11 +4,11 @@
 import { createAdminUsersRepository } from '../../../data/repositories/AdminUsersRepository.js';
 import { APP_ENV } from '../../../shared/config/firebase.config.js';
 import { mountAccountMenu } from '../../components/AccountMenu.js';
-import { onSignOut, requireSession, revalidateSession } from '../../guards/session.js';
+import { ENV_FEATURE_DEFAULTS, onSignOut, requireSession, revalidateSession } from '../../guards/session.js';
 import { createUsersStore } from '../../state/usersStore.js';
 import { createUsersPage } from './UsersPage.js';
 
-const store = createUsersStore();
+const store = createUsersStore({ defaults: ENV_FEATURE_DEFAULTS });
 createUsersPage({ store });
 
 async function startUsers() {
