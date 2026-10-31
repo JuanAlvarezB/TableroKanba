@@ -3,6 +3,7 @@
 // store. No guarda estado propio salvo los diálogos abiertos.
 import { APP_ENV } from '../../../shared/config/firebase.config.js';
 import { createConfirmDialogs } from '../../components/ConfirmDialogs.js';
+import { createDeleteWizard } from '../../components/DeleteWizard.js';
 import { createUserForm } from '../../components/UserForm.js';
 import { createUserList } from '../../components/UserList.js';
 import { plural } from '../../format/labels.js';
@@ -34,12 +35,26 @@ export function createUsersPage({ store }) {
     toastTimeout = setTimeout(() => toast.classList.remove('visible'), TOAST_DURATION);
   }
 
+  // Si la fila que abrió un diálogo ya no está (la persona se eliminó), el foco va a la búsqueda.
+  const restoreFocus = (email) => list.focusActions(email) || search.focus();
+
   const list = createUserList(document.getElementById('user-rows'), {
-    onAction: (action, user, opener) => openConfirm(action, user, opener),
+    onAction: (action, row, opener) => {
+      if (action === 'delete' || action === 'resume') wizard.open(action, row, opener);
+      else openConfirm(action, row.user, opener);
+    },
   });
   const openConfirm = createConfirmDialogs({
-    onConfirm: (action, email) => store.change(action, email),
-    restoreFocus: (email) => list.focusActions(email),
+    onConfirm: (action, email) =>
+      action === 'cancel-delete' ? store.cancelDeletion(email) : store.change(action, email),
+    restoreFocus,
+  });
+  const wizard = createDeleteWizard({
+    onDelete: (email, confirmation) => store.deleteUser(email, confirmation),
+    onResume: (email) => store.resumeDeletion(email),
+    commandOptions: () => ({ ambiente: APP_ENV.name, admin: store.sessionEmail() }),
+    authConsoleUrl: authConsoleUrl(),
+    restoreFocus,
   });
   const openUserForm = createUserForm({ onSubmit: (input) => store.authorize(input) });
 
@@ -68,6 +83,7 @@ export function createUsersPage({ store }) {
 
   store.on('change', render);
   store.on('notice', showToast);
+  store.on('progress', (progress) => wizard.progress(progress));
   store.on('error', (message) => {
     status.textContent = message;
   });
