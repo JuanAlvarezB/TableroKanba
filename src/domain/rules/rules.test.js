@@ -305,6 +305,19 @@ describe('canChangeUser', () => {
     const confirmed = person('e@x.com', { active: false, deleting: true });
     expect(canChangeUser(admin, confirmed, { type: 'cancel-delete' })).toEqual({ ok: false, reason: 'in-deletion' });
   });
+
+  it('los permisos por función solo se cambian a otro miembro, activo o no', () => {
+    expect(canChangeUser(admin, ana, { type: 'permissions' })).toEqual({ ok: true });
+    expect(canChangeUser(admin, person('b@x.com', { active: false }), { type: 'permissions' })).toEqual({ ok: true });
+    expect(canChangeUser(admin, admin, { type: 'permissions' })).toEqual({ ok: false, reason: 'self' });
+    expect(canChangeUser(admin, person('c@x.com', { role: 'admin' }), { type: 'permissions' })).toEqual({
+      ok: false,
+      reason: 'target-is-admin',
+    });
+    expect(canChangeUser(ana, person('b@x.com'), { type: 'permissions' })).toEqual({ ok: false, reason: 'not-admin' });
+    const deleting = person('e@x.com', { active: false, deleting: true });
+    expect(canChangeUser(admin, deleting, { type: 'permissions' })).toEqual({ ok: false, reason: 'in-deletion' });
+  });
 });
 
 describe('eliminar a una persona', () => {

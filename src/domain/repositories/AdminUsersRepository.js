@@ -8,6 +8,7 @@
  * @typedef {import('../entities/User.js').AllowedUser} AllowedUser
  * @typedef {import('../entities/User.js').DeletionMarker} DeletionMarker
  * @typedef {import('../entities/AdminLog.js').NewLogEntry} NewLogEntry
+ * @typedef {import('../rules/features.js').FeatureFlags} FeatureFlags
  *
  * @typedef {object} AdminUsersRepository
  * @property {(onChange: (users: AllowedUser[]) => void, onError: (error: Error) => void) => () => void} watch
@@ -19,8 +20,9 @@
  *   Autoriza un correo nuevo, activo y con lastChange = entry.id, junto con su entrada. Comprueba en la
  *   misma transacción que el correo no exista: si existe no lo sobrescribe y lanza
  *   RepositoryError('already-exists').
- * @property {(email: string, fields: { role?: 'admin' | 'member', active?: boolean }, entry: NewLogEntry) => Promise<void>} update
+ * @property {(email: string, fields: { role?: 'admin' | 'member', active?: boolean, permissions?: Partial<FeatureFlags> }, entry: NewLogEntry) => Promise<void>} update
  *   Cambia esos campos de otra persona, con lastChange = entry.id, y escribe la entrada en el mismo lote.
+ *   permissions reemplaza el mapa entero de permisos por función (sección 3).
  * @property {(email: string, key: string, entry: NewLogEntry, doneLogId: string) => Promise<void>} startDeletion
  *   Confirma la eliminación en un lote: el marcador pasa a 'deleting', la persona recibe
  *   deleting = { at, doneLogId } con lastChange = entry.id, y se escribe la entrada delete-start.
