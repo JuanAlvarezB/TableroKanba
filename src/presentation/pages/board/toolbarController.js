@@ -1,6 +1,7 @@
-// Barra del tablero: el formulario de tarea nueva, los filtros rápidos y el botón "Borrar completadas".
-// Parte de la vista del tablero (BoardPage.js).
+// Barra del tablero: el formulario de tarea nueva, los filtros rápidos y el botón "Borrar completadas"
+// (con confirmación). Parte de la vista del tablero (BoardPage.js).
 import { countByStatus, filtersFor } from '../../../domain/rules/board.js';
+import { BOARD_MESSAGES } from '../../../shared/constants/messages.js';
 import { currentFeatures } from '../../state/features.js';
 
 /**
@@ -9,8 +10,10 @@ import { currentFeatures } from '../../state/features.js';
  * @param {() => void} deps.render
  * @param {(ids: string[]) => void} deps.beforeClear Se llama con las completadas antes de borrarlas
  *   (deja de editar la que se esté editando).
+ * @param {ReturnType<typeof import('../../components/BoardConfirm.js').createBoardConfirm>} deps.confirmAction
+ * @param {(message: string) => void} deps.showNotice
  */
-export function createToolbarController({ store, render, beforeClear }) {
+export function createToolbarController({ store, render, beforeClear, confirmAction, showNotice }) {
   const taskForm = document.getElementById('task-form');
   const taskInput = document.getElementById('task-input');
   const clearCompletedBtn = document.getElementById('clear-completed');
@@ -24,10 +27,37 @@ export function createToolbarController({ store, render, beforeClear }) {
     render();
   }
 
+  const completedCount = () => countByStatus(store.tasks, 'completed');
+
+  // Dice cuántas completadas se borrarán y solo las borra al confirmar. La cantidad sigue al tablero
+  // mientras el diálogo está abierto: se borra lo que dice (docs/PLAN_SUBTAREAS.md, 1.5).
   function clearCompleted() {
-    const completedIds = store.tasks.filter((t) => t.status === 'completed').map((t) => t.id);
-    beforeClear(completedIds);
-    store.clearCompleted();
+    const count = completedCount();
+    if (count === 0) return;
+    const copy = BOARD_MESSAGES.clearCompleted;
+    confirmAction({
+      title: copy.title,
+      text: copy.text(count),
+      warning: BOARD_MESSAGES.irreversible,
+      confirmLabel: copy.confirm,
+      icon: '🗑️',
+      tone: 'danger',
+      opener: clearCompletedBtn,
+      onConfirm: () => {
+        const completedIds = store.tasks.filter((t) => t.status === 'completed').map((t) => t.id);
+        if (completedIds.length === 0) return;
+        beforeClear(completedIds);
+        store.clearCompleted();
+        showNotice(copy.done(completedIds.length));
+      },
+      refresh: () => {
+        const current = completedCount();
+        return current > 0 ? { text: copy.text(current) } : null;
+      },
+      gone: copy.gone,
+      // El botón queda deshabilitado: el foco va al título de la columna Completada.
+      focusAfter: () => document.querySelector('.column[data-status="completed"] h2'),
+    });
   }
 
   return {
