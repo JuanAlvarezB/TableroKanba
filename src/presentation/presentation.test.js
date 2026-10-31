@@ -5,6 +5,8 @@ import { ALL_FEATURES } from '../domain/rules/features.js';
 import { authorizeUser } from '../domain/usecases/AuthorizeUser.js';
 import { deriveHistory } from '../domain/rules/history.js';
 import { applyFeatureVisibility, isVisibleFor, showFeatureNotice } from './components/FeatureVisibility.js';
+import { labelMenuName } from './components/LabelMenu.js';
+import { currentFeatures, setFeatures } from './state/features.js';
 import { newestFirst, stepLabel } from './components/TaskHistory.js';
 import { backupCommand, cleanupCommand } from './components/DeleteWizard.js';
 import { actionLabel, actionsFor, deletionNote, displayedName } from './components/UserList.js';
@@ -369,5 +371,28 @@ describe('FeatureVisibility', () => {
     expect(FEATURE_MESSAGES.disabled.board).toBe(
       'El tablero de tareas no está habilitado para tu cuenta. Habla con el administrador.',
     );
+  });
+});
+
+describe('proveedor de permisos del tablero', () => {
+  afterEach(() => setFeatures({}));
+
+  it('sin inicializar no hay ninguna función habilitada', () => {
+    expect(Object.values(currentFeatures()).every((value) => value === false)).toBe(true);
+  });
+
+  it('guarda solo las funciones del catálogo, solo true las enciende y no se puede cambiar', () => {
+    setFeatures({ ...ALL_FEATURES, history: 'true', otra: true });
+    expect(currentFeatures()).toEqual({ ...ALL_FEATURES, history: false });
+    expect(Object.isFrozen(currentFeatures())).toBe(true);
+  });
+});
+
+describe('menú de etiquetas con permisos', () => {
+  it('su nombre sigue las secciones activas; sin ninguna, no hay botón', () => {
+    expect(labelMenuName(ALL_FEATURES)).toBe('Etiqueta y fecha límite');
+    expect(labelMenuName({ ...ALL_FEATURES, dueDates: false })).toBe('Etiqueta de prioridad');
+    expect(labelMenuName({ ...ALL_FEATURES, priorities: false })).toBe('Fecha límite');
+    expect(labelMenuName({ ...ALL_FEATURES, priorities: false, dueDates: false })).toBeNull();
   });
 });

@@ -15,6 +15,13 @@ export const PRIORITIES = {
   low: { icon: '💤', label: 'Puede esperar' },
 };
 
+// Nombre del botón 🏷️ y de su menú según las funciones activas (docs/PLAN_USUARIOS.md, 3.4).
+export const LABEL_MENU_NAMES = {
+  both: 'Etiqueta y fecha límite',
+  priorities: 'Etiqueta de prioridad',
+  dueDates: 'Fecha límite',
+};
+
 // Textos de las alertas de tareas detenidas (la regla está en domain/rules/stalledTasks.js).
 // "phrase" completa frases como "Lleva 4 días en Pendiente".
 export const OVERDUE_COLUMNS = {

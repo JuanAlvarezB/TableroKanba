@@ -5,8 +5,10 @@ import { createLocalTaskCache } from '../../../data/repositories/LocalTaskCache.
 import { createReminderStore } from '../../../data/repositories/ReminderStore.js';
 import { APP_ENV } from '../../../shared/config/firebase.config.js';
 import { mountAccountMenu } from '../../components/AccountMenu.js';
+import { applyFeatureVisibility } from '../../components/FeatureVisibility.js';
 import { onSignOut, requireSession, revalidateSession } from '../../guards/session.js';
 import { createBoardStore } from '../../state/boardStore.js';
+import { setFeatures } from '../../state/features.js';
 import { createBoardPage } from './BoardPage.js';
 
 // Fuera de PDN se marca la página como Desarrollo, para no confundir las pruebas con el
@@ -30,6 +32,9 @@ createBoardPage({ store, reminders: createReminderStore() });
 // vuelve al inicio con su aviso (docs/PLAN_USUARIOS.md, 3.4).
 async function startBoard() {
   const session = await requireSession({ feature: 'board' });
+  // Las funciones hijas apagadas no se muestran (docs/PLAN_USUARIOS.md, 3.4).
+  setFeatures(session.features);
+  applyFeatureVisibility(document, session);
   mountAccountMenu(session, document.getElementById('account'));
 
   store.loadLocal(

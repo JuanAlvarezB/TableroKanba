@@ -1,10 +1,13 @@
 // Alertas del tablero: contadores en el encabezado de cada columna (detenidas, urgentes,
-// vencimientos), el resumen de tareas que necesitan atención y el aviso de recordatorio.
+// vencimientos), el resumen de tareas que necesitan atención y el aviso de recordatorio. Los
+// contadores de una función apagada los oculta FeatureVisibility (data-feature en tablero.html) y el
+// resumen solo cuenta los grupos de las funciones activas (docs/PLAN_USUARIOS.md, 3.4).
 import { FILTERS } from '../../domain/rules/board.js';
 import { DUE_SOON_BUSINESS_DAYS } from '../../domain/rules/dueDates.js';
 import { attentionIds } from '../../domain/rules/reminders.js';
 import { STALLED_DAYS, stalledDays } from '../../domain/rules/stalledTasks.js';
 import { OVERDUE_COLUMNS, plural } from '../format/labels.js';
+import { currentFeatures } from '../state/features.js';
 
 // El recordatorio se cierra solo al minuto. Las etiquetas de las tarjetas y columnas siguen
 // visibles todo el tiempo.
@@ -48,9 +51,9 @@ export function renderColumnChips(tasks) {
 
 // Grupos de tareas que el recordatorio menciona, con sus textos: detenidas por columna,
 // urgentes, vencidas y próximas a vencer (la selección está en domain/rules/reminders.js).
-// Solo se devuelven los que tienen alguna tarea.
+// Solo se devuelven los que tienen alguna tarea y su función activa.
 export function attentionGroups(tasks) {
-  const { stalled, urgent, overdueDue, soonDue } = attentionIds(tasks);
+  const { stalled, urgent, overdueDue, soonDue } = attentionIds(tasks, new Date(), currentFeatures());
   const groups = Object.entries(OVERDUE_COLUMNS).map(([status, { name, phrase }]) => ({
     ids: stalled[status],
     text: `${plural(stalled[status].length, 'tarea lleva', 'tareas llevan')} más de ${STALLED_DAYS} días ${phrase}.`,

@@ -145,8 +145,10 @@
     <p id="board-notice" class="notice hidden" role="status"></p>
 
     <!-- Recordatorio de tareas detenidas más de 3 días en Pendiente o En curso, urgentes,
-         vencidas o próximas a vencer: de lunes a viernes a las 10:00 y a las 15:00, durante 1 minuto -->
-    <div id="overdue-banner" class="overdue-banner hidden" role="status" aria-live="polite">
+         vencidas o próximas a vencer: de lunes a viernes a las 10:00 y a las 15:00, durante 1 minuto.
+         data-feature: FeatureVisibility.js oculta lo que depende de una función apagada
+         (docs/PLAN_USUARIOS.md, 3.4). -->
+    <div id="overdue-banner" class="overdue-banner hidden" role="status" aria-live="polite" data-feature="reminders">
       <span class="overdue-banner-icon" aria-hidden="true">⏰</span>
       <div class="overdue-banner-body">
         <strong id="overdue-title">Hay tareas que necesitan atención</strong>
@@ -160,11 +162,11 @@
     <!-- Filtro rápido por etiqueta de prioridad o vencimiento -->
     <div class="filter-bar" role="group" aria-label="Filtrar tareas">
       <button type="button" class="filter-btn" data-filter="all" aria-pressed="true">Todas</button>
-      <button type="button" class="filter-btn" data-filter="urgent" aria-pressed="false">🔴 Urgentes</button>
-      <button type="button" class="filter-btn" data-filter="high" aria-pressed="false">⬆ Prioritarias</button>
-      <button type="button" class="filter-btn" data-filter="low" aria-pressed="false">💤 Puede esperar</button>
-      <button type="button" class="filter-btn" data-filter="none" aria-pressed="false">Sin etiqueta</button>
-      <button type="button" class="filter-btn" data-filter="due" aria-pressed="false">⏳ Próximas a vencer</button>
+      <button type="button" class="filter-btn" data-filter="urgent" data-feature="priorities" aria-pressed="false">🔴 Urgentes</button>
+      <button type="button" class="filter-btn" data-filter="high" data-feature="priorities" aria-pressed="false">⬆ Prioritarias</button>
+      <button type="button" class="filter-btn" data-filter="low" data-feature="priorities" aria-pressed="false">💤 Puede esperar</button>
+      <button type="button" class="filter-btn" data-filter="none" data-feature="priorities" aria-pressed="false">Sin etiqueta</button>
+      <button type="button" class="filter-btn" data-filter="due" data-feature="dueDates" aria-pressed="false">⏳ Próximas a vencer</button>
     </div>
 
     <div class="board">
@@ -172,9 +174,9 @@
         <header class="column-header">
           <h2>Pendiente</h2>
           <div class="column-meta">
-            <span class="column-tag urgent hidden" data-urgent="pending"></span>
-            <span class="column-tag due hidden" data-due="pending"></span>
-            <span class="column-alert hidden" data-alert="pending"></span>
+            <span class="column-tag urgent hidden" data-urgent="pending" data-feature="priorities"></span>
+            <span class="column-tag due hidden" data-due="pending" data-feature="dueDates"></span>
+            <span class="column-alert hidden" data-alert="pending" data-feature="stalledAlerts"></span>
             <span class="column-count" data-count="pending">0</span>
           </div>
         </header>
@@ -185,9 +187,9 @@
         <header class="column-header">
           <h2>En curso</h2>
           <div class="column-meta">
-            <span class="column-tag urgent hidden" data-urgent="in-progress"></span>
-            <span class="column-tag due hidden" data-due="in-progress"></span>
-            <span class="column-alert hidden" data-alert="in-progress"></span>
+            <span class="column-tag urgent hidden" data-urgent="in-progress" data-feature="priorities"></span>
+            <span class="column-tag due hidden" data-due="in-progress" data-feature="dueDates"></span>
+            <span class="column-alert hidden" data-alert="in-progress" data-feature="stalledAlerts"></span>
             <span class="column-count" data-count="in-progress">0</span>
           </div>
         </header>
