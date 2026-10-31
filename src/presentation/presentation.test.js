@@ -12,7 +12,7 @@ import { backupCommand, cleanupCommand } from './components/DeleteWizard.js';
 import { changeSummary, panelItems, pendingChanges } from './components/PermissionsPanel.js';
 import { actionLabel, actionsFor, deletionNote, displayedName } from './components/UserList.js';
 import { dueInfo, formatDate, historyEventText } from './format/dates.js';
-import { HISTORY_TEXTS, plural } from './format/labels.js';
+import { CLIP_LENGTH, HISTORY_TEXTS, clipText, plural } from './format/labels.js';
 import { FEATURE_MESSAGES } from '../shared/constants/messages.js';
 
 const WEDNESDAY = new Date(2026, 9, 7, 10, 30);
@@ -451,5 +451,23 @@ describe('menú de etiquetas con permisos', () => {
     expect(labelMenuName({ ...ALL_FEATURES, dueDates: false })).toBe('Etiqueta de prioridad');
     expect(labelMenuName({ ...ALL_FEATURES, priorities: false })).toBe('Fecha límite');
     expect(labelMenuName({ ...ALL_FEATURES, priorities: false, dueDates: false })).toBeNull();
+  });
+});
+
+describe('recorte del texto de una tarea en los diálogos (clipText)', () => {
+  it('deja igual un texto corto o de 80 caracteres', () => {
+    expect(clipText('Comprar pan')).toBe('Comprar pan');
+    expect(clipText('a'.repeat(CLIP_LENGTH))).toBe('a'.repeat(CLIP_LENGTH));
+  });
+
+  it('recorta a 80 caracteres con … al final', () => {
+    const clipped = clipText('b'.repeat(120));
+    expect(Array.from(clipped)).toHaveLength(CLIP_LENGTH);
+    expect(clipped.endsWith('…')).toBe(true);
+  });
+
+  it('cuenta los emojis como un carácter y no los parte', () => {
+    const clipped = clipText('🌻'.repeat(100));
+    expect(clipped).toBe('🌻'.repeat(CLIP_LENGTH - 1) + '…');
   });
 });
