@@ -197,6 +197,17 @@ su documento de `taskIndex` en el mismo lote. Unas reglas sin `match /taskIndex/
   grep -q "match /taskIndex/" firestore.rules && echo "Tiene taskIndex" || echo "SIN taskIndex: no la publiques"
   ```
 
+- **Con las reglas estrictas del índice** (PR 6, 2.6 paso 3), crear una tarea **exige** su índice en el
+  mismo lote: un código sin índice ya no puede crear tareas. Para revertir el código del índice, primero
+  vuelve a las reglas de transición (en PDN, la etiqueta `pdn-reglas-2026-10-28` o la versión anotada del
+  historial de la consola), compruébalas con `verificar-reglas` y solo después revierte el código. Para
+  deshacer solo las estrictas basta con volver a las de transición: el código actual funciona con las dos.
+  Para saber cuáles tiene un archivo:
+
+  ```bash
+  grep -q "hasOwnIndexAfter" firestore.rules && echo "Estrictas" || echo "De transición (o anteriores)"
+  ```
+
 ### Comprobar con el script (`verificar-reglas`)
 
 `npm run admin -- verificar-reglas --ambiente dev|pdn` descarga, con la API de Firebase Rules, las
