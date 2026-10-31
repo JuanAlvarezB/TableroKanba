@@ -35,6 +35,11 @@ export const USERS_MESSAGES = {
     'not-found': 'Esa persona ya no está en la lista.',
     'target-is-admin': 'No se puede eliminar a un administrador. Quítale primero el rol de administrador.',
     'target-active': 'Desactiva a la persona antes de eliminarla.',
+    'no-backup': 'Falta el respaldo verificado. Ejecuta el script de respaldo y vuelve aquí.',
+    'backup-stale': 'El respaldo tiene más de 24 horas. Vuelve a ejecutarlo.',
+    'email-mismatch': 'El correo escrito no coincide.',
+    'not-confirmed': 'La eliminación de esa persona no está confirmada.',
+    leftovers: 'Quedan datos de la persona. Ejecuta el script de limpieza antes de terminar.',
   },
   permissionDenied: 'El servidor rechazó el cambio. Comprueba que sigues siendo administrador e inténtalo de nuevo.',
   unavailable: 'Sin conexión. Revisa tu internet e inténtalo de nuevo.',
@@ -46,7 +51,12 @@ export const USERS_MESSAGES = {
     reactivate: 'Acceso reactivado.',
     promote: 'Rol de administrador concedido.',
     demote: 'Rol de administrador retirado.',
+    'cancel-delete': 'Eliminación cancelada.',
+    delete: 'Se eliminaron los datos de la persona. Recuerda borrar su cuenta en Authentication.',
   },
+  // Eliminación en dos fases (2.4, flujo 5): avance y corte a medias.
+  deletionProgress: (done, total) => `Borrando tareas: ${done} de ${total}.`,
+  deletionHalted: (done, total) => `Se borraron ${done} de ${total} tareas. Pulsa Reanudar eliminación para terminar.`,
 };
 
 // Códigos de Firebase → texto en español. Los vacíos no muestran nada (la persona cerró la
