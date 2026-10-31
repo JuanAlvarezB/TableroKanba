@@ -25,10 +25,11 @@ function showEnvironmentBadge() {
 const store = createBoardStore();
 createBoardPage({ store, reminders: createReminderStore() });
 
-// El tablero solo carga tareas después de confirmar la sesión: sin sesión lleva al login, y sin
-// conexión ni autorización recordada muestra la pantalla de Reintentar.
+// El tablero solo carga tareas después de confirmar la sesión: sin sesión lleva al login, sin
+// conexión ni autorización recordada muestra la pantalla de Reintentar, y sin el permiso del tablero
+// vuelve al inicio con su aviso (docs/PLAN_USUARIOS.md, 3.4).
 async function startBoard() {
-  const session = await requireSession();
+  const session = await requireSession({ feature: 'board' });
   mountAccountMenu(session, document.getElementById('account'));
 
   store.loadLocal(
