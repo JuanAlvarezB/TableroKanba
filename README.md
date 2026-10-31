@@ -81,8 +81,9 @@ No hay registro público: el administrador autoriza a cada persona **en cada amb
 cuentas no se comparten entre Desarrollo y PDN).
 
 1. En LUCAS, inicio → **Gestión de usuarios** (`usuarios.html`, solo para administradores) →
-   **Autorizar correo**, con su nombre y su rol. La misma página desactiva, reactiva y da o quita el
-   rol de administrador, y cada cambio queda en el registro `adminLog`. Sin la página (o para el
+   **Autorizar correo**, con su nombre y su rol. La misma página desactiva, reactiva, da o quita el
+   rol de administrador y elimina a una persona desactivada (tras el respaldo del script, ver «Script
+   administrativo»), y cada cambio queda en el registro `adminLog`. Sin la página (o para el
    primer administrador), a mano: Firestore → colección `allowedUsers` → documento cuyo ID es el
    correo **en minúsculas**, con el campo `name` (texto) que LUCAS mostrará.
 2. Correo y contraseña: Authentication → Usuarios → Agregar usuario, con una contraseña
