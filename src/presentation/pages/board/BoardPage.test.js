@@ -210,3 +210,73 @@ describe('confirmar antes de borrar las completadas', () => {
     expect(notice()).toBe('Ya no hay tareas completadas: se borraron o se movieron en otro dispositivo.');
   });
 });
+
+describe('subtareas en la tarjeta', () => {
+  const step = (id, done = false) => ({ id, text: `Paso ${id}`, done });
+  const withSteps = (base, subtasks) => ({
+    ...base,
+    subtasks,
+    openSubtasks: subtasks.filter((s) => !s.done).length,
+  });
+  beforeEach(() => {
+    openBoard([
+      withSteps(task('a', 'Preparar informe', 'in-progress', 0), [
+        step('s1', true),
+        step('s2', true),
+        step('s3'),
+        step('s4'),
+      ]),
+      task('b', 'Llamar a la imprenta', 'pending', 1),
+      task('e', 'Pagar arriendo', 'completed', 2),
+      withSteps(task('f', 'Enviar cotización', 'completed', 3), [step('s1', true)]),
+    ]);
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  const subtasksDialog = () => document.querySelector('dialog.subtasks-dialog');
+
+  it('con subtareas muestra el progreso como botón, sin el ☑ de la barra', () => {
+    const chip = card('a').querySelector('.subtasks-chip');
+    expect(chip.textContent).toBe('☑ 2 de 4 subtareas');
+    expect(chip.getAttribute('aria-label')).toBe('Subtareas: 2 de 4 terminadas. Abrir lista');
+    expect(chip.querySelector('.subtasks-chip-bar span').style.width).toBe('50%');
+    expect(card('a').querySelector('.subtasks-add-btn')).toBeNull();
+    expect(card('f').querySelector('.subtasks-chip').classList.contains('is-complete')).toBe(true);
+  });
+
+  it('sin subtareas muestra ☑ en la barra, salvo en una completada', () => {
+    const add = card('b').querySelector('.subtasks-add-btn');
+    expect(add.getAttribute('aria-label')).toBe('Agregar subtareas');
+    expect(card('b').querySelector('.subtasks-chip')).toBeNull();
+    expect(card('e').querySelector('.subtasks-btn')).toBeNull();
+  });
+
+  it('el botón abre el diálogo de esa tarea y, al cerrarlo, el foco vuelve a la tarjeta redibujada', () => {
+    card('a').querySelector('.subtasks-chip').click();
+    expect(subtasksDialog().open).toBe(true);
+    expect(subtasksDialog().querySelector('.dialog-title').textContent).toBe('Preparar informe');
+    const box = subtasksDialog().querySelector('[data-focus-key="toggle:s3"]');
+    box.checked = true;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(card('a').querySelector('.subtasks-chip').textContent).toBe('☑ 3 de 4 subtareas');
+    subtasksDialog().close();
+    expect(document.activeElement).toBe(card('a').querySelector('.subtasks-chip'));
+  });
+
+  it('borrar una tarea con subtareas lo dice en el diálogo', () => {
+    deleteButton('a').click();
+    expect(dialogText()).toBe('«Preparar informe» se borrará con sus 4 subtareas y su historial.');
+    cancelButton().click();
+    deleteButton('f').click();
+    expect(dialogText()).toBe('«Enviar cotización» se borrará con su subtarea y su historial.');
+  });
+
+  it('borrar las completadas avisa que sus subtareas también se borran', () => {
+    clearButton().click();
+    expect(dialogText()).toBe(
+      'Se borrarán 2 tareas completadas con su historial. Las tareas pendientes y en curso no cambian. Sus subtareas también se borran.',
+    );
+  });
+});

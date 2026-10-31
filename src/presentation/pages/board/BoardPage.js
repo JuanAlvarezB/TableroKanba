@@ -6,6 +6,7 @@ import { WIP_LIMITS, isColumnFull } from '../../../domain/rules/board.js';
 import { sortForView } from '../../../domain/rules/priority.js';
 import { currentFeatures } from '../../state/features.js';
 import { createBoardConfirm } from '../../components/BoardConfirm.js';
+import { createSubtaskDialog } from '../../components/SubtaskDialog.js';
 import { createAlertsController } from './alertsController.js';
 import { createBoardNotices } from './boardNotices.js';
 import { createCardFactory } from './cardActions.js';
@@ -37,6 +38,8 @@ export function createBoardPage({ store, reminders }) {
 
   // Un solo diálogo de confirmación para todo el tablero (docs/PLAN_SUBTAREAS.md, 1.3).
   const confirmAction = createBoardConfirm({ store, showNotice });
+  // Diálogo de subtareas de una tarea (docs/PLAN_SUBTAREAS.md, 2.10).
+  const subtaskDialog = createSubtaskDialog({ store, confirmAction, showNotice });
 
   // El menú y la edición se cierran entre sí: abrir uno guarda o cierra el otro.
   const labelMenu = createLabelMenuController({
@@ -62,7 +65,16 @@ export function createBoardPage({ store, reminders }) {
     isDragging: () => drag.isDragging,
     filter: { current: () => toolbar.activeFilter, showAll: () => toolbar.setFilter('all') },
   });
-  const createCard = createCardFactory({ store, editor, labelMenu, drag, highlights, confirmAction, showNotice });
+  const createCard = createCardFactory({
+    store,
+    editor,
+    labelMenu,
+    drag,
+    highlights,
+    confirmAction,
+    showNotice,
+    subtaskDialog,
+  });
 
   /* ---------- Dibujar ---------- */
 

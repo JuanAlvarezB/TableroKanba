@@ -1,6 +1,7 @@
 // Tarjetas del tablero: crea cada una (o su versión en edición) con las acciones que puede hacer la
 // persona sobre ella: mover con las flechas, editar, etiquetar, borrar (con confirmación) y arrastrar.
 // Parte de la vista del tablero (BoardPage.js); la tarjeta la dibuja components/TaskCard.js.
+import { subtasksOf } from '../../../domain/rules/subtasks.js';
 import { adjacentStatus } from '../../../domain/usecases/MoveTask.js';
 import { BOARD_MESSAGES } from '../../../shared/constants/messages.js';
 import { createTaskCard } from '../../components/TaskCard.js';
@@ -41,9 +42,19 @@ function focusAfterDelete(id) {
  * @param {ReturnType<typeof import('./highlights.js').createHighlights>} deps.highlights
  * @param {ReturnType<typeof import('../../components/BoardConfirm.js').createBoardConfirm>} deps.confirmAction
  * @param {(message: string) => void} deps.showNotice
+ * @param {ReturnType<typeof import('../../components/SubtaskDialog.js').createSubtaskDialog>} deps.subtaskDialog
  * @returns {(task: import('../../../domain/entities/Task.js').Task) => HTMLLIElement}
  */
-export function createCardFactory({ store, editor, labelMenu, drag, highlights, confirmAction, showNotice }) {
+export function createCardFactory({
+  store,
+  editor,
+  labelMenu,
+  drag,
+  highlights,
+  confirmAction,
+  showNotice,
+  subtaskDialog,
+}) {
   function shiftTask(id, direction) {
     const task = store.tasks.find((t) => t.id === id);
     if (!task) return;
@@ -58,9 +69,10 @@ export function createCardFactory({ store, editor, labelMenu, drag, highlights, 
     const task = findTask(id);
     if (!task) return;
     const copy = BOARD_MESSAGES.deleteTask;
+    const describe = (current) => copy.text(clipText(current.text), subtasksOf(current).length);
     confirmAction({
       title: copy.title,
-      text: copy.text(clipText(task.text)),
+      text: describe(task),
       warning: BOARD_MESSAGES.irreversible,
       confirmLabel: copy.confirm,
       icon: '🗑️',
@@ -76,7 +88,7 @@ export function createCardFactory({ store, editor, labelMenu, drag, highlights, 
       // Si otro dispositivo cambia el texto, se confirma lo que se ve; si la borra, el diálogo sobra.
       refresh: () => {
         const latest = findTask(id);
-        return latest ? { text: copy.text(clipText(latest.text)) } : null;
+        return latest ? { text: describe(latest) } : null;
       },
       gone: copy.gone,
       focusAfter: focusAfterDelete(id),
@@ -88,6 +100,7 @@ export function createCardFactory({ store, editor, labelMenu, drag, highlights, 
     shift: shiftTask,
     toggleLabelMenu: labelMenu.toggle,
     remove: deleteTask,
+    openSubtasks: (id) => subtaskDialog.open(id, cardControl(id, '.subtasks-btn')),
     setPriority: (id, priority) => store.setPriority(id, priority),
     setDueDate: (id, dueDate) => store.setDueDate(id, dueDate),
     closeLabelMenu: labelMenu.close,

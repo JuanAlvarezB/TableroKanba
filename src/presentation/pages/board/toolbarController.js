@@ -1,6 +1,7 @@
 // Barra del tablero: el formulario de tarea nueva, los filtros rápidos y el botón "Borrar completadas"
 // (con confirmación). Parte de la vista del tablero (BoardPage.js).
 import { countByStatus, filtersFor } from '../../../domain/rules/board.js';
+import { subtasksOf } from '../../../domain/rules/subtasks.js';
 import { BOARD_MESSAGES } from '../../../shared/constants/messages.js';
 import { currentFeatures } from '../../state/features.js';
 
@@ -28,6 +29,7 @@ export function createToolbarController({ store, render, beforeClear, confirmAct
   }
 
   const completedCount = () => countByStatus(store.tasks, 'completed');
+  const completedHaveSubtasks = () => store.tasks.some((t) => t.status === 'completed' && subtasksOf(t).length > 0);
 
   // Dice cuántas completadas se borrarán y solo las borra al confirmar. La cantidad sigue al tablero
   // mientras el diálogo está abierto: se borra lo que dice (docs/PLAN_SUBTAREAS.md, 1.5).
@@ -37,7 +39,7 @@ export function createToolbarController({ store, render, beforeClear, confirmAct
     const copy = BOARD_MESSAGES.clearCompleted;
     confirmAction({
       title: copy.title,
-      text: copy.text(count),
+      text: copy.text(count, completedHaveSubtasks()),
       warning: BOARD_MESSAGES.irreversible,
       confirmLabel: copy.confirm,
       icon: '🗑️',
@@ -52,7 +54,7 @@ export function createToolbarController({ store, render, beforeClear, confirmAct
       },
       refresh: () => {
         const current = completedCount();
-        return current > 0 ? { text: copy.text(current) } : null;
+        return current > 0 ? { text: copy.text(current, completedHaveSubtasks()) } : null;
       },
       gone: copy.gone,
       // El botón queda deshabilitado: el foco va al título de la columna Completada.

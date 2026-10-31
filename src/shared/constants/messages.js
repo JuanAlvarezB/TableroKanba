@@ -29,17 +29,21 @@ export const BOARD_MESSAGES = {
   cancel: 'Cancelar',
   deleteTask: {
     title: '¿Borrar esta tarea?',
-    text: (name) => `«${name}» se borrará con su historial.`,
+    text: (name, subtasks = 0) =>
+      subtasks === 0
+        ? `«${name}» se borrará con su historial.`
+        : `«${name}» se borrará con ${subtasks === 1 ? 'su subtarea' : `sus ${subtasks} subtareas`} y su historial.`,
     confirm: 'Borrar tarea',
     done: (name) => `Se borró la tarea «${name}».`,
     gone: 'La tarea ya no existe: se borró en otro dispositivo.',
   },
   clearCompleted: {
     title: '¿Borrar las tareas completadas?',
-    text: (count) =>
-      count === 1
+    text: (count, withSubtasks = false) =>
+      (count === 1
         ? 'Se borrará 1 tarea completada con su historial. Las tareas pendientes y en curso no cambian.'
-        : `Se borrarán ${count} tareas completadas con su historial. Las tareas pendientes y en curso no cambian.`,
+        : `Se borrarán ${count} tareas completadas con su historial. Las tareas pendientes y en curso no cambian.`) +
+      (withSubtasks ? ' Sus subtareas también se borran.' : ''),
     confirm: 'Borrar las completadas',
     done: (count) => (count === 1 ? 'Se borró 1 tarea completada.' : `Se borraron ${count} tareas completadas.`),
     gone: 'Ya no hay tareas completadas: se borraron o se movieron en otro dispositivo.',
