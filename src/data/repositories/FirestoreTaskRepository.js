@@ -3,7 +3,7 @@
 // exigen que ownerId sea el uid de quien escribe y que las consultas se limiten a él.
 // Cada tarea tiene además su documento en "taskIndex" (mismo ID, solo ownerId), que se crea y se
 // borra en el mismo lote que la tarea; editar o mover no lo toca (docs/PLAN_USUARIOS.md, 2.6).
-import { taskFromData } from '../../domain/entities/Task.js';
+import { countOpenSubtasks, taskFromData } from '../../domain/entities/Task.js';
 import { toRepositoryError } from './firebaseErrors.js';
 
 const TASKS_COLLECTION = 'tasks';
@@ -24,12 +24,19 @@ function chunks(items) {
 // Campos de la tarea que se guardan en Firestore (todo menos el id, que es el del documento),
 // más el dueño. Las etiquetas vacías no se envían: una tarea nueva no las necesita. El historial
 // se conserva, porque save y saveAll reemplazan el documento entero; si la tarea aún no tiene
-// (null), no se envía.
+// (null), no se envía. Las subtareas van con su contador, recalculado desde la lista; sin
+// subtareas no se envía ninguno de los dos, así una tarea nueva queda igual que antes.
 export function toDocument({ id, ...data }, ownerId) {
   ['priority', 'dueDate'].forEach((field) => {
     if (data[field] === null) delete data[field];
   });
   if (!Array.isArray(data.history)) delete data.history;
+  if (Array.isArray(data.subtasks) && data.subtasks.length > 0) {
+    data.openSubtasks = countOpenSubtasks(data.subtasks);
+  } else {
+    delete data.subtasks;
+    delete data.openSubtasks;
+  }
   return { ...data, ownerId };
 }
 

@@ -2,7 +2,7 @@
 // cambio, el historial que se deriva de las fechas en las tareas anteriores a esta función y cómo se
 // escribe sin pasar del tope. Es adicional: las alertas, los recordatorios y la limpieza siguen
 // usando createdAt, startedAt y completedAt. Ningún evento lleva datos de la persona.
-import { HISTORY_LIMIT, STATUSES, STATUS_DATE_FIELDS } from '../entities/Task.js';
+import { HISTORY_LIMIT, STATUSES, STATUS_DATE_FIELDS, isKnownEvent } from '../entities/Task.js';
 
 export { HISTORY_LIMIT };
 
@@ -76,9 +76,10 @@ export function deriveHistory(task) {
   }));
 }
 
-// Lo que muestra la vista: el historial guardado o, si la tarea aún no tiene, el derivado.
+// Lo que muestra la vista: el historial guardado o, si la tarea aún no tiene, el derivado. Los eventos de
+// tipos que esta versión no conoce se guardan (para no perderlos al compactar) pero no se muestran.
 export function effectiveHistory(task) {
-  return Array.isArray(task.history) ? task.history : deriveHistory(task);
+  return Array.isArray(task.history) ? task.history.filter(isKnownEvent) : deriveHistory(task);
 }
 
 /**

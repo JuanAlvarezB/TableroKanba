@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { taskFromData } from '../../domain/entities/Task.js';
 import { RepositoryError } from '../../domain/repositories/RepositoryError.js';
 import { createAdminUsersRepository } from './AdminUsersRepository.js';
 import { createAllowedUsersRepository } from './AllowedUsersRepository.js';
@@ -105,6 +106,40 @@ describe('FirestoreTaskRepository', () => {
     expect(toDocument(task('t', { history: [event('e1')] }), 'u').history).toEqual([event('e1')]);
     expect(toDocument(task('t', { history: [] }), 'u').history).toEqual([]);
     expect(toDocument(task('t', { history: null }), 'u')).not.toHaveProperty('history');
+  });
+
+  it('toDocument envía las subtareas con su contador recalculado, y nada si no tiene', () => {
+    const list = [
+      { id: 's1', text: 'Paso 1', done: true },
+      { id: 's2', text: 'Paso 2', done: false },
+    ];
+    expect(toDocument(task('t', { subtasks: list, openSubtasks: 0 }), 'u')).toMatchObject({
+      subtasks: list,
+      openSubtasks: 1,
+    });
+    const empty = toDocument(task('t', { subtasks: [], openSubtasks: 0 }), 'u');
+    expect(empty).not.toHaveProperty('subtasks');
+    expect(empty).not.toHaveProperty('openSubtasks');
+    expect(toDocument(task('t'), 'u')).not.toHaveProperty('subtasks');
+  });
+
+  it('las subtareas sobreviven a la ida y vuelta por Firestore y por la copia local', () => {
+    const list = [{ id: 's1', text: 'Paso 1', done: false }];
+    const original = taskFromData('t', { text: 'Con pasos', status: 'in-progress', subtasks: list, openSubtasks: 1 });
+    const { ownerId, ...stored } = toDocument(original, 'u');
+    expect(ownerId).toBe('u');
+    expect(taskFromData('t', stored)).toEqual(original);
+
+    const storage = new Map();
+    vi.stubGlobal('localStorage', {
+      getItem: (key) => storage.get(key) ?? null,
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: (key) => storage.delete(key),
+    });
+    const cache = createLocalTaskCache({ tasksKey: 'k', migratedKey: 'm', indexKey: 'i' });
+    expect(cache.save([original])).toBe(true);
+    expect(cache.load()).toEqual([original]);
+    vi.unstubAllGlobals();
   });
 
   it('save y saveAll guardan la tarea con su historial', async () => {
@@ -682,11 +717,16 @@ describe('almacenamiento local', () => {
       },
     });
     const cache = createLocalTaskCache(keys);
-    const tasks = [task('a', { history: [event('e1', 'y'.repeat(200)), event('e2', 'y'.repeat(200))] })];
+    const subtasks = [{ id: 's1', text: 'Paso', done: false }];
+    const tasks = [
+      task('a', { history: [event('e1', 'y'.repeat(200)), event('e2', 'y'.repeat(200))], subtasks, openSubtasks: 1 }),
+    ];
     expect(cache.save(Array.from({ length: 4 }, (_, i) => ({ ...tasks[0], id: `t${i}` })))).toBe(SAVED_WITHOUT_HISTORY);
     const saved = cache.load();
     expect(saved.map((t) => t.id)).toEqual(['t0', 't1', 't2', 't3']);
     expect(saved.every((t) => t.history === null)).toBe(true);
+    // Sin historial, pero con sus subtareas (docs/PLAN_SUBTAREAS.md, 2.4).
+    expect(saved.every((t) => t.subtasks.length === 1 && t.openSubtasks === 1)).toBe(true);
 
     // Si ni sin historial caben, no se guarda nada.
     expect(

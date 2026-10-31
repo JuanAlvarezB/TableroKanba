@@ -791,6 +791,13 @@ describe('historial: effectiveHistory y planHistoryWrite', () => {
     expect(effectiveHistory({ ...old, history: null })).toEqual(deriveHistory(old));
   });
 
+  it('effectiveHistory no muestra los tipos que no conoce, pero la compactación los conserva (P-12)', () => {
+    const future = { id: 'f1', type: 'expire', at: AT };
+    expect(effectiveHistory({ ...old, history: [event('e1'), future] })).toEqual([event('e1')]);
+    const history = [...events(HISTORY_SOFT_LIMIT - 1), future];
+    expect(planHistoryWrite({ ...old, history }, [event('n')]).history).toContainEqual(future);
+  });
+
   it('sin eventos no hay nada que escribir', () => {
     expect(planHistoryWrite({ ...old, history: [] }, [])).toBeNull();
     expect(planHistoryWrite({ ...old, history: null }, [])).toBeNull();
