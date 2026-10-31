@@ -239,6 +239,13 @@ describe('diálogo de subtareas: a medias', () => {
     expect(document.activeElement).toBe(key('edit-field:s3'));
   });
 
+  it('abrirlo otra vez estando abierto no falla y deja el foco en la primera pendiente', () => {
+    key('toggle:s3').focus();
+    dialog.open('a', opener);
+    expect(subtaskDialog().open).toBe(true);
+    expect(document.activeElement).toBe(key('toggle:s2'));
+  });
+
   it('si otro dispositivo borra la tarea, se cierra con un aviso', () => {
     store.delete('a');
     expect(subtaskDialog().open).toBe(false);

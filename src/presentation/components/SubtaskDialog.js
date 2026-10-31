@@ -509,7 +509,9 @@ export function createSubtaskDialog({ store, confirmAction, showNotice }) {
       else if (subtasks.length === 0) target = input;
       else if (firstPending) target = control(`toggle:${firstPending.id}`);
       else target = completeButton;
-      openDialog(from, target ?? closeButton);
+      // Ya abierto (por ejemplo, otra vez desde "Ver subtareas"): no se vuelve a abrir, solo se enfoca.
+      if (dialog.open) (target ?? closeButton).focus();
+      else openDialog(from, target ?? closeButton);
     },
   };
 }
