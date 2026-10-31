@@ -618,3 +618,33 @@ Diseño en `docs/PLAN_SUBTAREAS.md`, parte 1. Usar solo tareas de prueba propias
       ya no existe…"; cambiar su texto lo actualiza; completar otra tarea cambia el número del diálogo masivo.
 - [ ] Sin conexión: confirmar borra en local y al reconectar se sincroniza.
 - [ ] La página de usuarios conserva sus confirmaciones igual (desactivar, reactivar, rol).
+
+## 10. Subtareas
+
+Diseño en `docs/PLAN_SUBTAREAS.md`, parte 2. El PR B solo agrega el modelo, las reglas y el dominio (sin
+interfaz): sus puntos son los de 10.1. La interfaz (diálogo, progreso y completado) llega con el PR C.
+
+### 10.1 Modelo y reglas (PR B)
+
+Las subtareas se revisan en la consola de Firebase (Firestore → `tasks` → el documento), solo con tareas de
+prueba propias.
+
+- [ ] Antes de publicar: respaldo de PDN hecho y número de tareas por columna anotado.
+- [ ] `verificar-reglas` termina en "✔ Coinciden" en Desarrollo y en PDN, y las reglas publicadas tienen
+      `'subtasks', 'openSubtasks'` en `isValidTask` (comprobación del README, "Subtareas").
+- [ ] Con las reglas nuevas y el código anterior (antes del merge): las tareas actuales se crean, editan,
+      mueven, completan y borran igual.
+- [ ] Después del merge: lo mismo con el código nuevo, y una tarea nueva **no** tiene `subtasks` ni
+      `openSubtasks` en su documento.
+- [ ] Cliente viejo frente a la barrera (solo en Desarrollo, con las reglas nuevas y el código anterior,
+      antes del merge): en la consola, a una tarea de prueba en En curso se le agregan a mano `subtasks`
+      (lista con un elemento: mapa `{ id: "s1", text: "Paso", done: false }`) y `openSubtasks: 1` (número).
+      Moverla a Completada en el tablero: vuelve a su columna con el aviso de reglas de seguridad y nada se
+      pierde (la tarea conserva sus campos en la consola).
+- [ ] Con el código nuevo (después del merge, en Desarrollo): esa misma tarea no pasa a Completada (el
+      dominio lo impide; la explicación en pantalla llega con el PR C). Al borrar a mano los dos campos, se
+      completa como siempre.
+- [ ] Contador desfasado (solo en Desarrollo): con la lista anterior y `openSubtasks: 0`, al recargar el
+      tablero el documento pasa solo a `openSubtasks: 1`, sin eventos nuevos en `history`.
+- [ ] Después del merge, en PDN siguen las mismas tareas por columna que antes de publicar.
+

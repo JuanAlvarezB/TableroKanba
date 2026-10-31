@@ -166,7 +166,7 @@ tener el campo `history`. Unas reglas sin `'history'` en el `hasOnly` de `isVali
   comprueba que conserva `history` y su tope de 100:
 
   ```bash
-  grep -q "'ownerId', 'history'\]" firestore.rules && grep -q "&& isHistory(data)" firestore.rules \
+  grep -q "'ownerId', 'history'" firestore.rules && grep -q "&& isHistory(data)" firestore.rules \
     && echo "Conserva history" || echo "NO conserva history: no la publiques"
   ```
 
@@ -179,6 +179,31 @@ tener el campo `history`. Unas reglas sin `'history'` en el `hasOnly` de `isVali
   2. Las reglas se quedan como están, con `history` en `hasOnly`.
   3. Quitar el campo de todas las tareas solo tiene sentido si se abandona la función: se hará con un
      comando del script administrativo, primero en Desarrollo y con respaldo previo de PDN.
+
+#### Subtareas: las reglas antes que el código, y nunca revertir a reglas sin `subtasks`
+
+Desde las subtareas (`docs/PLAN_SUBTAREAS.md`, parte 2) los documentos de `tasks` pueden tener los campos
+`subtasks` y `openSubtasks`, y las reglas exigen que una tarea completada no tenga subtareas pendientes.
+Pasa lo mismo que con `history` (caso S-17 de `rules-tests/subtasks.rules.test.js`; alarma AT-5):
+
+- **Al publicar**, las reglas con `subtasks` van en Desarrollo y en PDN **antes** del merge del código que
+  los escribe: con las reglas anteriores, `hasOnly` rechazaría cualquier escritura de una tarea con
+  subtareas.
+- **No vuelvas a una versión de las reglas anterior a las subtareas**: rechazaría **cualquier** edición de
+  las tareas que ya las tienen. Antes de publicar una versión anterior, comprueba que conserva los dos
+  campos y `history`:
+
+  ```bash
+  grep -q "'history', 'subtasks', 'openSubtasks'" firestore.rules && grep -q "&& isSubtasks(data)" firestore.rules \
+    && echo "Conserva las subtareas" || echo "NO conserva las subtareas: no la publiques"
+  ```
+
+- Si hiciera falta quitar la barrera "completada sin pendientes", se publica la versión actual **sin esa
+  línea** de `isSubtasks`, conservando los dos campos en `hasOnly`.
+- **Para revertir las subtareas** se revierte solo el código (`git revert -m 1 <hash-del-merge>`): el
+  código anterior no lee los campos y sus ediciones (`updateDoc`) no los borran. Las reglas se quedan. Con
+  la interfaz revertida, una tarea con subtareas pendientes no se puede completar hasta volver a
+  publicarla (las reglas lo impiden): avisa a las personas antes de revertir.
 
 #### Índice de tareas: primero el código, después las reglas
 
