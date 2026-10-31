@@ -33,6 +33,8 @@ lo muestra como error, pero no es un error de LUCAS. No cuenta como falla si el 
 
 - [ ] Se ven el nombre y el avatar del usuario (foto de Google o iniciales).
 - [ ] El acceso al tablero abre `tablero.html`.
+- [ ] Un miembro con todos sus permisos ve la tarjeta del tablero y no la de usuarios; el administrador ve
+      las dos (detalle en 7.7).
 
 ## 4. Cuenta (inicio y tablero)
 
@@ -390,7 +392,8 @@ En Desarrollo, con las reglas publicadas (antes de publicar en PDN):
       límite y borra, sin `permission-denied` en la consola del navegador.
 - [ ] Ponerle `permissions` = `{ board: false }` y recargar el tablero: no cargan sus tareas del servidor, aparece
       el aviso "El servidor rechazó el cambio (reglas de seguridad de Firestore)…" y la consola muestra
-      `permission-denied`. Es lo esperado hasta el PR 8, que oculta la tarjeta y lleva al inicio con su aviso.
+      `permission-denied`. Era lo esperado hasta el PR 8; desde el PR 8, la tarjeta no aparece y
+      `tablero.html` lleva al inicio con su aviso (7.7).
 - [ ] Con la cuenta de prueba así, el administrador sigue trabajando con su tablero sin cambios.
 - [ ] Cambiar a `{ priorities: false }` y recargar: las tareas cargan; mover y editar el texto funcionan; poner,
       cambiar o quitar una prioridad muestra el aviso de reglas y la etiqueta vuelve a la anterior. La fecha
@@ -410,6 +413,83 @@ En PDN, con las reglas publicadas antes del merge, y otra vez después del merge
 - [ ] Etiqueta `pdn-reglas-AAAA-MM-DD` con la hora de la versión anterior (las estrictas del índice) en el
       mensaje. Si ya existe una etiqueta con esa fecha (la de las estrictas es `pdn-reglas-2026-10-31`), añade
       `-permisos` al nombre.
+
+### 7.7 Permisos por función: interfaz (PR 8)
+
+Diseño en `docs/PLAN_USUARIOS.md`, 3.4 y 3.5: el inicio muestra solo las funciones habilitadas, `tablero.html`
+exige el permiso `board` y dentro del tablero se ocultan las hijas apagadas. No cambia `firestore.rules` (las
+reglas del PR 7 ya están publicadas). Todavía no hay panel (PR 9): los permisos se ponen a mano en la consola
+de Firebase (Firestore → `allowedUsers` → el documento → campo `permissions`, de tipo **map**, con valores
+**boolean**), solo en la cuenta de prueba propia y solo en Desarrollo. Dos cuentas: la del administrador (A) y
+la de prueba (B, miembro, nunca la de una persona real). Tras cada cambio en la consola, recargar la página de
+B salvo que el punto diga otra cosa. Antes de empezar, B tiene tareas con prioridad, con fecha límite,
+alguna detenida (más de 3 días en Pendiente) y con historial.
+
+Acceso por interfaz (inicio):
+- [ ] B sin `permissions`: ve la tarjeta "Tablero de tareas" y no la de "Gestión de usuarios". A ve las dos.
+- [ ] B con `{ board: false }`: el inicio no muestra la tarjeta del tablero y dice "No tienes funciones
+      habilitadas. Habla con el administrador."
+- [ ] Con VoiceOver (o NVDA), el inicio de B lee ese texto; con teclado no hay ningún enlace al tablero.
+- [ ] A con `{ board: false }` en su propio documento (desde la consola) sigue viendo las dos tarjetas
+      (un administrador tiene siempre todas las funciones). Borrar el campo al terminar.
+
+Acceso por URL escrita a mano y enlaces antiguos:
+- [ ] B con `{ board: false }`: escribir `…/tablero.html` en la barra de direcciones lleva al inicio con el
+      aviso "El tablero de tareas no está habilitado para tu cuenta. Habla con el administrador." Durante la
+      carga no se ve nada del tablero (ni columnas ni tareas) y en la consola no aparece `permission-denied`.
+- [ ] Lo mismo desde un marcador guardado antes de apagar el tablero y con el botón "atrás" del navegador.
+- [ ] Al recargar el inicio, el aviso ya no aparece (se muestra una sola vez).
+- [ ] Con B así, A sigue trabajando en su tablero sin cambios (los demás no se ven afectados).
+
+Con la sesión abierta (PBI-3.6):
+- [ ] B con el tablero abierto; ponerle `{ board: false }`, cambiar a otra pestaña más de un minuto y volver:
+      B vuelve al inicio con el aviso.
+- [ ] Repetir, y en lugar de cambiar de pestaña crear o mover una tarea: ante el rechazo de las reglas, B vuelve
+      al inicio con el aviso.
+- [ ] B con el tablero abierto; ponerle `{ priorities: false }` y volver a la pestaña tras un minuto: la página
+      se recarga sola y ya no se ven las etiquetas.
+
+Funciones hijas dentro del tablero (B):
+- [ ] `{ priorities: false }`: sin etiquetas de prioridad, sin borde ni atenuado por prioridad, sin los filtros
+      Urgentes, Prioritarias, Puede esperar y Sin etiqueta, sin el contador 🔴 y sin la sección "Prioridad" del
+      menú 🏷️ (que se llama "Fecha límite"). Las tareas siguen el orden manual; arrastrar una tarea entre otras
+      la deja donde se suelta.
+- [ ] `{ dueDates: false }`: sin etiquetas de vencimiento, sin el filtro ⏳ ni su contador y sin la fecha en el
+      menú 🏷️ (que se llama "Etiqueta de prioridad").
+- [ ] `{ priorities: false, dueDates: false }`: la tarjeta no tiene botón 🏷️; solo queda el filtro "Todas".
+- [ ] Con solo `dueDates` activa, abrir el menú 🏷️ con el teclado (Tab y Enter): el foco va al campo de fecha;
+      Esc cierra el menú y el foco vuelve al botón.
+- [ ] `{ stalledAlerts: false }`: sin la insignia ⏰ de la tarjeta, sin el contador ⏰ de la columna y sin la
+      marca de la fecha en la línea de tiempo.
+- [ ] `{ reminders: false }`: en un turno de recordatorio (lunes a viernes, desde las 10:00 o las 15:00) no
+      aparece el aviso. Para probarlo sin esperar, borrar en la consola del navegador la clave `ultimo-recordatorio`
+      de `localStorage` y recargar; con `reminders` activa, el aviso sí aparece.
+- [ ] Con `reminders` activa y `priorities` apagada, si solo hay tareas urgentes, el recordatorio no aparece; si
+      hay vencidas, aparece sin el grupo de urgentes.
+- [ ] `{ history: false }`: la tarjeta no muestra la línea de tiempo ni "Ver historial". Mover y editar una
+      tarea; en la consola de Firebase su documento sigue recibiendo eventos en `history`.
+- [ ] Con `priorities` y `dueDates` apagadas, crear, editar, mover y borrar tareas no da `permission-denied`.
+
+Apagar no borra y reactivar restaura:
+- [ ] Borrar `permissions` (o ponerlo todo en `true`): vuelven igual las etiquetas, las fechas, las alertas y el
+      historial completo, incluidos los eventos registrados mientras `history` estaba apagada.
+- [ ] `{ board: false, priorities: false, history: true }` y luego `{ board: true, priorities: false, history:
+      true }`: al reactivar el padre, `priorities` sigue apagada y `history` encendida.
+- [ ] Con `permissions` = `"todo"` (de tipo **string**, dato corrupto): B ve el inicio sin la tarjeta del tablero
+      (como las reglas, que le niegan todo el tablero; A-52). Borrar el campo al terminar.
+
+Sin conexión (PBI-3.6):
+- [ ] B con `{ history: false }` entra con red (se recuerdan sus permisos). Sin red (modo avión o DevTools →
+      Network → Offline), recargar el tablero: abre su copia local sin historial.
+- [ ] B con `{ board: false }` entra al inicio con red; sin red, escribir `…/tablero.html`: vuelve al inicio con
+      el aviso.
+- [ ] Un navegador con la autorización recordada antes de este PR (sin `features`) abre el tablero sin red con
+      todas las funciones (valores iniciales); al volver la red se reescribe con los permisos.
+
+Al terminar:
+- [ ] Ningún documento de `allowedUsers` de Desarrollo tiene `permissions`.
+- [ ] En PDN, después del merge: el inicio y el tablero se ven como antes para el administrador y para un
+      miembro (nadie tiene `permissions`), sin errores en la consola.
 
 ## 8. Historial de tareas
 
@@ -451,8 +531,7 @@ Pasos de `docs/PLAN_USUARIOS.md`, 4.7, más la etiqueta de B-4.1 y la accesibili
 - [ ] La línea de tiempo resumida sigue mostrando las mismas fechas que antes.
 - [ ] B-4.1: una tarea devuelta de En curso a Pendiente dice "En Pendiente desde" (no "Creada") con la
       fecha del regreso; las demás siguen diciendo "Creada".
-- [ ] Con el permiso `history` apagado, el historial no se ve y se sigue registrando. **Pendiente:** el
-      permiso llega con la sección 3 (PR 8); hasta entonces este punto no aplica.
+- [ ] Con el permiso `history` apagado, el historial no se ve y se sigue registrando (detalle en 7.7).
 - [ ] Teclado: Tab llega a "Ver historial (N)"; Enter y Espacio lo despliegan y lo pliegan; el foco no se
       pierde al desplegar.
 - [ ] Lector de pantalla (VoiceOver): anuncia el botón con "contraído" o "expandido" y lee cada evento con
