@@ -1,6 +1,7 @@
-// Confirmación de las acciones del tablero (docs/PLAN_SUBTAREAS.md, 1.3 a 1.6): borrar una tarea, borrar
-// las completadas y, más adelante, las de las subtareas. Un solo <dialog> modal (Dialog.js) que cambia de
-// texto según la acción. El foco empieza en Cancelar, para que Enter no confirme sin querer; Escape,
+// Confirmación de las acciones del tablero (docs/PLAN_SUBTAREAS.md, 1.3 a 1.6 y 2.5 a 2.7): borrar una
+// tarea, borrar las completadas, borrar una subtarea, completar o reabrir una tarea con subtareas y el aviso
+// de que todavía no se puede completar. Un solo <dialog> modal (Dialog.js) que cambia de texto según la
+// acción; puede abrirse encima del diálogo de subtareas. El foco empieza en Cancelar, para que Enter no confirme sin querer; Escape,
 // Cancelar o tocar fuera cierran sin hacer nada. Mientras está abierto sigue los cambios del tablero:
 // actualiza su texto o, si la acción ya no aplica (otro dispositivo borró la tarea), se cierra con un
 // aviso. Es propio del tablero: la página de usuarios tiene el suyo (ConfirmDialogs.js).
@@ -15,8 +16,10 @@ const ID = 'board-confirm';
  * @property {string} title
  * @property {string} text Qué va a pasar (nombra la tarea o la cantidad).
  * @property {string | null} [warning] Advertencia aparte, por ejemplo que no se puede deshacer.
+ * @property {string[]} [items] Lista bajo el texto (por ejemplo, las subtareas que faltan).
  * @property {string} confirmLabel Nombre de la acción en el botón ("Borrar tarea").
- * @property {string} icon Ícono del botón; los lectores de pantalla no lo leen.
+ * @property {string} icon Ícono del botón ('' sin ícono); los lectores de pantalla no lo leen.
+ * @property {string} [cancelLabel] Texto del botón que cierra sin hacer nada (por defecto, Cancelar).
  * @property {'danger' | 'primary'} tone danger para las acciones destructivas.
  * @property {HTMLElement | null} opener Control que abrió el diálogo; recibe el foco al cancelar.
  * @property {() => void} onConfirm Se llama una sola vez, al confirmar.
@@ -25,6 +28,8 @@ const ID = 'board-confirm';
  * @property {string} [gone] Aviso al cerrarse porque la acción ya no aplica.
  * @property {(confirmed: boolean) => HTMLElement | null} [focusAfter] A dónde va el foco si el opener ya
  *   no está en la página (se volvió a dibujar) o si se confirmó.
+ * @property {(confirmed: boolean) => void} [afterClose] Se llama con el diálogo ya cerrado y el foco
+ *   devuelto: para abrir otro diálogo después de este.
  */
 
 /**
@@ -51,17 +56,20 @@ export function createBoardConfirm({ store, showNotice }) {
   const warningText = document.createElement('span');
   warning.append(warningIcon, ' ', warningText);
 
+  const items = document.createElement('ul');
+  items.id = `${ID}-items`;
+  items.className = 'dialog-items';
+
   const cancel = createButton(BOARD_MESSAGES.cancel, 'dialog-btn', () => dialog.close());
   const confirm = createButton('', 'dialog-btn');
   const confirmIcon = document.createElement('span');
   confirmIcon.setAttribute('aria-hidden', 'true');
   const confirmText = document.createElement('span');
-  confirm.append(confirmIcon, ' ', confirmText);
 
   const actions = document.createElement('div');
   actions.className = 'dialog-actions';
   actions.append(cancel, confirm);
-  body.append(text, warning, actions);
+  body.append(text, items, warning, actions);
 
   /** @type {(ConfirmRequest & { confirmed: boolean }) | null} */
   let current = null;
@@ -80,8 +88,10 @@ export function createBoardConfirm({ store, showNotice }) {
     const request = current;
     current = null;
     if (!request) return;
-    if (!request.confirmed && request.opener?.isConnected) return;
-    request.focusAfter?.(request.confirmed)?.focus({ preventScroll: true });
+    if (request.confirmed || !request.opener?.isConnected) {
+      request.focusAfter?.(request.confirmed)?.focus({ preventScroll: true });
+    }
+    request.afterClose?.(request.confirmed);
   });
 
   // Después de dibujar el tablero (por eso en una microtarea): el diálogo sigue lo que se ve.
@@ -105,12 +115,24 @@ export function createBoardConfirm({ store, showNotice }) {
     text.textContent = request.text;
     warningText.textContent = request.warning ?? '';
     warning.hidden = !request.warning;
-    // Un elemento oculto también se leería si aria-describedby lo nombra: solo se nombra si hay advertencia.
-    dialog.setAttribute('aria-describedby', request.warning ? `${ID}-text ${ID}-warning` : `${ID}-text`);
+    const list = request.items ?? [];
+    items.replaceChildren(
+      ...list.map((item) => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        return li;
+      }),
+    );
+    items.hidden = list.length === 0;
+    // Un elemento oculto también se leería si aria-describedby lo nombra: solo se nombran los que se ven.
+    const described = [text.id, ...(list.length > 0 ? [items.id] : []), ...(request.warning ? [warning.id] : [])];
+    dialog.setAttribute('aria-describedby', described.join(' '));
     confirmIcon.textContent = request.icon;
     confirmText.textContent = request.confirmLabel;
+    confirm.replaceChildren(...(request.icon ? [confirmIcon, ' '] : []), confirmText);
     confirm.className = `dialog-btn ${request.tone}`;
     confirm.disabled = false;
+    cancel.textContent = request.cancelLabel ?? BOARD_MESSAGES.cancel;
     open(request.opener, cancel);
   };
 }
