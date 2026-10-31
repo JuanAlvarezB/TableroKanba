@@ -6,6 +6,8 @@ rules_version = '2';
 // Gestión de usuarios (2.9): el administrador escribe allowedUsers siempre con su entrada en
 // adminLog, y solo borra tareas ajenas (sin leerlas) de quien está en eliminación. Reglas estrictas
 // del índice (2.6, paso 3): cada tarea se crea y se borra junto con su documento de taskIndex.
+// Permisos por función (3.4): sin el tablero no se usan tasks ni taskIndex, y con priorities o
+// dueDates apagadas no se cambia su campo; el administrador valida y registra cada cambio.
 // Se publican con `firebase deploy --only firestore:rules --project dev|pdn`; este archivo no
 // se despliega con GitHub Pages. Se prueban con npm run test:rules (rules-tests/).
 service cloud.firestore {
@@ -45,6 +47,51 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthorized() && isAdminUser(callerDoc());
+    }
+
+    // Permisos por función (docs/PLAN_USUARIOS.md, 3.3 y 3.4), en el mismo documento de autorización: no
+    // suman lecturas. Clave ausente = activa (board, priorities y dueDates empiezan activas en todos los
+    // ambientes, A-37); cualquier valor que no sea exactamente true la apaga. Un administrador tiene
+    // siempre todas las funciones.
+    function perm(user, key) {
+      return user.get('permissions', {}).get(key, true) == true;
+    }
+
+    // El tablero es el padre: sin él no se lee ni se escribe en tasks ni en taskIndex.
+    function boardOn(user) {
+      return isAdminUser(user) || perm(user, 'board');
+    }
+
+    // Una hija solo está activa con su padre: apagar el tablero apaga las hijas sin reescribirlas.
+    function childOn(user, key) {
+      return isAdminUser(user) || (perm(user, 'board') && perm(user, key));
+    }
+
+    // Persona activa y autorizada, con el tablero habilitado: lo exige todo lo que hace el dueño en tasks
+    // y en taskIndex. El borrado del administrador en una eliminación no depende de él.
+    function hasBoard() {
+      return isAuthorized() && boardOn(callerDoc());
+    }
+
+    // Claves del catálogo de funciones: las mismas que FEATURE_KEYS de domain/rules/features.js.
+    function featureKeys() {
+      return ['board', 'priorities', 'dueDates', 'stalledAlerts', 'reminders', 'history'];
+    }
+
+    // Mapa de permisos que escribe el administrador (3.3): solo claves del catálogo, cada una booleana.
+    function isFlag(permissions, key) {
+      return !(key in permissions) || permissions[key] is bool;
+    }
+
+    function isPermissionsMap(permissions) {
+      return permissions is map
+        && permissions.keys().hasOnly(featureKeys())
+        && isFlag(permissions, 'board')
+        && isFlag(permissions, 'priorities')
+        && isFlag(permissions, 'dueDates')
+        && isFlag(permissions, 'stalledAlerts')
+        && isFlag(permissions, 'reminders')
+        && isFlag(permissions, 'history');
     }
 
     // uid sin registrar: la persona todavía no ha entrado nunca.
@@ -113,7 +160,8 @@ service cloud.firestore {
 
     // Cambio del administrador sobre otra persona (2.9): solo rol, estado, permisos, la marca de
     // eliminación y lastChange, que cambia siempre y apunta a la entrada nueva del registro. Una
-    // persona en eliminación ya no admite cambios: solo terminarla (delete).
+    // persona en eliminación ya no admite cambios: solo terminarla (delete). Los permisos (3.4) son un
+    // mapa del catálogo y se cambian con una entrada set-permissions.
     function isAdminUpdate(email) {
       let before = resource.data;
       let after = request.resource.data;
@@ -127,7 +175,9 @@ service cloud.firestore {
           ['deactivate', 'reactivate', 'promote', 'demote', 'delete-start', 'set-permissions'])
         && (!changed.hasAny(['role']) || after.get('role', null) in ['admin', 'member'])
         && (!changed.hasAny(['active']) || after.get('active', null) is bool)
-        && (!changed.hasAny(['permissions']) || after.get('permissions', null) is map)
+        && (!changed.hasAny(['permissions'])
+          || (isPermissionsMap(after.get('permissions', null))
+            && isNewLogEntry(after.get('lastChange', null), ['set-permissions'])))
         && (!changed.hasAny(['deleting']) || isDeletionStart(before, after, email));
     }
 
@@ -191,40 +241,51 @@ service cloud.firestore {
         && isHistory(data);
     }
 
+    // Hijas con datos (3.4): con priorities o dueDates apagadas, su campo no se puede poner ni cambiar.
+    // Ausente y null valen lo mismo ("sin etiqueta"), así que mover, editar el texto o reescribir la tarea
+    // con el mismo valor siguen funcionando. Al crear, before es {}: el campo tiene que llegar vacío.
+    function keepsLockedFields(user, before, after) {
+      return (childOn(user, 'priorities') || after.get('priority', null) == before.get('priority', null))
+        && (childOn(user, 'dueDates') || after.get('dueDate', null) == before.get('dueDate', null));
+    }
+
     // Nadie ve ni edita tareas ajenas, tampoco el administrador: isAdmin() solo aparece en el
     // borrado, y solo con el marcador de eliminación de su dueño. Al actualizar se comprueba el
     // dueño antes y después, para que nadie pueda reasignar una tarea a otro ownerId. Editar o
-    // mover no toca el índice.
+    // mover no toca el índice. El dueño necesita el tablero habilitado (3.4).
     match /tasks/{taskId} {
-      allow read: if isAuthorized() && isOwner(resource.data);
+      allow read: if hasBoard() && isOwner(resource.data);
       // Borrar una tarea que otro dispositivo ya borró no es un error (resource == null). Su índice
       // se borra en el mismo lote: ninguna tarea borrada deja su documento de taskIndex.
-      allow delete: if ((isAuthorized() && (resource == null || isOwner(resource.data)))
+      allow delete: if ((hasBoard() && (resource == null || isOwner(resource.data)))
           || (isAdmin() && isDeletingOwner(resource.data.ownerId)))
         && !existsAfter(/databases/$(database)/documents/taskIndex/$(taskId));
       // Toda tarea nueva llega con su índice, del mismo dueño, en el mismo lote.
-      allow create: if isAuthorized() && isValidTask(request.resource.data)
+      allow create: if hasBoard() && isValidTask(request.resource.data)
         && isOwner(request.resource.data)
+        && keepsLockedFields(callerDoc(), {}, request.resource.data)
         && hasOwnIndexAfter(taskId);
-      allow update: if isAuthorized() && isValidTask(request.resource.data)
-        && isOwner(resource.data) && isOwner(request.resource.data);
+      allow update: if hasBoard() && isValidTask(request.resource.data)
+        && isOwner(resource.data) && isOwner(request.resource.data)
+        && keepsLockedFields(callerDoc(), resource.data, request.resource.data);
     }
 
     // Índice de tareas (2.6): un documento por tarea, con el mismo ID, que solo guarda ownerId. Lo
-    // lee el dueño y el administrador, que así borra los datos de alguien sin leer sus tareas.
+    // lee el dueño y el administrador, que así borra los datos de alguien sin leer sus tareas. El
+    // dueño necesita el tablero habilitado; el administrador lo lee aunque esa persona no lo tenga.
     match /taskIndex/{taskId} {
-      allow read: if isAuthorized() && (isOwner(resource.data) || isAdmin());
+      allow read: if (hasBoard() && isOwner(resource.data)) || isAdmin();
       // Solo con su tarea, del mismo dueño, al terminar el lote: nueva en el mismo lote o anterior al
       // índice (completar el índice de las tareas que ya existían).
-      allow create: if isAuthorized() && isIndexEntry(request.resource.data)
+      allow create: if hasBoard() && isIndexEntry(request.resource.data)
         && isOwner(request.resource.data)
         && hasOwnTaskAfter(taskId);
       // Reescribir el mismo contenido (un lote repetido, dos pestañas que completan el índice a la
       // vez): el documento queda igual, con el mismo dueño. Nada más se puede cambiar.
-      allow update: if isAuthorized() && isIndexEntry(request.resource.data)
+      allow update: if hasBoard() && isIndexEntry(request.resource.data)
         && isOwner(resource.data) && isOwner(request.resource.data);
       // Solo si su tarea ya no existe al terminar el lote (borrada en el mismo lote o antes).
-      allow delete: if ((isAuthorized() && (resource == null || isOwner(resource.data)))
+      allow delete: if ((hasBoard() && (resource == null || isOwner(resource.data)))
           || (isAdmin() && isDeletingOwner(resource.data.ownerId)))
         && !existsAfter(/databases/$(database)/documents/tasks/$(taskId));
     }
