@@ -621,8 +621,8 @@ Diseño en `docs/PLAN_SUBTAREAS.md`, parte 1. Usar solo tareas de prueba propias
 
 ## 10. Subtareas
 
-Diseño en `docs/PLAN_SUBTAREAS.md`, parte 2. El PR B solo agrega el modelo, las reglas y el dominio (sin
-interfaz): sus puntos son los de 10.1. La interfaz (diálogo, progreso y completado) llega con el PR C.
+Diseño en `docs/PLAN_SUBTAREAS.md`, parte 2. El PR B agregó el modelo, las reglas y el dominio (10.1); el
+PR C, la interfaz: diálogo, progreso y completado (10.2).
 
 ### 10.1 Modelo y reglas (PR B)
 
@@ -647,4 +647,63 @@ prueba propias.
 - [ ] Contador desfasado (solo en Desarrollo): con la lista anterior y `openSubtasks: 0`, al recargar el
       tablero el documento pasa solo a `openSubtasks: 1`, sin eventos nuevos en `history`.
 - [ ] Después del merge, en PDN siguen las mismas tareas por columna que antes de publicar.
+
+### 10.2 Diálogo, progreso y completado (PR C)
+
+Con tareas de prueba propias. No hay reglas que publicar.
+
+Tarjeta:
+- [ ] Una tarea sin subtareas muestra ☑ en sus acciones (junto a 🏷️ y ✏️); una completada sin subtareas, no.
+- [ ] Con subtareas, la tarjeta muestra "☑ 2 de 4 subtareas" con una barra; con todas terminadas, la barra
+      queda verde. No hay ☑ en las acciones.
+
+Diálogo:
+- [ ] ☑ abre el diálogo con el foco en "Nueva subtarea"; Enter agrega, el campo se vacía y el foco sigue ahí.
+- [ ] Una subtarea vacía no se agrega y el diálogo explica por qué; con 20, el campo se deshabilita y lo dice.
+- [ ] Al abrirlo con pendientes, el foco está en la primera pendiente; Espacio la marca y el progreso cambia en
+      el diálogo y en la tarjeta.
+- [ ] ✏️ (o F2 en la fila) edita: Enter guarda, Escape cancela **sin cerrar el diálogo**; vacía mantiene el
+      texto anterior y lo explica.
+- [ ] ↑ y ↓ (y Alt + ↑ / Alt + ↓ en la fila) reordenan; el foco sigue en la subtarea movida; en los extremos el
+      botón queda atenuado.
+- [ ] 🗑️ abre "¿Borrar la subtarea?" encima del diálogo; Escape o Cancelar cierran solo la confirmación;
+      confirmar la borra y el foco pasa a la siguiente (o al campo, si no queda ninguna).
+- [ ] Escape (fuera de una edición) cierra el diálogo y el foco vuelve al botón de la tarjeta.
+
+Completar:
+- [ ] Con pendientes, "Completar tarea" se ve atenuado con "Termina las N subtareas pendientes…"; pulsarlo lleva
+      el foco a la primera pendiente y no completa nada.
+- [ ] Marcar la última **no** completa la tarea; "Completar tarea" la completa, cierra el diálogo y avisa
+      "«…» pasó a Completada".
+- [ ] Con pendientes, la flecha → desde En curso y el arrastre a Completada muestran "Todavía no se puede
+      completar" con las que faltan (hasta 5 y "y N más"); "Cerrar" no cambia nada; "Ver subtareas" abre la
+      lista con el foco en la primera pendiente.
+- [ ] Con todas terminadas, la flecha → y el arrastre piden "¿Completar la tarea?"; Cancelar no la mueve;
+      confirmar la completa.
+- [ ] Una tarea sin subtareas se sigue completando con un solo paso (flecha o arrastre, sin diálogo).
+- [ ] Pendiente ↔ En curso no pide nada, aunque haya subtareas pendientes.
+
+Tarea completada y reabrir:
+- [ ] En una completada, el diálogo es de solo lectura (sin agregar, ✏️, ↑ ↓ ni 🗑️) y dice cuándo se completó.
+- [ ] Desmarcar una subtarea pide "¿Volver a abrir la tarea?"; Cancelar la deja completada y marcada;
+      confirmar la devuelve a En curso y la lista se puede volver a cambiar.
+- [ ] El historial de la tarjeta muestra "Subtarea terminada: «…»", "Subtarea pendiente otra vez: «…»" y el
+      movimiento de Completada a En curso.
+
+Borrar:
+- [ ] Borrar una tarea con subtareas dice "con sus N subtareas"; "Borrar completadas" añade "Sus subtareas también
+      se borran." si alguna tiene.
+
+Dos dispositivos, sin conexión y accesibilidad:
+- [ ] Dos pestañas: marcar en una aparece en el diálogo abierto de la otra (sin perder el foco ni lo escrito en
+      "Nueva subtarea") y resalta la tarjeta.
+- [ ] Con el diálogo abierto en una pestaña, borrar la tarea en la otra lo cierra con "La tarea se borró en otro
+      dispositivo."; completarla en la otra lo deja en solo lectura con "Se completó en otro dispositivo."
+- [ ] Sin conexión: agregar, marcar y borrar subtareas funciona y se sincroniza al volver.
+- [ ] Teclado completo sin ratón (Tab, Espacio, Enter, F2, Alt + flechas, Escape).
+- [ ] Lector de pantalla (VoiceOver): el progreso de la tarjeta se lee como "Subtareas: 2 de 4 terminadas.
+      Abrir lista"; al marcar anuncia "3 de 4 subtareas terminadas."; al reordenar, la nueva posición; los
+      íconos no se leen.
+- [ ] Móvil (iPhone real): el diálogo cabe, cada fila en dos líneas, el pie con Cerrar y Completar tarea
+      siempre visible, el teclado no tapa "Nueva subtarea", y la confirmación encima funciona (AT-13).
 
