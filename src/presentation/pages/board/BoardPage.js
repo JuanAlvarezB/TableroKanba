@@ -6,22 +6,16 @@ import { sortForView } from '../../../domain/rules/priority.js';
 import { stalledDays } from '../../../domain/rules/stalledTasks.js';
 import { adjacentStatus } from '../../../domain/usecases/MoveTask.js';
 import { checkReminder } from '../../../domain/usecases/CheckReminder.js';
-import { createFlasher } from '../../components/FlashMessage.js';
 import { attentionGroups, createReminderBanner, renderColumnChips } from '../../components/OverdueAlerts.js';
 import { createTaskCard, isEditable } from '../../components/TaskCard.js';
 import { autoResize, getEditorCard } from '../../components/TaskEditor.js';
 import { dueInfo } from '../../format/dates.js';
 import { currentFeatures } from '../../state/features.js';
+import { createBoardNotices } from './boardNotices.js';
 
 // Tarjetas resaltadas tras un cambio (id → momento de inicio), para que el resaltado no se
 // reinicie aunque el tablero se vuelva a dibujar mientras dura la animación.
 const HIGHLIGHT_DURATION = 1600;
-
-const SYNC_LABELS = {
-  connecting: 'Conectando…',
-  online: 'Sincronizado',
-  offline: 'Solo en este dispositivo',
-};
 
 /**
  * @param {object} deps
@@ -34,13 +28,14 @@ export function createBoardPage({ store, reminders }) {
   const taskCount = document.getElementById('task-count');
   const allDoneMessage = document.getElementById('all-done-message');
   const clearCompletedBtn = document.getElementById('clear-completed');
-  const boardNotice = document.getElementById('board-notice');
-  const toast = document.getElementById('toast');
-  const syncStatus = document.getElementById('sync-status');
   const lists = document.querySelectorAll('.task-list');
   const filterButtons = document.querySelectorAll('.filter-btn');
 
-  const flash = createFlasher();
+  const notices = createBoardNotices({
+    boardNotice: document.getElementById('board-notice'),
+    toast: document.getElementById('toast'),
+    syncStatus: document.getElementById('sync-status'),
+  });
   const banner = createReminderBanner(
     {
       banner: document.getElementById('overdue-banner'),
@@ -63,27 +58,9 @@ export function createBoardPage({ store, reminders }) {
   let lastOverdueSignature = '';
 
   const tasks = () => store.tasks;
-  const showNotice = (message) => flash(boardNotice, message);
+  const { showNotice } = notices;
 
-  /* ---------- Avisos ---------- */
-
-  function announceNewTasks(newTasks) {
-    flash(
-      toast,
-      newTasks.length === 1
-        ? `Se agregó una nueva tarea: "${newTasks[0].text}"`
-        : `Se agregaron ${newTasks.length} tareas nuevas`,
-    );
-  }
-
-  function announceEditedTasks(editedTasks) {
-    flash(
-      toast,
-      editedTasks.length === 1
-        ? `Se actualizó una tarea: "${editedTasks[0].text}"`
-        : `Se actualizaron ${editedTasks.length} tareas`,
-    );
-  }
+  /* ---------- Resaltados ---------- */
 
   function highlight(ids) {
     const now = performance.now();
@@ -98,11 +75,6 @@ export function createBoardPage({ store, reminders }) {
     if (elapsed < HIGHLIGHT_DURATION) return elapsed;
     highlights.delete(id);
     return null;
-  }
-
-  function setSyncStatus(state) {
-    syncStatus.dataset.state = state;
-    syncStatus.textContent = SYNC_LABELS[state];
   }
 
   /* ---------- Filtro y menú de etiquetas ---------- */
@@ -364,9 +336,9 @@ export function createBoardPage({ store, reminders }) {
   store.on('change', render);
   store.on('notice', showNotice);
   store.on('highlight', highlight);
-  store.on('added', announceNewTasks);
-  store.on('edited', announceEditedTasks);
-  store.on('sync', setSyncStatus);
+  store.on('added', notices.announceNewTasks);
+  store.on('edited', notices.announceEditedTasks);
+  store.on('sync', notices.setSyncStatus);
 
   lists.forEach((list) => {
     list.addEventListener('dragover', (event) => {
