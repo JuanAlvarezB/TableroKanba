@@ -1,8 +1,8 @@
 // Vista del tablero (tablero.html): dibuja las columnas a partir del store y traduce lo que hace
 // la persona (clic, arrastrar, teclado) en acciones del store. Guarda el estado propio de la
 // vista: tarea en edición, menú de etiquetas abierto, filtro, arrastre y resaltados.
-import { FILTERS, WIP_LIMITS, countByStatus, isColumnFull } from '../../../domain/rules/board.js';
-import { sortByPriority } from '../../../domain/rules/priority.js';
+import { WIP_LIMITS, countByStatus, filtersFor, isColumnFull } from '../../../domain/rules/board.js';
+import { sortForView } from '../../../domain/rules/priority.js';
 import { stalledDays } from '../../../domain/rules/stalledTasks.js';
 import { adjacentStatus } from '../../../domain/usecases/MoveTask.js';
 import { checkReminder } from '../../../domain/usecases/CheckReminder.js';
@@ -11,6 +11,7 @@ import { attentionGroups, createReminderBanner, renderColumnChips } from '../../
 import { createTaskCard, isEditable } from '../../components/TaskCard.js';
 import { autoResize, getEditorCard } from '../../components/TaskEditor.js';
 import { dueInfo } from '../../format/dates.js';
+import { currentFeatures } from '../../state/features.js';
 
 // Tarjetas resaltadas tras un cambio (id → momento de inicio), para que el resaltado no se
 // reinicie aunque el tablero se vuelva a dibujar mientras dura la animación.
@@ -147,7 +148,7 @@ export function createBoardPage({ store, reminders }) {
   // Espera a que la pestaña esté visible para que el minuto en pantalla no pase sin verse.
   function showReminderIfDue() {
     if (document.visibilityState !== 'visible') return;
-    const slot = checkReminder(tasks(), { lastShownId: reminders.lastShown() });
+    const slot = checkReminder(tasks(), { lastShownId: reminders.lastShown(), features: currentFeatures() });
     if (!slot) return;
     reminders.markShown(slot.id);
     banner.show(slot);
@@ -159,7 +160,7 @@ export function createBoardPage({ store, reminders }) {
     highlight(ids);
     const visible = tasks()
       .filter((t) => ids.includes(t.id))
-      .every(FILTERS[activeFilter]);
+      .every(filtersFor(currentFeatures())[activeFilter]);
     if (visible) render();
     else setFilter('all');
     const card = document.querySelector(`.card[data-id="${CSS.escape(ids[0])}"]`);
@@ -319,7 +320,10 @@ export function createBoardPage({ store, reminders }) {
       list.innerHTML = '';
 
       const columnTasks = all.filter((t) => t.status === status);
-      const visibleTasks = sortByPriority(columnTasks.filter(FILTERS[activeFilter]));
+      const visibleTasks = sortForView(
+        columnTasks.filter(filtersFor(currentFeatures())[activeFilter]),
+        currentFeatures(),
+      );
       if (visibleTasks.length === 0) {
         const empty = document.createElement('li');
         empty.className = 'empty';
@@ -419,10 +423,12 @@ export function createBoardPage({ store, reminders }) {
 
 // Devuelve la tarjeta del mismo grupo de etiqueta situada justo debajo del cursor, para
 // insertar antes de ella. Arrastrar no cambia la etiqueta: si se suelta en otro grupo, la
-// tarea queda al principio o al final del suyo.
+// tarea queda al principio o al final del suyo. Con la función priorities apagada no hay
+// grupos: la columna sigue solo el orden manual (docs/PLAN_USUARIOS.md, 3.1).
 function getCardAfterCursor(list, y, priority) {
+  const grouped = currentFeatures().priorities;
   const cards = [...list.querySelectorAll('.card:not(.dragging)')].filter(
-    (card) => card.dataset.priority === (priority ?? ''),
+    (card) => !grouped || card.dataset.priority === (priority ?? ''),
   );
   return cards.find((card) => {
     const box = card.getBoundingClientRect();
