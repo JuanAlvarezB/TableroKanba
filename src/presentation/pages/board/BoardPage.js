@@ -8,10 +8,10 @@ import { adjacentStatus } from '../../../domain/usecases/MoveTask.js';
 import { checkReminder } from '../../../domain/usecases/CheckReminder.js';
 import { attentionGroups, createReminderBanner, renderColumnChips } from '../../components/OverdueAlerts.js';
 import { createTaskCard, isEditable } from '../../components/TaskCard.js';
-import { autoResize, getEditorCard } from '../../components/TaskEditor.js';
 import { dueInfo } from '../../format/dates.js';
 import { currentFeatures } from '../../state/features.js';
 import { createBoardNotices } from './boardNotices.js';
+import { createEditingController } from './editingController.js';
 import { createHighlights } from './highlights.js';
 
 /**
@@ -43,8 +43,6 @@ export function createBoardPage({ store, reminders }) {
     { onShowTasks: showTasks },
   );
 
-  /** @type {import('../../components/TaskEditor.js').Editing | null} */
-  let editing = null;
   // Tarea con el menú de etiquetas abierto; null si no hay ninguno.
   let labelMenuId = null;
   let activeFilter = 'all';
@@ -56,6 +54,14 @@ export function createBoardPage({ store, reminders }) {
 
   const tasks = () => store.tasks;
   const { showNotice } = notices;
+  const editor = createEditingController({
+    store,
+    showNotice,
+    render,
+    beforeStart: () => {
+      labelMenuId = null;
+    },
+  });
 
   /* ---------- Filtro y menú de etiquetas ---------- */
 
@@ -66,7 +72,7 @@ export function createBoardPage({ store, reminders }) {
   }
 
   function toggleLabelMenu(id) {
-    if (editing) commitEdit();
+    if (editor.active) editor.commit();
     labelMenuId = labelMenuId === id ? null : id;
     render();
     if (labelMenuId === null) return;
@@ -136,61 +142,6 @@ export function createBoardPage({ store, reminders }) {
     showReminderIfDue();
   }
 
-  /* ---------- Edición de tareas ---------- */
-
-  function startEdit(id) {
-    if (editing) {
-      if (editing.id === id) return;
-      commitEdit();
-    }
-    const task = tasks().find((t) => t.id === id);
-    if (!task || !isEditable(task)) return;
-    labelMenuId = null;
-
-    editing = { id, original: task.text };
-    render();
-
-    const { textarea, element } = editing;
-    textarea.focus({ preventScroll: true });
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-    element.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }
-
-  // Guarda el texto editado. restoreFocus devuelve el foco al botón de editar (teclado).
-  function commitEdit(restoreFocus = false) {
-    if (!editing) return;
-    const { id, textarea } = editing;
-    const text = textarea.value.trim();
-    editing = null;
-
-    const task = tasks().find((t) => t.id === id);
-    if (task && !isEditable(task)) {
-      showNotice('Las tareas completadas no se pueden modificar.');
-      render();
-    } else if (task && !text) {
-      showNotice('Una tarea no puede quedar vacía: se mantuvo el texto anterior.');
-      render();
-    } else if (task && text !== task.text) {
-      store.editText(id, text);
-    } else {
-      render();
-    }
-    if (restoreFocus) focusEditButton(id);
-  }
-
-  function cancelEdit(restoreFocus = false) {
-    if (!editing) return;
-    const { id } = editing;
-    editing = null;
-    render();
-    if (restoreFocus) focusEditButton(id);
-  }
-
-  function focusEditButton(id) {
-    const button = document.querySelector(`.card[data-id="${CSS.escape(id)}"] .edit-btn`);
-    if (button) button.focus({ preventScroll: true });
-  }
-
   /* ---------- Acciones de la tarjeta ---------- */
 
   function shiftTask(id, direction) {
@@ -201,7 +152,7 @@ export function createBoardPage({ store, reminders }) {
   }
 
   function deleteTask(id) {
-    if (editing && editing.id === id) editing = null;
+    editor.discard([id]);
     if (labelMenuId === id) labelMenuId = null;
     store.delete(id);
   }
@@ -210,12 +161,12 @@ export function createBoardPage({ store, reminders }) {
     const completedIds = tasks()
       .filter((t) => t.status === 'completed')
       .map((t) => t.id);
-    if (editing && completedIds.includes(editing.id)) editing = null;
+    editor.discard(completedIds);
     store.clearCompleted();
   }
 
   const cardActions = {
-    startEdit,
+    startEdit: editor.start,
     shift: shiftTask,
     toggleLabelMenu,
     remove: deleteTask,
@@ -231,10 +182,9 @@ export function createBoardPage({ store, reminders }) {
     },
   };
 
-  const editorHandlers = { onCommit: commitEdit, onCancel: cancelEdit, getEditing: () => editing };
-
   function createCard(task) {
-    if (editing && editing.id === task.id) return getEditorCard(task, editing, editorHandlers);
+    const editorCard = editor.cardFor(task);
+    if (editorCard) return editorCard;
     return createTaskCard(task, {
       menuOpen: labelMenuId === task.id,
       highlightElapsed: highlights.elapsed(task.id),
@@ -246,15 +196,7 @@ export function createBoardPage({ store, reminders }) {
 
   function render() {
     const all = tasks();
-    if (editing && !all.some((t) => t.id === editing.id)) {
-      editing = null;
-      showNotice('La tarea que estabas editando se eliminó en otro dispositivo.');
-    } else if (editing && !isEditable(all.find((t) => t.id === editing.id))) {
-      editing = null;
-      showNotice(
-        'La tarea que estabas editando se marcó como completada en otro dispositivo; ya no se puede modificar.',
-      );
-    }
+    editor.reconcile(all);
     const menuTask = all.find((t) => t.id === labelMenuId);
     if (labelMenuId !== null && (!menuTask || !isEditable(menuTask))) labelMenuId = null;
     // Control del menú de etiquetas con el foco, para devolvérselo tras redibujar.
@@ -262,10 +204,7 @@ export function createBoardPage({ store, reminders }) {
       ? document.activeElement.dataset.menuKey
       : null;
 
-    // Al vaciar las listas el editor sale del documento y pierde el foco; se guarda para devolverlo.
-    const focused =
-      editing && editing.element && editing.element.contains(document.activeElement) ? document.activeElement : null;
-    const selection = focused === editing?.textarea ? [focused.selectionStart, focused.selectionEnd] : null;
+    const restoreEditorFocus = editor.preserveFocus();
 
     lists.forEach((list) => {
       const status = list.dataset.status;
@@ -300,11 +239,7 @@ export function createBoardPage({ store, reminders }) {
     const allCompleted = all.length > 0 && openCount === 0;
     allDoneMessage.classList.toggle('hidden', !allCompleted);
 
-    if (editing) {
-      autoResize(editing.textarea);
-      if (focused) focused.focus({ preventScroll: true });
-      if (selection) editing.textarea.setSelectionRange(...selection);
-    }
+    restoreEditorFocus();
     if (menuFocusKey && labelMenuId !== null) {
       const control = document.querySelector(`.label-menu [data-menu-key="${menuFocusKey}"]`);
       if (control) control.focus({ preventScroll: true });
