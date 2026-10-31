@@ -199,13 +199,15 @@ su documento de `taskIndex` en el mismo lote. Unas reglas sin `match /taskIndex/
 
 - **Con las reglas estrictas del índice** (PR 6, 2.6 paso 3), crear una tarea **exige** su índice en el
   mismo lote: un código sin índice ya no puede crear tareas. Para revertir el código del índice, primero
-  vuelve a las reglas de transición (en PDN, la etiqueta `pdn-reglas-2026-10-28` o la versión anotada del
-  historial de la consola), compruébalas con `verificar-reglas` y solo después revierte el código. Para
-  deshacer solo las estrictas basta con volver a las de transición: el código actual funciona con las dos.
-  Para saber cuáles tiene un archivo:
+  vuelve a las reglas de transición (la versión del historial de la consola anterior a las estrictas, o
+  `git show 73056c7:firestore.rules`), compruébalas con `verificar-reglas` y solo después revierte el código.
+  Para deshacer solo las estrictas basta con volver a las de transición: el código actual funciona con las
+  dos. **No uses la etiqueta `pdn-reglas-2026-10-28`**: apunta a un commit con las reglas anteriores, sin
+  `taskIndex`. Para saber cuáles tiene un archivo antes de publicarlo:
 
   ```bash
-  grep -q "hasOwnIndexAfter" firestore.rules && echo "Estrictas" || echo "De transición (o anteriores)"
+  grep -q "hasOwnIndexAfter" firestore.rules && echo "Estrictas" \
+    || { grep -q "match /taskIndex/" firestore.rules && echo "De transición" || echo "SIN taskIndex: no la publiques"; }
   ```
 
 ### Comprobar con el script (`verificar-reglas`)
