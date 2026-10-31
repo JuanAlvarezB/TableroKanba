@@ -7,12 +7,13 @@ import { stalledDays } from '../../../domain/rules/stalledTasks.js';
 import { adjacentStatus } from '../../../domain/usecases/MoveTask.js';
 import { checkReminder } from '../../../domain/usecases/CheckReminder.js';
 import { attentionGroups, createReminderBanner, renderColumnChips } from '../../components/OverdueAlerts.js';
-import { createTaskCard, isEditable } from '../../components/TaskCard.js';
+import { createTaskCard } from '../../components/TaskCard.js';
 import { dueInfo } from '../../format/dates.js';
 import { currentFeatures } from '../../state/features.js';
 import { createBoardNotices } from './boardNotices.js';
 import { createEditingController } from './editingController.js';
 import { createHighlights } from './highlights.js';
+import { createLabelMenuController } from './labelMenuController.js';
 
 /**
  * @param {object} deps
@@ -43,8 +44,6 @@ export function createBoardPage({ store, reminders }) {
     { onShowTasks: showTasks },
   );
 
-  // Tarea con el menú de etiquetas abierto; null si no hay ninguno.
-  let labelMenuId = null;
   let activeFilter = 'all';
   let draggedId = null;
   const highlights = createHighlights();
@@ -54,44 +53,20 @@ export function createBoardPage({ store, reminders }) {
 
   const tasks = () => store.tasks;
   const { showNotice } = notices;
-  const editor = createEditingController({
-    store,
-    showNotice,
+  const labelMenu = createLabelMenuController({
     render,
-    beforeStart: () => {
-      labelMenuId = null;
+    beforeToggle: () => {
+      if (editor.active) editor.commit();
     },
   });
+  const editor = createEditingController({ store, showNotice, render, beforeStart: () => labelMenu.forget() });
 
-  /* ---------- Filtro y menú de etiquetas ---------- */
+  /* ---------- Filtro ---------- */
 
   function setFilter(filter) {
     activeFilter = filter;
     filterButtons.forEach((btn) => btn.setAttribute('aria-pressed', String(btn.dataset.filter === filter)));
     render();
-  }
-
-  function toggleLabelMenu(id) {
-    if (editor.active) editor.commit();
-    labelMenuId = labelMenuId === id ? null : id;
-    render();
-    if (labelMenuId === null) return;
-    const menu = document.querySelector(`.card[data-id="${CSS.escape(id)}"] .label-menu`);
-    if (!menu) return;
-    menu.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    const current = menu.querySelector('[aria-pressed="true"]') || menu.querySelector('button');
-    if (current) current.focus({ preventScroll: true });
-  }
-
-  // restoreFocus devuelve el foco al botón de etiquetas (teclado).
-  function closeLabelMenu(restoreFocus = false) {
-    if (labelMenuId === null) return;
-    const id = labelMenuId;
-    labelMenuId = null;
-    render();
-    if (!restoreFocus) return;
-    const button = document.querySelector(`.card[data-id="${CSS.escape(id)}"] .label-btn`);
-    if (button) button.focus({ preventScroll: true });
   }
 
   /* ---------- Alertas y recordatorio ---------- */
@@ -153,7 +128,7 @@ export function createBoardPage({ store, reminders }) {
 
   function deleteTask(id) {
     editor.discard([id]);
-    if (labelMenuId === id) labelMenuId = null;
+    labelMenu.forget(id);
     store.delete(id);
   }
 
@@ -168,11 +143,11 @@ export function createBoardPage({ store, reminders }) {
   const cardActions = {
     startEdit: editor.start,
     shift: shiftTask,
-    toggleLabelMenu,
+    toggleLabelMenu: labelMenu.toggle,
     remove: deleteTask,
     setPriority: (id, priority) => store.setPriority(id, priority),
     setDueDate: (id, dueDate) => store.setDueDate(id, dueDate),
-    closeLabelMenu,
+    closeLabelMenu: labelMenu.close,
     dragStart: (id) => {
       draggedId = id;
     },
@@ -186,7 +161,7 @@ export function createBoardPage({ store, reminders }) {
     const editorCard = editor.cardFor(task);
     if (editorCard) return editorCard;
     return createTaskCard(task, {
-      menuOpen: labelMenuId === task.id,
+      menuOpen: labelMenu.isOpen(task.id),
       highlightElapsed: highlights.elapsed(task.id),
       actions: cardActions,
     });
@@ -197,12 +172,8 @@ export function createBoardPage({ store, reminders }) {
   function render() {
     const all = tasks();
     editor.reconcile(all);
-    const menuTask = all.find((t) => t.id === labelMenuId);
-    if (labelMenuId !== null && (!menuTask || !isEditable(menuTask))) labelMenuId = null;
-    // Control del menú de etiquetas con el foco, para devolvérselo tras redibujar.
-    const menuFocusKey = document.activeElement?.closest?.('.label-menu')
-      ? document.activeElement.dataset.menuKey
-      : null;
+    labelMenu.reconcile(all);
+    const restoreMenuFocus = labelMenu.preserveFocus();
 
     const restoreEditorFocus = editor.preserveFocus();
 
@@ -240,10 +211,7 @@ export function createBoardPage({ store, reminders }) {
     allDoneMessage.classList.toggle('hidden', !allCompleted);
 
     restoreEditorFocus();
-    if (menuFocusKey && labelMenuId !== null) {
-      const control = document.querySelector(`.label-menu [data-menu-key="${menuFocusKey}"]`);
-      if (control) control.focus({ preventScroll: true });
-    }
+    restoreMenuFocus();
   }
 
   /* ---------- Eventos ---------- */
@@ -292,10 +260,7 @@ export function createBoardPage({ store, reminders }) {
   clearCompletedBtn.addEventListener('click', clearCompleted);
   filterButtons.forEach((btn) => btn.addEventListener('click', () => setFilter(btn.dataset.filter)));
 
-  // Un clic fuera del menú de etiquetas lo cierra.
-  document.addEventListener('click', (event) => {
-    if (labelMenuId !== null && !event.target.closest('.label-menu, .label-btn')) closeLabelMenu();
-  });
+  labelMenu.listen();
 
   setInterval(refreshOverdue, 15000);
   document.addEventListener('visibilitychange', () => {
