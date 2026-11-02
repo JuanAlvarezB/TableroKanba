@@ -35,9 +35,8 @@ Publicado en <https://juanalvarezb.github.io/TableroKanba/>.
 | QA         | Probar lo que ya está en `main` antes de PDN | `tablero-kanban-qa.web.app` y `tablero-kanban-qa.firebaseapp.com` (Firebase Hosting) | `tablero-kanban-qa`    | `tareas-qa-<uid>`, `tareas-migradas-qa-<uid>`   |
 | Desarrollo | Construir funciones nuevas                   | Cualquier otra dirección: `localhost`…                                               | `tablero-kanban-dev`   | `tareas-dev-<uid>`, `tareas-migradas-dev-<uid>` |
 
-Los tres proyectos no comparten nada: ni datos, ni usuarios, ni reglas, ni claves de API. El sitio de
-QA aún no se publica: llegará con el despliegue automático desde `main` (`docs/PLAN_AMBIENTES.md`); hoy
-QA tiene su proyecto, sus reglas y su primer administrador.
+Los tres proyectos no comparten nada: ni datos, ni usuarios, ni reglas, ni claves de API. QA se
+publica solo, con sus reglas, en cada merge a `main` (ver [Despliegue](#despliegue-y-variables-de-firebase)).
 
 Las claves llevan el `uid` de la persona, para que nadie vea la copia local de otra en el
 mismo navegador; al cerrar sesión se borran. Las claves sin `uid` (`tareas`, `tareas-dev`…)
@@ -116,11 +115,15 @@ globalmente:
 ```bash
 npx firebase-tools login                                          # una sola vez
 npx firebase-tools deploy --only firestore:rules --project dev    # primero Desarrollo
-npx firebase-tools deploy --only firestore:rules --project qa     # QA, hasta que lo haga el CI
 npx firebase-tools deploy --only firestore:rules --project pdn    # PDN, antes del merge
 ```
 
-- Publica siempre con `--only firestore:rules` y con `--project`.
+En QA no se publican a mano: lo hace `deploy.yml` en cada merge a `main`, antes del sitio, y las
+comprueba con `verificar-reglas`.
+
+- Publica siempre con `--only firestore:rules` y con `--project`. Nunca `firebase deploy` sin `--only`.
+- Nunca `--only hosting` fuera de QA: `firebase.json` solo tiene el target de Hosting `qa`, asociado
+  en `.firebaserc` únicamente a `tablero-kanban-qa`, así que en `dev` o `pdn` termina en error.
 - No uses `firebase init`: puede sobrescribir `firestore.rules`.
 
 Las reglas son la única barrera real de seguridad: lo publicado tiene que ser siempre el archivo.
@@ -162,6 +165,14 @@ En cada ambiente, primero Desarrollo y después PDN:
 
 Después de revertir, anota la hora en el Pull Request o en una incidencia. Si el código ya
 publicado necesita las reglas nuevas, revierte también el merge (ver "Cómo hacer un cambio").
+
+**Piso de reglas.** Como el pipeline publica `firestore.rules` en cada merge, revertir el merge de una
+función revertiría también sus reglas. `scripts/admin/rules-floor.test.js` lo impide: `npm test` falla
+(en el Pull Request y en el pipeline, antes de publicar nada) si al archivo le falta alguno de los
+marcadores de abajo (`history`, subtareas, `taskIndex` estricto y permisos). Ningún PR de funcionalidad
+toca esa prueba: el piso se sube en un PR aparte cuando la función ya está estable y con datos en PDN, y
+solo se baja en un PR que lo explique y que limpie antes los datos con el script administrativo. Las
+comprobaciones con `grep` de esta sección son la misma lista, para revisar una versión en la consola.
 
 #### Historial de tareas: nunca revertir a reglas sin `history`
 
@@ -442,9 +453,9 @@ consola. El resultado de la prueba en Desarrollo se anota en `docs/PLAN_USUARIOS
 
 ## Cómo hacer un cambio
 
-`main` es PDN: cada merge a `main` despliega a GitHub Pages
-(`.github/workflows/deploy.yml`). `main` está protegida, así que todo cambio entra por
-Pull Request.
+Cada merge a `main` se publica primero en QA y, si QA pasó, en PDN (`.github/workflows/deploy.yml`;
+ver [Despliegue](#despliegue-y-variables-de-firebase)). `main` está protegida, así que todo cambio entra
+por Pull Request.
 
 1. `git checkout main && git pull`, y crea una rama: `feature/…`, `fix/…`, `docs/…` o
    `chore/…`.
@@ -455,9 +466,10 @@ Pull Request.
    changed". `ci.yml` revisa formato, lint, pruebas y build (`revisar`) y las reglas en el emulador
    (`reglas`); los dos tienen que terminar en verde.
 5. Si cambiaron las reglas, publícalas en `pdn` y compruébalas **antes** del merge; después marca el
-   Pull Request **Ready for review**.
-6. Haz merge con **Create a merge commit**. Espera a que Actions termine en verde y
-   verifica PDN (recarga con `Cmd + Shift + R`).
+   Pull Request **Ready for review**. En QA las publica el pipeline.
+6. Haz merge con **Create a merge commit**. Actions → **Desplegar** publica QA (reglas, verificación,
+   sitio y smoke) y después PDN. Si falla algo de QA, PDN no cambia. Cuando termine en verde, verifica
+   `https://tablero-kanban-qa.web.app/` y PDN (recarga con `Cmd + Shift + R`).
 7. Etiqueta la versión (`git tag -a pdn-AAAA-MM-DD`; si se publicaron reglas, también
    `pdn-reglas-AAAA-MM-DD`) y borra la rama.
 
@@ -472,12 +484,33 @@ Si algo falla en PDN, se revierte el merge con el botón **Revert** del Pull Req
 - **Imágenes y otros archivos que se publican tal cual**: van en `public/assets/` y se
   enlazan como `/assets/<archivo>`.
 - **Una página `.html` nueva**: agrégala también a `build.rolldownOptions.input` de
-  `vite.config.js` y a la comprobación de `deploy.yml`.
+  `vite.config.js`, a la comprobación de `deploy.yml` y a la lista de páginas de
+  `scripts/ci/smoke.sh`.
 
 ## Despliegue y variables de Firebase
 
-`deploy.yml` ejecuta `npm ci` y `npm run build`, comprueba el sitio y publica `dist/`. La
-configuración de Firebase sale de las **variables del repositorio** en GitHub (Settings →
+`deploy.yml` corre en cada push a `main` (`docs/PLAN_AMBIENTES.md`, bloque D):
+
+| Job       | Qué hace                                                                                                                                                                                                                                                                                                                                    |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guardas` | Se niega si el run no es de `main` o si `main` ya avanzó (entonces publica el run del commit más nuevo)                                                                                                                                                                                                                                     |
+| `test`    | `npm test`, incluido el piso de reglas                                                                                                                                                                                                                                                                                                      |
+| `build`   | **Un solo build** con las tres configuraciones; comprueba las páginas, los tres `projectId` y que no haya nada del emulador; guarda las huellas SHA-256 y sube el mismo `dist/` para QA y para Pages (7 días)                                                                                                                               |
+| `qa`      | Environment `qa`. Comprueba alias, proyecto, cuenta y dirección; entra en Google con Workload Identity (sin claves); publica las reglas en QA, las verifica con `verificar-reglas`, publica Hosting de QA y corre el smoke (`scripts/ci/smoke.sh`: las cuatro páginas, la huella de cada archivo servido, el `projectId` de QA y `noindex`) |
+| `pages`   | Solo si `qa` pasó: publica en GitHub Pages el mismo build                                                                                                                                                                                                                                                                                   |
+
+- Un fallo en cualquier paso de QA deja PDN sin cambios. Ningún run se cancela a mitad de una
+  publicación: si llegan varios merges, cada job deja el suyo en espera.
+- Las credenciales de QA solo se obtienen desde `main` y desde el environment `qa`: la condición del
+  proveedor de Workload Identity exige este repositorio, `environment:qa` y `refs/heads/main`, y el
+  environment solo admite `main`. Lanzar **Desplegar** a mano desde otra rama termina en `guardas`.
+- Las reglas de PDN se siguen publicando a mano antes del merge; la aprobación de PDN y sus reglas por el
+  pipeline llegan en el PR 3 del plan.
+- El environment `qa` (Settings → Environments) tiene cuatro variables, ninguna secreta:
+  `GCP_WIF_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `FIREBASE_PROJECT_ID` y `SITE_URL`. No hay secretos ni
+  claves JSON en el repositorio ni en los environments.
+
+La configuración de Firebase del build sale de las **variables del repositorio** en GitHub (Settings →
 Secrets and variables → Actions → Variables), con los mismos nombres que `.env.example`.
 Para cargarlas desde tu `.env.local`:
 
