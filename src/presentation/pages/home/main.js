@@ -2,6 +2,7 @@
 // funciones habilitadas para la persona (docs/PLAN_USUARIOS.md, 3.4).
 import { APP_ENV } from '../../../shared/config/firebase.config.js';
 import { mountAccountMenu } from '../../components/AccountMenu.js';
+import { markEnvironment } from '../../components/EnvironmentBadge.js';
 import { applyFeatureVisibility, showFeatureNotice } from '../../components/FeatureVisibility.js';
 import { requireSession, takeHomeMessage } from '../../guards/session.js';
 
@@ -13,11 +14,8 @@ async function startHome() {
   applyFeatureVisibility(document, session);
   showFeatureNotice(document.getElementById('home-notice'), takeHomeMessage());
 
-  // Fuera de PDN se marca la página como Desarrollo.
-  if (APP_ENV.name === 'dev') {
-    document.title = `[DEV] ${document.title}`;
-    document.getElementById('env-badge').hidden = false;
-  }
+  // Fuera de PDN se marca la página con su ambiente.
+  markEnvironment(document, APP_ENV);
 }
 
 startHome();

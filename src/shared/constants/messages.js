@@ -10,6 +10,13 @@ export const LOGIN_MESSAGES = {
   inactive: 'Tu acceso a LUCAS fue desactivado. Habla con el administrador.',
 };
 
+// Distintivo y prefijo de la pestaña de cada ambiente (docs/PLAN_AMBIENTES.md, A.2). PDN no tiene entrada:
+// no se marca.
+export const ENVIRONMENT_LABELS = {
+  dev: { badge: 'DESARROLLO', tab: '[DEV]' },
+  qa: { badge: 'QA', tab: '[QA]' },
+};
+
 // Permisos por función (docs/PLAN_USUARIOS.md, 3.4): el inicio sin funciones y el aviso que muestra al
 // llegar desde una función deshabilitada (la guardia lleva al inicio). Solo los ve la propia persona.
 export const FEATURE_MESSAGES = {

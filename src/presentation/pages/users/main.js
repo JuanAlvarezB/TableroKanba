@@ -4,6 +4,7 @@
 import { createAdminUsersRepository } from '../../../data/repositories/AdminUsersRepository.js';
 import { APP_ENV } from '../../../shared/config/firebase.config.js';
 import { mountAccountMenu } from '../../components/AccountMenu.js';
+import { markEnvironment } from '../../components/EnvironmentBadge.js';
 import { ENV_FEATURE_DEFAULTS, onSignOut, requireSession, revalidateSession } from '../../guards/session.js';
 import { createUsersStore } from '../../state/usersStore.js';
 import { createUsersPage } from './UsersPage.js';
@@ -21,11 +22,8 @@ async function startUsers() {
   // Si las reglas rechazan un cambio, quizá ya no es administrador: la guardia lo comprueba.
   store.on('access-lost', revalidateSession);
 
-  // Fuera de PDN se marca la página como Desarrollo.
-  if (APP_ENV.name === 'dev') {
-    document.title = `[DEV] ${document.title}`;
-    document.getElementById('env-badge').hidden = false;
-  }
+  // Fuera de PDN se marca la página con su ambiente.
+  markEnvironment(document, APP_ENV);
 }
 
 startUsers();

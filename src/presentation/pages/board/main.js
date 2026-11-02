@@ -5,22 +5,12 @@ import { createLocalTaskCache } from '../../../data/repositories/LocalTaskCache.
 import { createReminderStore } from '../../../data/repositories/ReminderStore.js';
 import { APP_ENV } from '../../../shared/config/firebase.config.js';
 import { mountAccountMenu } from '../../components/AccountMenu.js';
+import { markEnvironment } from '../../components/EnvironmentBadge.js';
 import { applyFeatureVisibility } from '../../components/FeatureVisibility.js';
 import { onSignOut, requireSession, revalidateSession } from '../../guards/session.js';
 import { createBoardStore } from '../../state/boardStore.js';
 import { setFeatures } from '../../state/features.js';
 import { createBoardPage } from './BoardPage.js';
-
-// Fuera de PDN se marca la página como Desarrollo, para no confundir las pruebas con el
-// tablero real.
-function showEnvironmentBadge() {
-  if (APP_ENV.name !== 'dev') return;
-  document.title = `[DEV] ${document.title}`;
-  const badge = document.createElement('span');
-  badge.className = 'env-badge';
-  badge.textContent = 'DESARROLLO';
-  document.querySelector('h1').append(' ', badge);
-}
 
 // La vista escucha desde el principio (formulario, arrastre, avisos), pero el tablero queda
 // vacío hasta confirmar la sesión.
@@ -50,5 +40,6 @@ async function startBoard() {
   store.on('access-lost', revalidateSession);
 }
 
-showEnvironmentBadge();
+// Fuera de PDN se marca la página con su ambiente, para no confundir las pruebas con el tablero real.
+markEnvironment(document, APP_ENV);
 startBoard();

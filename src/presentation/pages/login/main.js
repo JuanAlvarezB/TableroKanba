@@ -3,6 +3,7 @@
 // inicio.
 import { APP_ENV } from '../../../shared/config/firebase.config.js';
 import { LOGIN_MESSAGES, errorMessage } from '../../../shared/constants/messages.js';
+import { markEnvironment } from '../../components/EnvironmentBadge.js';
 import { HOME_PAGE, authorize, loadAuth, loginUrl, rejectUser, takeLoginMessage } from '../../guards/session.js';
 
 const RESEND_COOLDOWN = 60; // segundos entre envíos de correos de Firebase
@@ -263,10 +264,7 @@ verifySignout.addEventListener('click', async () => {
 /* ---------- Arranque ---------- */
 
 async function startLogin() {
-  if (APP_ENV.name === 'dev') {
-    document.title = `[DEV] ${document.title}`;
-    document.getElementById('env-badge').hidden = false;
-  }
+  markEnvironment(document, APP_ENV);
 
   const pendingMessage = takeLoginMessage();
   setSigninBusy(true);

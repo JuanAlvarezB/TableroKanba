@@ -143,6 +143,12 @@
   text-transform: uppercase;
 }
 
+.lucas-home .env-badge--qa {
+  border-color: #b9a3f5;
+  background: #efe9ff;
+  color: #4a2b96;
+}
+
 /* ---------- Zona de usuario (la monta cuenta.js) ----------
    En el inicio el avatar siempre despliega un menú con el nombre y las acciones, también en
    escritorio. En el tablero sigue como define lucas.css. */
