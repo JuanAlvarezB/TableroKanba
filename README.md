@@ -29,25 +29,33 @@ Publicado en <https://juanalvarezb.github.io/TableroKanba/>.
 
 ## Ambientes
 
-| Ambiente   | Dónde se abre                           | Proyecto de Firebase   | Claves en `localStorage`                        |
-| ---------- | --------------------------------------- | ---------------------- | ----------------------------------------------- |
-| PDN        | `juanalvarezb.github.io` (GitHub Pages) | `tablero-kanban-76c61` | `tareas-<uid>`, `tareas-migradas-<uid>`         |
-| Desarrollo | Cualquier otra dirección: `localhost`…  | `tablero-kanban-dev`   | `tareas-dev-<uid>`, `tareas-migradas-dev-<uid>` |
+| Ambiente   | Para qué                                     | Dónde se abre                                                                        | Proyecto de Firebase   | Claves en `localStorage`                        |
+| ---------- | -------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------- | ----------------------------------------------- |
+| PDN        | Uso real                                     | `juanalvarezb.github.io` (GitHub Pages)                                              | `tablero-kanban-76c61` | `tareas-<uid>`, `tareas-migradas-<uid>`         |
+| QA         | Probar lo que ya está en `main` antes de PDN | `tablero-kanban-qa.web.app` y `tablero-kanban-qa.firebaseapp.com` (Firebase Hosting) | `tablero-kanban-qa`    | `tareas-qa-<uid>`, `tareas-migradas-qa-<uid>`   |
+| Desarrollo | Construir funciones nuevas                   | Cualquier otra dirección: `localhost`…                                               | `tablero-kanban-dev`   | `tareas-dev-<uid>`, `tareas-migradas-dev-<uid>` |
+
+Los tres proyectos no comparten nada: ni datos, ni usuarios, ni reglas, ni claves de API. El sitio de
+QA aún no se publica: llegará con el despliegue automático desde `main` (`docs/PLAN_AMBIENTES.md`); hoy
+QA tiene su proyecto, sus reglas y su primer administrador.
 
 Las claves llevan el `uid` de la persona, para que nadie vea la copia local de otra en el
 mismo navegador; al cerrar sesión se borran. Las claves sin `uid` (`tareas`, `tareas-dev`…)
 son del tablero anónimo anterior y se borran al iniciar sesión.
 
 `src/shared/config/firebase.config.js` elige el ambiente según la dirección de la página (no
-según el modo de Vite). Solo el dominio de GitHub
-Pages usa PDN; cualquier otra dirección usa Desarrollo, así que un error deja datos de
-prueba en Desarrollo, nunca en PDN.
+según el modo de Vite), por igualdad exacta: solo el dominio de GitHub Pages usa PDN y solo los dos
+dominios de Hosting de QA usan QA; cualquier otra dirección (subdominios, mayúsculas, `localhost`…)
+usa Desarrollo, así que un error deja datos de prueba en Desarrollo, nunca en QA ni en PDN.
 
 **¿En qué ambiente estoy?**
 
-- En Desarrollo aparece el distintivo **DESARROLLO** en cada página y la pestaña empieza
+- En Desarrollo aparece el distintivo ámbar **DESARROLLO** en cada página y la pestaña empieza
   por "[DEV]".
-- En la pestaña Red del navegador, las peticiones a Firebase llevan el `projectId` del ambiente.
+- En QA aparece el distintivo violeta **QA** y la pestaña empieza por "[QA]".
+- En PDN no hay distintivo ni prefijo.
+- En la pestaña Red del navegador, las peticiones a Firebase llevan el `projectId` del ambiente
+  (`tablero-kanban-dev`, `tablero-kanban-qa` o `tablero-kanban-76c61`).
 
 ## Correr en local
 
@@ -78,7 +86,8 @@ página se queda en "Cargando…".
 ## Usuarios autorizados
 
 No hay registro público: el administrador autoriza a cada persona **en cada ambiente** (las
-cuentas no se comparten entre Desarrollo y PDN).
+cuentas no se comparten entre Desarrollo, QA y PDN). En QA solo se da de alta a quien prueba, y
+nunca se copian allí datos ni cuentas de PDN.
 
 1. En LUCAS, inicio → **Gestión de usuarios** (`usuarios.html`, solo para administradores) →
    **Autorizar correo**, con su nombre y su rol. La misma página desactiva, reactiva, da o quita el
@@ -101,12 +110,13 @@ Las contraseñas nunca se escriben en el repositorio ni se envían por chat o co
 ## Reglas de Firestore
 
 Las reglas están en `firestore.rules` y se publican con la CLI de Firebase (`firebase.json`
-y `.firebaserc` definen los alias `dev` y `pdn`). Se usa con `npx`, sin instalarla
+y `.firebaserc` definen los alias `dev`, `qa` y `pdn`). Se usa con `npx`, sin instalarla
 globalmente:
 
 ```bash
 npx firebase-tools login                                          # una sola vez
 npx firebase-tools deploy --only firestore:rules --project dev    # primero Desarrollo
+npx firebase-tools deploy --only firestore:rules --project qa     # QA, hasta que lo haga el CI
 npx firebase-tools deploy --only firestore:rules --project pdn    # PDN, antes del merge
 ```
 
@@ -254,7 +264,7 @@ campo `permissions` en la consola: vuelven los valores iniciales (todo activo).
 
 ### Comprobar con el script (`verificar-reglas`)
 
-`npm run admin -- verificar-reglas --ambiente dev|pdn` descarga, con la API de Firebase Rules, las
+`npm run admin -- verificar-reglas --ambiente dev|qa|pdn` descarga, con la API de Firebase Rules, las
 reglas vigentes del proyecto (el de ese alias en `.firebaserc`) y compara su huella SHA-256 con
 `firestore.rules`. Solo lee: no cambia nada en Firebase. Termina con código 0 si coinciden, 1 si no
 coinciden (muestra la primera línea distinta) y 2 si no pudo comprobarlo. Si solo cambian espacios al
@@ -336,21 +346,22 @@ comando se prueba primero en Desarrollo.
 ### Cómo se usa
 
 ```bash
-npm run admin -- <comando> --ambiente dev|pdn --admin <tu correo de LUCAS> [opciones] [--aplicar]
+npm run admin -- <comando> --ambiente dev|qa|pdn --admin <tu correo de LUCAS> [opciones] [--aplicar]
 npm run admin    # sin argumentos: la ayuda con cada comando y sus opciones
 ```
 
 - **`--admin`** es tu correo de LUCAS en ese ambiente. El script comprueba que eres administrador activo
   con `uid` registrado y firma con ese `uid` sus entradas de `adminLog` (2.7).
 - **Simulación por defecto.** Sin `--aplicar`, los comandos que escriben solo informan qué harían. Con
-  `--aplicar` en PDN, además, hay que teclear el identificador del proyecto.
+  `--aplicar` en QA o en PDN, además, hay que teclear el identificador del proyecto (`tablero-kanban-qa`
+  o `tablero-kanban-76c61`); en Desarrollo, no.
 - **Nunca imprime contenido de tareas:** solo cantidades e identificadores. Los correos de otras personas
   salen enmascarados (`pe***@e***.com`).
 - **Cada ejecución que escribe deja su entrada** en `adminLog` (`backup`, `backfill-index`,
   `purge-leftovers`, `purge-log`, `clean-auth`, `restore`), con `uid` y nunca correos. Si falla a mitad,
   deja otra con `completed: false`. La app no puede editar ni borrar el registro; el script y la consola
   sí (el Admin SDK se salta las reglas, alarma A-20).
-- La frase de cifrado y la confirmación de PDN se teclean en la terminal: no se aceptan por argumento ni
+- La frase de cifrado y la confirmación de QA y PDN se teclean en la terminal: no se aceptan por argumento ni
   por tubería.
 - Termina con código 0 si todo está bien, 1 si encontró diferencias o se negó por una condición de
   seguridad (no escribe nada más) y 2 si hubo un error de uso o de conexión.

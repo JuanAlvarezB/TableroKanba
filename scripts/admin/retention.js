@@ -30,7 +30,7 @@ export const ageInDays = (createdAt, now) => Math.floor((now - createdAt) / DAY_
  * Respaldos del ambiente con más de 30 días, según la fecha de su nombre (copiar el archivo cambia su
  * fecha de modificación, no su nombre). Los archivos que no son respaldos de este ambiente no se tocan.
  * @param {string[]} names Archivos de la carpeta de respaldos del ambiente.
- * @param {'dev' | 'pdn'} ambiente
+ * @param {'dev' | 'qa' | 'pdn'} ambiente
  * @param {number} now
  */
 export function classifyBackups(names, ambiente, now) {

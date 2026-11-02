@@ -1,6 +1,7 @@
 {
   "projects": {
     "dev": "tablero-kanban-dev",
+    "qa": "tablero-kanban-qa",
     "pdn": "tablero-kanban-76c61"
   }
 }

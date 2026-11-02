@@ -5,9 +5,10 @@
 // activo" y features.config.test.js lo exige (A-37). La configuración de cada persona vive en Firestore
 // (allowedUsers.permissions); un valor inicial solo cuenta mientras su clave no esté guardada.
 
-/** @type {Record<'pdn' | 'dev', Record<string, boolean>>} */
+/** @type {Record<'pdn' | 'qa' | 'dev', Record<string, boolean>>} */
 export const FEATURE_DEFAULTS = {
-  // Hoy, todas activas en los dos ambientes.
+  // Hoy, todas activas en los tres ambientes. QA copia a PDN: debe comportarse como PDN.
   pdn: { stalledAlerts: true, reminders: true, history: true },
+  qa: { stalledAlerts: true, reminders: true, history: true },
   dev: { stalledAlerts: true, reminders: true, history: true },
 };

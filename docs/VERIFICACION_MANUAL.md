@@ -13,9 +13,13 @@ lo muestra como error, pero no es un error de LUCAS. No cuenta como falla si el 
 
 ## 1. Ambiente
 
-- [ ] En local, el tablero muestra la insignia **DESARROLLO** y el título empieza por `[DEV]`.
-- [ ] En `juanalvarezb.github.io` no aparece la insignia (usa PDN).
-- [ ] Las tareas de Desarrollo nunca aparecen en PDN, ni al revés.
+- [ ] En local, las cuatro páginas muestran la insignia **DESARROLLO** (ámbar), el título empieza por
+      `[DEV]` y las peticiones de la pestaña Red van a `tablero-kanban-dev`.
+- [ ] En `tablero-kanban-qa.web.app` y en `tablero-kanban-qa.firebaseapp.com` (desde que exista el sitio de
+      QA): insignia **QA** violeta, título que empieza por `[QA]` y peticiones a `tablero-kanban-qa`.
+- [ ] En `juanalvarezb.github.io`: sin insignia, sin prefijo y peticiones a `tablero-kanban-76c61`.
+- [ ] Una cuenta de PDN no entra en QA (no está en su `allowedUsers`), ni al revés.
+- [ ] Las tareas de un ambiente nunca aparecen en otro.
 
 ## 2. Inicio de sesión (`login.html`)
 

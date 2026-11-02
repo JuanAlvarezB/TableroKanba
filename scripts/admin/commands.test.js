@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BackupError, decryptBackup, parseBackup } from './backup.js';
 import { completeIndex } from './completar-indice.js';
-import { Refusal } from './context.js';
+import { Refusal, confirmWrite } from './context.js';
 import { cleanOrphanAccounts } from './cuentas-huerfanas.js';
 import { purgeBackups } from './limpiar-respaldos.js';
 import { purgeUser } from './limpiar-usuario.js';
@@ -162,6 +162,28 @@ function setup({ data = seed(), accounts = [], authError = null, answers = [], .
 }
 
 const lastEntry = (store) => store.commits.at(-1).at(-1).entry;
+
+describe('confirmación antes de escribir (docs/PLAN_AMBIENTES.md, P-1)', () => {
+  it('en Desarrollo no pregunta', async () => {
+    const { context } = setup({ ambiente: 'dev' });
+    await confirmWrite(context);
+    expect(context.terminal.questions).toEqual([]);
+  });
+
+  it.each([
+    ['qa', 'QA'],
+    ['pdn', 'PDN'],
+  ])('en %s pide teclear el identificador del proyecto y nombra el ambiente', async (ambiente, name) => {
+    const right = setup({ ambiente, answers: ['demo-lucas'] });
+    await confirmWrite(right.context);
+    expect(right.context.terminal.questions).toEqual([
+      `Vas a escribir en ${name}. Para continuar, escribe el identificador del proyecto (demo-lucas): `,
+    ]);
+
+    const wrong = setup({ ambiente, answers: ['tablero-equivocado'] });
+    await expect(confirmWrite(wrong.context)).rejects.toThrow('no coincide');
+  });
+});
 
 describe('quién ejecuta el script', () => {
   it.each([

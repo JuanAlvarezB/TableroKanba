@@ -80,6 +80,19 @@ describe('vencimientos', () => {
     ]);
     expect(ignored).toEqual(['respaldo-pdn-2026-01-01T00-00-00Z.cifrado', '.DS_Store']);
   });
+
+  it('cada ambiente reconoce solo sus respaldos: los de QA no se tocan desde PDN ni al revés', () => {
+    const now = Date.UTC(2026, 9, 27, 12);
+    const names = ['respaldo-qa-2026-01-01T00-00-00Z.cifrado', 'respaldo-pdn-2026-01-01T00-00-00Z.cifrado'];
+    expect(classifyBackups(names, 'pdn', now)).toMatchObject({
+      backups: [{ name: 'respaldo-pdn-2026-01-01T00-00-00Z.cifrado', expired: true }],
+      ignored: ['respaldo-qa-2026-01-01T00-00-00Z.cifrado'],
+    });
+    expect(classifyBackups(names, 'qa', now)).toMatchObject({
+      backups: [{ name: 'respaldo-qa-2026-01-01T00-00-00Z.cifrado', expired: true }],
+      ignored: ['respaldo-pdn-2026-01-01T00-00-00Z.cifrado'],
+    });
+  });
 });
 
 describe('tareas e índice', () => {

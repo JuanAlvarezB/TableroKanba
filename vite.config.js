@@ -1,9 +1,10 @@
 import { resolve } from 'node:path';
 import { defineConfig, loadEnv } from 'vite';
 
-// Variables que necesita src/shared/config/firebase.config.js en cada ambiente.
+// Variables que necesita src/shared/config/firebase.config.js en cada ambiente: el mismo build sirve
+// para los tres, así que deben estar las 18.
 const FIREBASE_KEYS = ['API_KEY', 'AUTH_DOMAIN', 'PROJECT_ID', 'STORAGE_BUCKET', 'MESSAGING_SENDER_ID', 'APP_ID'];
-const REQUIRED_ENV = ['DEV', 'PDN'].flatMap((name) => FIREBASE_KEYS.map((key) => `VITE_FIREBASE_${name}_${key}`));
+const REQUIRED_ENV = ['DEV', 'QA', 'PDN'].flatMap((name) => FIREBASE_KEYS.map((key) => `VITE_FIREBASE_${name}_${key}`));
 
 export default defineConfig(({ command, mode }) => {
   // Sin configuración, Firebase fallaría en el navegador; mejor que falle el build (y el deploy).

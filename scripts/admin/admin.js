@@ -1,8 +1,9 @@
 // Script administrativo local de LUCAS (docs/PLAN_USUARIOS.md, 2.11). Vive fuera de src/: no se
 // empaqueta con el sitio ni se despliega. Es la única pieza que usa el Admin SDK, con las credenciales de
-// Google de quien lo ejecuta y sin llaves. Uso: npm run admin -- <comando> --ambiente dev|pdn [opciones]
+// Google de quien lo ejecuta y sin llaves. Uso: npm run admin -- <comando> --ambiente dev|qa|pdn [opciones]
 //
-// Comandos (los que escriben solo simulan sin --aplicar; en PDN piden además el identificador del proyecto):
+// Comandos (los que escriben solo simulan sin --aplicar; en QA y en PDN piden además el identificador del
+// proyecto):
 //   verificar-reglas   Compara las reglas de Firestore publicadas con firestore.rules (solo lee).
 //   respaldar          Respaldo cifrado y verificado del ambiente; con --correo, antes de eliminar a esa
 //                      persona (crea su marcador).

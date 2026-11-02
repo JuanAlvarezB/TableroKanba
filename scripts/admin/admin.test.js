@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 import { UsageError, explainError, parseCommand, projectIdFor, usage } from './cli.js';
@@ -115,12 +117,23 @@ describe('argumentos y ambiente', () => {
     ).not.toHaveProperty('uid');
   });
 
+  it('acepta QA como tercer ambiente', () => {
+    expect(parseCommand(['verificar-reglas', '--ambiente', 'qa'], commands)).toEqual({
+      command: 'verificar-reglas',
+      ambiente: 'qa',
+      aplicar: false,
+    });
+  });
+
   it.each([
     [[], 'Falta el comando'],
     [['borrar-todo', '--ambiente', 'dev'], 'Comando desconocido'],
     [['toString', '--ambiente', 'dev'], 'Comando desconocido'],
-    [['verificar-reglas'], '--ambiente dev o --ambiente pdn'],
-    [['verificar-reglas', '--ambiente', 'qa'], '--ambiente dev o --ambiente pdn'],
+    [['verificar-reglas'], '--ambiente dev, qa o pdn'],
+    [['verificar-reglas', '--ambiente', 'QA'], '--ambiente dev, qa o pdn'],
+    [['verificar-reglas', '--ambiente', 'prod'], '--ambiente dev, qa o pdn'],
+    [['verificar-reglas', '--ambiente', 'produccion'], '--ambiente dev, qa o pdn'],
+    [['verificar-reglas', '--ambiente', ''], '--ambiente dev, qa o pdn'],
     [['verificar-reglas', '--ambiente', 'dev', 'extra'], 'Sobran argumentos'],
     [['verificar-reglas', '--ambiente', 'dev', '--aplicar'], 'aplicar'],
     [['verificar-indice', '--ambiente', 'dev', '--admin', 'a@ejemplo.test', '--aplicar'], 'no admite --aplicar'],
@@ -134,9 +147,26 @@ describe('argumentos y ambiente', () => {
   });
 
   it('toma el proyecto del alias de .firebaserc', () => {
-    const firebaserc = { projects: { dev: 'proyecto-dev', pdn: 'proyecto-pdn' } };
+    const firebaserc = { projects: { dev: 'proyecto-dev', qa: 'proyecto-qa', pdn: 'proyecto-pdn' } };
     expect(projectIdFor('dev', firebaserc)).toBe('proyecto-dev');
+    expect(projectIdFor('qa', firebaserc)).toBe('proyecto-qa');
     expect(() => projectIdFor('pdn', { projects: {} })).toThrow(UsageError);
+    expect(() => projectIdFor('qa', { projects: { dev: 'proyecto-dev', pdn: 'proyecto-pdn' } })).toThrow(
+      '.firebaserc no define el alias "qa"',
+    );
+  });
+
+  it('.firebaserc tiene un proyecto distinto para cada ambiente', () => {
+    const firebaserc = JSON.parse(readFileSync(resolve(import.meta.dirname, '..', '..', '.firebaserc'), 'utf-8'));
+    expect(firebaserc.projects).toEqual({
+      dev: 'tablero-kanban-dev',
+      qa: 'tablero-kanban-qa',
+      pdn: 'tablero-kanban-76c61',
+    });
+  });
+
+  it('la ayuda nombra los tres ambientes', () => {
+    expect(usage(commands)).toContain('--ambiente dev|qa|pdn');
   });
 
   it('se niega a usar un archivo de llave', () => {

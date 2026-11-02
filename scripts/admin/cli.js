@@ -1,8 +1,8 @@
 // Argumentos y ambiente del script administrativo (docs/PLAN_USUARIOS.md, 2.11): lógica pura, sin
-// Firebase. Forma: npm run admin -- <comando> --ambiente dev|pdn [opciones] [--aplicar].
+// Firebase. Forma: npm run admin -- <comando> --ambiente dev|qa|pdn [opciones] [--aplicar].
 import { parseArgs } from 'node:util';
 
-export const ENVIRONMENTS = ['dev', 'pdn'];
+export const ENVIRONMENTS = ['dev', 'qa', 'pdn'];
 
 // Opciones con valor que puede pedir un comando, con su marcador en la ayuda. --ambiente y --aplicar
 // son comunes a todos.
@@ -20,7 +20,7 @@ export class UsageError extends Error {}
 /**
  * @param {string[]} argv Argumentos después de `npm run admin --`.
  * @param {Record<string, CommandSpec>} commands Comandos disponibles.
- * @returns {{ command: string, ambiente: 'dev' | 'pdn', aplicar: boolean, admin?: string, correo?: string,
+ * @returns {{ command: string, ambiente: 'dev' | 'qa' | 'pdn', aplicar: boolean, admin?: string, correo?: string,
  *   uid?: string, archivo?: string }}
  */
 export function parseCommand(argv, commands) {
@@ -37,7 +37,7 @@ export function parseCommand(argv, commands) {
   if (!Object.hasOwn(commands, command)) throw new UsageError(`Comando desconocido: ${command}.`);
   if (extra.length > 0) throw new UsageError(`Sobran argumentos: ${extra.join(' ')}.`);
   const { ambiente, aplicar = false, ...values } = parsed.values;
-  if (!ENVIRONMENTS.includes(ambiente)) throw new UsageError('Indica el ambiente: --ambiente dev o --ambiente pdn.');
+  if (!ENVIRONMENTS.includes(ambiente)) throw new UsageError('Indica el ambiente: --ambiente dev, qa o pdn.');
 
   const { required = [], optional = [], writes = false } = commands[command];
   if (aplicar && !writes) throw new UsageError(`${command} no escribe nada: no admite --aplicar.`);
@@ -65,16 +65,16 @@ export function usage(commands) {
     ].join(' '),
   );
   return [
-    'Uso: npm run admin -- <comando> --ambiente dev|pdn [opciones]',
+    'Uso: npm run admin -- <comando> --ambiente dev|qa|pdn [opciones]',
     ...lines,
     'Sin --aplicar, los comandos que escriben solo simulan. --admin es tu correo de LUCAS.',
   ].join('\n');
 }
 
 /**
- * Identificador del proyecto de Firebase del ambiente, tomado de .firebaserc (alias dev y pdn), para
+ * Identificador del proyecto de Firebase del ambiente, tomado de .firebaserc (alias dev, qa y pdn), para
  * no repetirlo en el script.
- * @param {'dev' | 'pdn'} ambiente
+ * @param {'dev' | 'qa' | 'pdn'} ambiente
  * @param {{ projects?: Record<string, string> }} firebaserc
  */
 export function projectIdFor(ambiente, firebaserc) {

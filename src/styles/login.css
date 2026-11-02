@@ -94,6 +94,13 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
+/* QA en violeta, distinto del ámbar de Desarrollo (contraste AA sobre su fondo). */
+.env-badge--qa {
+  border-color: #b9a3f5;
+  background: #efe9ff;
+  color: #4a2b96;
+}
+
 /* ---------- Etiqueta mono con punto de color ---------- */
 
 .eyebrow {

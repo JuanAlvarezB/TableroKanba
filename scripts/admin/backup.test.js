@@ -145,10 +145,19 @@ describe('nombre del archivo de respaldo', () => {
     expect(parseBackupFileName(name)).toEqual({ ambiente: 'pdn', createdAt: Date.UTC(2026, 9, 27, 15, 4, 5) });
   });
 
-  it.each(['respaldo-qa-2026-10-27T15-04-05Z.cifrado', 'respaldo-dev-2026-10-27.json', 'notas.txt', '.DS_Store'])(
-    '%s no es un respaldo',
-    (name) => {
-      expect(parseBackupFileName(name)).toBeNull();
-    },
-  );
+  it('reconoce los respaldos de QA', () => {
+    const name = backupFileName('qa', Date.UTC(2026, 9, 27, 15, 4, 5));
+    expect(name).toBe('respaldo-qa-2026-10-27T15-04-05Z.cifrado');
+    expect(parseBackupFileName(name)).toEqual({ ambiente: 'qa', createdAt: Date.UTC(2026, 9, 27, 15, 4, 5) });
+  });
+
+  it.each([
+    'respaldo-prod-2026-10-27T15-04-05Z.cifrado',
+    'respaldo-QA-2026-10-27T15-04-05Z.cifrado',
+    'respaldo-dev-2026-10-27.json',
+    'notas.txt',
+    '.DS_Store',
+  ])('%s no es un respaldo', (name) => {
+    expect(parseBackupFileName(name)).toBeNull();
+  });
 });

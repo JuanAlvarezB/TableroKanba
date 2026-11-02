@@ -13,7 +13,7 @@ import { maskEmail } from './accounts.js';
 
 /**
  * @typedef {object} CommandContext
- * @property {{ command: string, ambiente: 'dev' | 'pdn', aplicar: boolean, admin?: string, correo?: string,
+ * @property {{ command: string, ambiente: 'dev' | 'qa' | 'pdn', aplicar: boolean, admin?: string, correo?: string,
  *   uid?: string, archivo?: string }} options
  * @property {string} projectId
  * @property {import('./store.js').Store} store
@@ -54,14 +54,19 @@ export async function requireAdmin(store, email) {
   return admin;
 }
 
+// Nombre de cada ambiente en la confirmación. Desarrollo no pide confirmación.
+const CONFIRM_NAMES = { qa: 'QA', pdn: 'PDN' };
+
 /**
- * En PDN, antes de escribir, hay que teclear el identificador del proyecto.
+ * Fuera de Desarrollo (QA y PDN), antes de escribir, hay que teclear el identificador del proyecto: protege
+ * de repetir un comando del historial en el ambiente equivocado (docs/PLAN_AMBIENTES.md, A.5 y P-1).
  * @param {CommandContext} context
  */
 export async function confirmWrite({ options, projectId, terminal }) {
-  if (options.ambiente !== 'pdn') return;
+  const name = CONFIRM_NAMES[options.ambiente];
+  if (!name) return;
   const answer = await terminal.ask(
-    `Vas a escribir en PDN. Para continuar, escribe el identificador del proyecto (${projectId}): `,
+    `Vas a escribir en ${name}. Para continuar, escribe el identificador del proyecto (${projectId}): `,
   );
   if (answer.trim() !== projectId) throw new Refusal('El identificador no coincide: no se escribió nada.');
 }

@@ -102,6 +102,13 @@
   vertical-align: middle;
 }
 
+/* QA en violeta, distinto del ámbar de Desarrollo (contraste AA sobre su fondo). */
+.env-badge.env-badge--qa {
+  border-color: #b9a3f5;
+  background: #efe9ff;
+  color: #4a2b96;
+}
+
 .env-badge[hidden] {
   display: none;
 }
