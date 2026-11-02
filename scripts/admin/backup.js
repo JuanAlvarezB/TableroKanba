@@ -64,7 +64,7 @@ export function decodeValue(value, makeTimestamp) {
  * @property {string} formato
  * @property {number} version
  * @property {string} proyecto
- * @property {'dev' | 'pdn'} ambiente
+ * @property {'dev' | 'qa' | 'pdn'} ambiente
  * @property {number} creado Milisegundos.
  * @property {Record<string, { id: string, datos: unknown }[]>} colecciones
  */
@@ -73,7 +73,7 @@ export function decodeValue(value, makeTimestamp) {
  * Texto del respaldo: colecciones y documentos ordenados, para que la huella no dependa del orden
  * en que llegan.
  * @param {Collections} collections
- * @param {{ projectId: string, ambiente: 'dev' | 'pdn', now: number }} meta
+ * @param {{ projectId: string, ambiente: 'dev' | 'qa' | 'pdn', now: number }} meta
  * @returns {{ plaintext: string, documentCount: number }}
  */
 export function serializeBackup(collections, { projectId, ambiente, now }) {
@@ -195,11 +195,11 @@ export function verifyBackup(fileContent, passphrase, expected) {
 
 /* ---------- Nombre del archivo ---------- */
 
-const FILE_PATTERN = /^respaldo-(dev|pdn)-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z\.cifrado$/;
+const FILE_PATTERN = /^respaldo-(dev|qa|pdn)-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})Z\.cifrado$/;
 
 /**
  * respaldo-<ambiente>-AAAA-MM-DDTHH-MM-SSZ.cifrado (hora UTC). No lleva el correo de nadie.
- * @param {'dev' | 'pdn'} ambiente
+ * @param {'dev' | 'qa' | 'pdn'} ambiente
  * @param {number} now
  */
 export function backupFileName(ambiente, now) {
@@ -209,7 +209,7 @@ export function backupFileName(ambiente, now) {
 
 /**
  * @param {string} name
- * @returns {{ ambiente: 'dev' | 'pdn', createdAt: number } | null} null si no es un respaldo.
+ * @returns {{ ambiente: 'dev' | 'qa' | 'pdn', createdAt: number } | null} null si no es un respaldo.
  */
 export function parseBackupFileName(name) {
   const match = FILE_PATTERN.exec(name);
