@@ -47,3 +47,5 @@ notificaciones.txt
 arquitecturaLimpia.md
 CLAUDE.md
 CLAUDE
+# Credenciales temporales de google-github-actions/auth en el CI (la acción las borra al terminar el job)
+gha-creds-*.json

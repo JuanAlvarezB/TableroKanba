@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { UsageError, explainError, parseCommand, projectIdFor, usage } from './cli.js';
+import { UsageError, ciRulesToken, explainError, parseCommand, projectIdFor, usage } from './cli.js';
 import { Refusal } from './context.js';
 import { connect } from './firebase.js';
 import { compareRules, fingerprint } from './rules.js';
@@ -163,6 +163,49 @@ describe('argumentos y ambiente', () => {
       qa: 'tablero-kanban-qa',
       pdn: 'tablero-kanban-76c61',
     });
+  });
+
+  it('sin LUCAS_REGLAS_TOKEN todo sigue como siempre: credenciales de gcloud', () => {
+    expect(ciRulesToken({ command: 'verificar-reglas', ambiente: 'dev' }, {})).toBeNull();
+    expect(ciRulesToken({ command: 'respaldar', ambiente: 'pdn' }, {})).toBeNull();
+  });
+
+  it('con LUCAS_REGLAS_TOKEN, verificar-reglas en QA o PDN usa el token', () => {
+    const env = { LUCAS_REGLAS_TOKEN: ' token-ci \n' };
+    expect(ciRulesToken({ command: 'verificar-reglas', ambiente: 'qa' }, env)).toBe('token-ci');
+    expect(ciRulesToken({ command: 'verificar-reglas', ambiente: 'pdn' }, env)).toBe('token-ci');
+  });
+
+  it('con LUCAS_REGLAS_TOKEN se niega cualquier otro comando, Desarrollo y un token vacío', () => {
+    const env = { LUCAS_REGLAS_TOKEN: 'token-ci' };
+    expect(() => ciRulesToken({ command: 'respaldar', ambiente: 'qa' }, env)).toThrow(
+      'solo sirve para verificar-reglas',
+    );
+    expect(() => ciRulesToken({ command: 'limpiar-respaldos', ambiente: 'pdn' }, env)).toThrow(UsageError);
+    expect(() => ciRulesToken({ command: 'verificar-reglas', ambiente: 'dev' }, env)).toThrow(
+      'el CI nunca toca Desarrollo',
+    );
+    expect(() => ciRulesToken({ command: 'verificar-reglas', ambiente: 'qa' }, { LUCAS_REGLAS_TOKEN: ' ' })).toThrow(
+      'está vacía',
+    );
+  });
+
+  it('Hosting solo puede publicarse en QA: un único target "qa", asociado solo a tablero-kanban-qa', () => {
+    const read = (file) => JSON.parse(readFileSync(resolve(import.meta.dirname, '..', '..', file), 'utf-8'));
+    const firebaseJson = read('firebase.json');
+    expect(firebaseJson.hosting.map(({ target, public: dir }) => ({ target, dir }))).toEqual([
+      { target: 'qa', dir: 'dist' },
+    ]);
+    expect(read('.firebaserc').targets).toEqual({ 'tablero-kanban-qa': { hosting: { qa: ['tablero-kanban-qa'] } } });
+  });
+
+  it('QA no se indexa y solo los .js y .css con hash quedan en caché para siempre', () => {
+    const [qa] = JSON.parse(readFileSync(resolve(import.meta.dirname, '..', '..', 'firebase.json'), 'utf-8')).hosting;
+    const header = (source) => qa.headers.find((rule) => rule.source === source)?.headers[0];
+    expect(header('**')).toEqual({ key: 'X-Robots-Tag', value: 'noindex, nofollow' });
+    expect(header('/')).toEqual({ key: 'Cache-Control', value: 'no-cache' });
+    expect(header('**/*.html')).toEqual({ key: 'Cache-Control', value: 'no-cache' });
+    expect(header('/assets/**/*-*.@(js|css)').value).toContain('immutable');
   });
 
   it('la ayuda nombra los tres ambientes', () => {

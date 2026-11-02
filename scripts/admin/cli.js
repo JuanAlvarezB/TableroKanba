@@ -83,6 +83,30 @@ export function projectIdFor(ambiente, firebaserc) {
   return projectId;
 }
 
+// Ambientes que publica el CI (docs/PLAN_AMBIENTES.md, B.4). Desarrollo nunca lo toca.
+const CI_ENVIRONMENTS = ['qa', 'pdn'];
+
+/**
+ * Token de acceso del CI para verificar-reglas (LUCAS_REGLAS_TOKEN), o null si no está: entonces el script usa
+ * el Admin SDK con tus credenciales de gcloud, como siempre. Con la variable presente, solo verificar-reglas en
+ * QA o en PDN puede correr; cualquier otro comando se niega.
+ * @param {{ command: string, ambiente: string }} options
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {string | null}
+ */
+export function ciRulesToken({ command, ambiente }, env) {
+  const token = env.LUCAS_REGLAS_TOKEN;
+  if (token === undefined) return null;
+  if (command !== 'verificar-reglas') {
+    throw new UsageError(`LUCAS_REGLAS_TOKEN solo sirve para verificar-reglas: quítala para ejecutar ${command}.`);
+  }
+  if (!CI_ENVIRONMENTS.includes(ambiente)) {
+    throw new UsageError('LUCAS_REGLAS_TOKEN solo sirve con --ambiente qa o pdn: el CI nunca toca Desarrollo.');
+  }
+  if (!token.trim()) throw new UsageError('LUCAS_REGLAS_TOKEN está vacía: el paso de autenticación no dio token.');
+  return token.trim();
+}
+
 const READ_RULES = 'leer las reglas';
 
 /**
