@@ -1,34 +1,65 @@
-# Despliega el tablero Kanban en GitHub Pages en cada push a la rama main, solo si pasan las pruebas.
-name: Desplegar en GitHub Pages
+# Despliega cada merge a main (docs/PLAN_AMBIENTES.md, bloque D): un solo build se publica primero en QA
+# (reglas → verificar-reglas → Hosting → smoke) y, solo si QA pasó, ese mismo build en GitHub Pages (PDN).
+# Desarrollo no lo toca nunca.
+#
+# PR 3 (pendiente): inserta entre qa y pages el job pdn (environment pdn, espera la aprobación del
+# responsable, publica y verifica las reglas de PDN), y agrega smoke-pdn y etiquetar. Mientras tanto PDN se
+# publica sin aprobación, como antes, pero después de QA, y sus reglas se siguen publicando a mano.
+name: Desplegar
 
 on:
   push:
     branches: [main]
-  # Permite lanzarlo manualmente desde la pestaña Actions
+  # Lanzarlo a mano desde otra rama termina en rojo en guardas sin tocar nada (guía, fase 13).
   workflow_dispatch:
 
-# Permisos mínimos necesarios para publicar en Pages
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+# Cada job pide solo sus permisos.
+permissions: {}
 
-# Evita despliegues simultáneos; si llega un push nuevo, cancela el anterior
-concurrency:
-  group: pages
-  cancel-in-progress: true
+# Sin concurrencia de workflow: cancelar un run podría cortar una publicación de reglas a medias (AM-9).
+# Cada job que publica tiene la suya, sin cancelar en curso.
 
 jobs:
-  test:
-    # Si alguna prueba falla, build y deploy no se ejecutan y PDN conserva la versión actual.
-    # No necesita las variables de Firebase: las pruebas usan repositorios falsos.
+  guardas:
     runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Solo desde main
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::Solo se despliega desde main; este run es de ${REF}. No se publicó nada."
+            exit 1
+          fi
+
+      - name: El commit es la punta de main
+        # Si main avanzó mientras tanto, el run del commit más nuevo es el que publica.
+        env:
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          PUNTA=$(git ls-remote "https://github.com/${REPO}.git" refs/heads/main | cut -f1)
+          if [ "$PUNTA" != "$SHA" ]; then
+            echo "::error::Hay un commit más nuevo en main (${PUNTA}); su run es el que despliega. No se publicó nada."
+            exit 1
+          fi
+
+  test:
+    # Si alguna prueba falla (incluido el piso de reglas, scripts/admin/rules-floor.test.js), no se publica
+    # nada. No necesita las variables de Firebase: las pruebas usan repositorios falsos.
+    needs: guardas
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Descargar el código
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Instalar Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
@@ -40,14 +71,19 @@ jobs:
         run: npm test
 
   build:
+    # Un solo build con las tres configuraciones: QA y PDN reciben exactamente estos archivos (D.2).
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Descargar el código
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Instalar Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
@@ -85,32 +121,158 @@ jobs:
         run: npm run build
 
       - name: Comprobar el sitio
-        # Las cuatro páginas existen, cada recurso que piden está en el sitio (si no, daría 404
-        # en PDN) y el bundle lleva el proyecto de Firebase de PDN.
+        # Las cuatro páginas existen y cada recurso que piden está en el sitio (si no, daría 404). Los tres
+        # projectId están escritos aquí, no tomados de las variables: así una variable mal cargada se detecta.
+        # Nada del emulador (demo-lucas y sus puertos) puede llegar a un sitio publicado.
         run: |
           for page in index.html tablero.html login.html usuarios.html; do
-            test -f "dist/${page}" || { echo "Falta ${page}"; exit 1; }
+            test -f "dist/${page}" || { echo "::error::Falta ${page}"; exit 1; }
           done
           for ref in $(grep -ohE "(src|href)=\"\./[^\"]+\"" dist/*.html | sed -E 's/.*"\.\/(.*)"/\1/' | sort -u); do
-            test -f "dist/${ref}" || { echo "Falta ${ref} en el sitio"; exit 1; }
+            test -f "dist/${ref}" || { echo "::error::Falta ${ref} en el sitio"; exit 1; }
           done
-          grep -q "tablero-kanban-76c61" dist/assets/*.js || { echo "Falta la configuración de PDN"; exit 1; }
+          for proyecto in tablero-kanban-dev tablero-kanban-qa tablero-kanban-76c61; do
+            grep -q "$proyecto" dist/assets/*.js || { echo "::error::Falta la configuración de ${proyecto}"; exit 1; }
+          done
+          if grep -rqE "demo-lucas|:9099|:8180" dist; then
+            echo "::error::El sitio contiene la configuración del emulador"
+            exit 1
+          fi
 
-      - name: Configurar GitHub Pages
-        uses: actions/configure-pages@v6
+      - name: Huellas del build
+        # SHA-256 de cada archivo de dist/: QA las comprueba al descargar y el smoke, en lo servido.
+        run: |
+          find dist -type f -print0 | sort -z | xargs -0 sha256sum > huellas.txt
+          cat huellas.txt
 
-      - name: Subir el sitio como artefacto
-        uses: actions/upload-pages-artifact@v5
+      - name: Subir el sitio para QA
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sitio
+          path: |
+            dist/
+            huellas.txt
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Subir el sitio para GitHub Pages
+        # El mismo dist/, en el mismo job. Dura 7 días: lo que puede esperar una aprobación de PDN (P-4).
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: dist
+          retention-days: 7
 
-  deploy:
+  qa:
+    # Un fallo en cualquier paso deja este job en rojo: pages no corre y PDN no cambia. Las credenciales de
+    # Google solo se obtienen desde main y desde el environment qa (condición del proveedor de Workload
+    # Identity y regla de ramas del environment; PLAN_AMBIENTES B.3 y C.1).
     needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: qa
+      url: ${{ vars.SITE_URL }}
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: despliegue-qa
+      cancel-in-progress: false
+    env:
+      PROYECTO: tablero-kanban-qa
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Instalar Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        # firebase-tools sale de package-lock.json, con versión exacta.
+        run: npm ci
+
+      - name: Guardas (rama, alias, proyecto, cuenta y dirección)
+        env:
+          REF: ${{ github.ref }}
+          PROYECTO_VARIABLE: ${{ vars.FIREBASE_PROJECT_ID }}
+          CUENTA: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          [ "$REF" = "refs/heads/main" ] || { echo "::error::Solo se despliega desde main."; exit 1; }
+          ALIAS=$(node -p "JSON.parse(require('fs').readFileSync('.firebaserc', 'utf8')).projects.qa")
+          [ "$ALIAS" = "$PROYECTO" ] || { echo "::error::El alias qa de .firebaserc es ${ALIAS}, no ${PROYECTO}."; exit 1; }
+          [ "$PROYECTO_VARIABLE" = "$PROYECTO" ] \
+            || { echo "::error::FIREBASE_PROJECT_ID del environment qa es '${PROYECTO_VARIABLE}', no ${PROYECTO}."; exit 1; }
+          [[ "$CUENTA" == *"@${PROYECTO}.iam.gserviceaccount.com" ]] \
+            || { echo "::error::GCP_SERVICE_ACCOUNT del environment qa no es una cuenta de ${PROYECTO}."; exit 1; }
+          [ "$SITE_URL" = "https://${PROYECTO}.web.app/" ] \
+            || { echo "::error::SITE_URL del environment qa es '${SITE_URL}', no https://${PROYECTO}.web.app/."; exit 1; }
+
+      - name: Descargar el sitio de este run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sitio
+          path: .
+
+      - name: Comprobar que es el mismo build
+        run: sha256sum --check --quiet huellas.txt
+
+      - name: Autenticarse en Google (Workload Identity, sin claves)
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          create_credentials_file: true
+
+      - name: Publicar las reglas en QA
+        run: npx firebase-tools deploy --only firestore:rules --project qa --non-interactive
+
+      - name: Verificar las reglas publicadas
+        # verificar-reglas lee con la API REST y este token (el Admin SDK no acepta Workload Identity; P-6).
+        env:
+          LUCAS_REGLAS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: npm run admin -- verificar-reglas --ambiente qa
+
+      - name: Publicar el sitio en Hosting de QA
+        # Solo el target qa existe, y solo en tablero-kanban-qa (firebase.json y .firebaserc; B.2).
+        env:
+          SHA: ${{ github.sha }}
+        run: npx firebase-tools deploy --only hosting:qa --project qa --non-interactive --message "${SHA}"
+
+      - name: Smoke de QA
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: bash scripts/ci/smoke.sh "$SITE_URL" "$PROYECTO" --noindex
+
+  pages:
+    # PR 3 cambia needs: qa por needs: pdn (aprobación del responsable y reglas de PDN antes del sitio).
+    needs: qa
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     steps:
+      - name: Solo desde main
+        env:
+          REF: ${{ github.ref }}
+        run: '[ "$REF" = "refs/heads/main" ] || { echo "::error::Solo se despliega desde main."; exit 1; }'
+
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
       - name: Desplegar en GitHub Pages
+        # El artefacto github-pages de este mismo run: el build que ya pasó por QA.
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
