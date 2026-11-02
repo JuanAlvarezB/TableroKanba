@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { UsageError, explainError, parseCommand, projectIdFor, usage } from './cli.js';
+import { UsageError, ciRulesToken, explainError, parseCommand, projectIdFor, usage } from './cli.js';
 import { Refusal } from './context.js';
 import { connect } from './firebase.js';
 import { compareRules, fingerprint } from './rules.js';
@@ -163,6 +163,31 @@ describe('argumentos y ambiente', () => {
       qa: 'tablero-kanban-qa',
       pdn: 'tablero-kanban-76c61',
     });
+  });
+
+  it('sin LUCAS_REGLAS_TOKEN todo sigue como siempre: credenciales de gcloud', () => {
+    expect(ciRulesToken({ command: 'verificar-reglas', ambiente: 'dev' }, {})).toBeNull();
+    expect(ciRulesToken({ command: 'respaldar', ambiente: 'pdn' }, {})).toBeNull();
+  });
+
+  it('con LUCAS_REGLAS_TOKEN, verificar-reglas en QA o PDN usa el token', () => {
+    const env = { LUCAS_REGLAS_TOKEN: ' token-ci \n' };
+    expect(ciRulesToken({ command: 'verificar-reglas', ambiente: 'qa' }, env)).toBe('token-ci');
+    expect(ciRulesToken({ command: 'verificar-reglas', ambiente: 'pdn' }, env)).toBe('token-ci');
+  });
+
+  it('con LUCAS_REGLAS_TOKEN se niega cualquier otro comando, Desarrollo y un token vacío', () => {
+    const env = { LUCAS_REGLAS_TOKEN: 'token-ci' };
+    expect(() => ciRulesToken({ command: 'respaldar', ambiente: 'qa' }, env)).toThrow(
+      'solo sirve para verificar-reglas',
+    );
+    expect(() => ciRulesToken({ command: 'limpiar-respaldos', ambiente: 'pdn' }, env)).toThrow(UsageError);
+    expect(() => ciRulesToken({ command: 'verificar-reglas', ambiente: 'dev' }, env)).toThrow(
+      'el CI nunca toca Desarrollo',
+    );
+    expect(() => ciRulesToken({ command: 'verificar-reglas', ambiente: 'qa' }, { LUCAS_REGLAS_TOKEN: ' ' })).toThrow(
+      'está vacía',
+    );
   });
 
   it('la ayuda nombra los tres ambientes', () => {

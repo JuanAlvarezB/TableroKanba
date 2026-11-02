@@ -4,7 +4,8 @@
 //
 // Comandos (los que escriben solo simulan sin --aplicar; en QA y en PDN piden además el identificador del
 // proyecto):
-//   verificar-reglas   Compara las reglas de Firestore publicadas con firestore.rules (solo lee).
+//   verificar-reglas   Compara las reglas de Firestore publicadas con firestore.rules (solo lee). En el CI
+//                      (QA y PDN) lee con el token de LUCAS_REGLAS_TOKEN y la API REST (rules-api.js).
 //   respaldar          Respaldo cifrado y verificado del ambiente; con --correo, antes de eliminar a esa
 //                      persona (crea su marcador).
 //   verificar-indice   Tareas sin índice e índices huérfanos (solo lee).
@@ -19,7 +20,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { getSecurityRules } from 'firebase-admin/security-rules';
 import { BackupError } from './backup.js';
-import { UsageError, explainError, parseCommand, projectIdFor, usage } from './cli.js';
+import { UsageError, ciRulesToken, explainError, parseCommand, projectIdFor, usage } from './cli.js';
 import { completeIndex } from './completar-indice.js';
 import { Refusal } from './context.js';
 import { cleanOrphanAccounts } from './cuentas-huerfanas.js';
@@ -29,6 +30,7 @@ import { purgeUser } from './limpiar-usuario.js';
 import { purgeLog } from './purgar-registro.js';
 import { backup } from './respaldar.js';
 import { restoreUser } from './restaurar.js';
+import { RulesApiError, createRulesApi } from './rules-api.js';
 import { createStore } from './store.js';
 import { createTerminal } from './terminal.js';
 import { verifyIndex } from './verificar-indice.js';
@@ -55,9 +57,11 @@ const COMMANDS = {
 async function main(argv) {
   let options;
   let projectId;
+  let ciToken;
   try {
     options = parseCommand(argv, COMMANDS);
     projectId = projectIdFor(options.ambiente, JSON.parse(readFileSync(resolve(ROOT, '.firebaserc'), 'utf-8')));
+    ciToken = ciRulesToken(options, process.env);
   } catch (error) {
     if (!(error instanceof UsageError)) throw error;
     console.error(`${error.message}\n${usage(COMMANDS)}`);
@@ -70,7 +74,9 @@ async function main(argv) {
   try {
     if (!run) {
       return await verifyRules({
-        securityRules: getSecurityRules(connect(projectId)),
+        securityRules: ciToken
+          ? createRulesApi({ projectId, accessToken: ciToken })
+          : getSecurityRules(connect(projectId)),
         localRules: readFileSync(resolve(ROOT, 'firestore.rules'), 'utf-8'),
         label,
         log,
@@ -92,7 +98,7 @@ async function main(argv) {
       console.error(`✘ ${error.message}`);
       return 1;
     }
-    if (error instanceof BackupError) {
+    if (error instanceof BackupError || error instanceof RulesApiError) {
       console.error(`✘ ${error.message}`);
       return 2;
     }
