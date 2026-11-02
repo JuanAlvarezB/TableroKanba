@@ -190,6 +190,24 @@ describe('argumentos y ambiente', () => {
     );
   });
 
+  it('Hosting solo puede publicarse en QA: un único target "qa", asociado solo a tablero-kanban-qa', () => {
+    const read = (file) => JSON.parse(readFileSync(resolve(import.meta.dirname, '..', '..', file), 'utf-8'));
+    const firebaseJson = read('firebase.json');
+    expect(firebaseJson.hosting.map(({ target, public: dir }) => ({ target, dir }))).toEqual([
+      { target: 'qa', dir: 'dist' },
+    ]);
+    expect(read('.firebaserc').targets).toEqual({ 'tablero-kanban-qa': { hosting: { qa: ['tablero-kanban-qa'] } } });
+  });
+
+  it('QA no se indexa y solo los .js y .css con hash quedan en caché para siempre', () => {
+    const [qa] = JSON.parse(readFileSync(resolve(import.meta.dirname, '..', '..', 'firebase.json'), 'utf-8')).hosting;
+    const header = (source) => qa.headers.find((rule) => rule.source === source)?.headers[0];
+    expect(header('**')).toEqual({ key: 'X-Robots-Tag', value: 'noindex, nofollow' });
+    expect(header('/')).toEqual({ key: 'Cache-Control', value: 'no-cache' });
+    expect(header('**/*.html')).toEqual({ key: 'Cache-Control', value: 'no-cache' });
+    expect(header('/assets/**/*-*.@(js|css)').value).toContain('immutable');
+  });
+
   it('la ayuda nombra los tres ambientes', () => {
     expect(usage(commands)).toContain('--ambiente dev|qa|pdn');
   });

@@ -3,5 +3,12 @@
     "dev": "tablero-kanban-dev",
     "qa": "tablero-kanban-qa",
     "pdn": "tablero-kanban-76c61"
+  },
+  "targets": {
+    "tablero-kanban-qa": {
+      "hosting": {
+        "qa": ["tablero-kanban-qa"]
+      }
+    }
   }
 }
