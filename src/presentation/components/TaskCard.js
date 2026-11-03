@@ -73,6 +73,7 @@ export function createTaskCard(task, { menuOpen, highlightElapsed, actions }) {
   backBtn.className = 'move-btn';
   backBtn.textContent = '←';
   backBtn.title = 'Mover a la columna anterior';
+  backBtn.setAttribute('aria-label', 'Mover a la columna anterior');
   backBtn.disabled = index === 0;
   backBtn.addEventListener('click', () => actions.shift(task.id, -1));
 
@@ -80,6 +81,7 @@ export function createTaskCard(task, { menuOpen, highlightElapsed, actions }) {
   forwardBtn.className = 'move-btn';
   forwardBtn.textContent = '→';
   forwardBtn.title = 'Mover a la columna siguiente';
+  forwardBtn.setAttribute('aria-label', 'Mover a la columna siguiente');
   forwardBtn.disabled = index === STATUSES.length - 1;
   forwardBtn.addEventListener('click', () => actions.shift(task.id, 1));
 

@@ -391,3 +391,29 @@ describe('completar una tarea con subtareas desde la flecha', () => {
     expect(dialog().open).toBe(false);
   });
 });
+
+// Nombres para lectores de pantalla (y para las pruebas end-to-end, que buscan por rol y nombre;
+// docs/PLAN_AMBIENTES.md, E.1).
+describe('nombres accesibles del tablero', () => {
+  beforeEach(() => {
+    openBoard([task('uno', 'Comprar pan', 'pending', 0)]);
+  });
+
+  it('las flechas de la tarjeta dicen a qué columna mueven', () => {
+    const [back, forward] = card('uno').querySelectorAll('.move-btn');
+    expect(back.getAttribute('aria-label')).toBe('Mover a la columna anterior');
+    expect(forward.getAttribute('aria-label')).toBe('Mover a la columna siguiente');
+  });
+
+  it('cada columna es una región con el nombre de su título', () => {
+    document.querySelectorAll('section.column').forEach((column) => {
+      const title = document.getElementById(column.getAttribute('aria-labelledby'));
+      expect(column.querySelector('h2')).toBe(title);
+    });
+    expect(document.querySelectorAll('section.column[aria-labelledby]')).toHaveLength(3);
+  });
+
+  it('el campo de la tarea nueva tiene nombre propio', () => {
+    expect(document.getElementById('task-input').getAttribute('aria-label')).toBe('Nueva tarea');
+  });
+});

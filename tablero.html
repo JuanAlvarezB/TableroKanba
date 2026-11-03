@@ -138,7 +138,7 @@
     <h1>Tablero Kanban</h1>
 
     <form id="task-form">
-      <input type="text" id="task-input" placeholder="Escribe una nueva tarea..." autocomplete="off" maxlength="500">
+      <input type="text" id="task-input" placeholder="Escribe una nueva tarea..." aria-label="Nueva tarea" autocomplete="off" maxlength="500">
       <button type="submit">Agregar</button>
     </form>
 
@@ -170,9 +170,9 @@
     </div>
 
     <div class="board">
-      <section class="column" data-status="pending">
+      <section class="column" data-status="pending" aria-labelledby="column-pending">
         <header class="column-header">
-          <h2 tabindex="-1">Pendiente</h2>
+          <h2 id="column-pending" tabindex="-1">Pendiente</h2>
           <div class="column-meta">
             <span class="column-tag urgent hidden" data-urgent="pending" data-feature="priorities"></span>
             <span class="column-tag due hidden" data-due="pending" data-feature="dueDates"></span>
@@ -183,9 +183,9 @@
         <ul class="task-list" data-status="pending"></ul>
       </section>
 
-      <section class="column" data-status="in-progress">
+      <section class="column" data-status="in-progress" aria-labelledby="column-in-progress">
         <header class="column-header">
-          <h2 tabindex="-1">En curso</h2>
+          <h2 id="column-in-progress" tabindex="-1">En curso</h2>
           <div class="column-meta">
             <span class="column-tag urgent hidden" data-urgent="in-progress" data-feature="priorities"></span>
             <span class="column-tag due hidden" data-due="in-progress" data-feature="dueDates"></span>
@@ -196,9 +196,9 @@
         <ul class="task-list" data-status="in-progress"></ul>
       </section>
 
-      <section class="column" data-status="completed">
+      <section class="column" data-status="completed" aria-labelledby="column-completed">
         <header class="column-header">
-          <h2 tabindex="-1">Completada</h2>
+          <h2 id="column-completed" tabindex="-1">Completada</h2>
           <div class="column-meta">
             <span class="column-count" data-count="completed">0</span>
           </div>
