@@ -1,5 +1,5 @@
 # LUCAS
-
+Texto Prueba
 **LUCAS organiza tu día a día.** Su primera función es un tablero de tareas con tres
 columnas (Pendiente, En curso, Completada), etiquetas de prioridad, fechas límite y
 sincronización entre dispositivos con Firebase (Firestore y Authentication).
