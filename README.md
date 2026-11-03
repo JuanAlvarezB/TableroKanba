@@ -12,6 +12,8 @@ El código está organizado por capas (ver `docs/PLAN_ARQUITECTURA.md`). Cada ca
 que tiene debajo: `domain` no depende de nada, `data` del dominio, y `presentation` de todas.
 `src/architecture.test.js` lo comprueba en cada `npm test`.
 
+Prueba JCAB
+
 | Carpeta                        | Qué contiene                                                                                            |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `src/domain/`                  | Reglas de negocio sin dependencias: entidad `Task`, vencimientos, prioridades, casos de uso             |
