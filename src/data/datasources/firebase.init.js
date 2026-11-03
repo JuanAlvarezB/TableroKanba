@@ -22,7 +22,13 @@ export function loadFirebase() {
         const app = appSdk.initializeApp(APP_ENV.firebaseConfig);
         const auth = authSdk.getAuth(app);
         auth.languageCode = 'es';
-        return { app, auth, authSdk, db: fs.getFirestore(app), fs };
+        const db = fs.getFirestore(app);
+        // Solo el ambiente de las pruebas end-to-end trae emuladores (shared/config/firebase.config.js).
+        if (APP_ENV.emulators) {
+          authSdk.connectAuthEmulator(auth, APP_ENV.emulators.auth, { disableWarnings: true });
+          fs.connectFirestoreEmulator(db, APP_ENV.emulators.firestore.host, APP_ENV.emulators.firestore.port);
+        }
+        return { app, auth, authSdk, db, fs };
       },
     );
     // Si no cargó (sin internet, bloqueado), el siguiente intento vuelve a pedirlo.

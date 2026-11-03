@@ -76,6 +76,25 @@ describe('selectEnvironment', () => {
   });
 });
 
+// Fuera de vite --mode e2e (aquí el modo es test; en el build, production) no existe el ambiente de los
+// emuladores: localhost sigue en Desarrollo (docs/PLAN_AMBIENTES.md, E.2).
+describe('ambiente de los emuladores fuera del modo e2e', () => {
+  it('no existe', () => {
+    expect(config.EMULATOR_ENVIRONMENT).toBeNull();
+  });
+
+  it('localhost y 127.0.0.1 usan Desarrollo, sin emuladores', () => {
+    ['localhost', '127.0.0.1'].forEach((host) => {
+      expect(config.selectEnvironment(host)).toBe(config.ENVIRONMENTS.dev);
+      expect(config.selectEnvironment(host).emulators).toBeUndefined();
+    });
+  });
+
+  it('ningún ambiente de ENVIRONMENTS tiene emuladores', () => {
+    Object.values(config.ENVIRONMENTS).forEach((environment) => expect(environment.emulators).toBeUndefined());
+  });
+});
+
 describe('ENVIRONMENTS', () => {
   it('tiene PDN, QA y Desarrollo, cada uno con su nombre', () => {
     expect(Object.keys(config.ENVIRONMENTS).sort()).toEqual(['dev', 'pdn', 'qa']);

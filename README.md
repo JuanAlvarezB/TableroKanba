@@ -325,6 +325,38 @@ npm run test:rules   # arranca el emulador (puerto 8180), corre las pruebas y lo
 `npm test` no las corre, para no depender de Java. En cada Pull Request las corre el trabajo
 `reglas` de `ci.yml`. Cada regla nueva lleva su prueba, también la que comprueba lo que se niega.
 
+### Pruebas end-to-end (Playwright)
+
+`acceptance/` prueba la ruta crítica en un navegador real (Chromium): iniciar sesión, acceso denegado o
+desactivado, crear una tarea, poner/cambiar/quitar la prioridad, moverla con su historial, vencimientos con
+la hora fijada, editar y borrar con confirmación, subtareas y completado, y cerrar sesión. Corre contra los
+emuladores de Auth y Firestore con el proyecto ficticio `demo-lucas`: sin `.env.local`, claves ni
+credenciales, y sin tocar Desarrollo, QA ni PDN.
+
+- La app solo usa los emuladores con `vite --mode e2e` **y** en `localhost` (`src/shared/config/firebase.config.js`):
+  en los hosts de QA y PDN nunca, y el build de despliegue no los contiene (`deploy.yml` lo comprueba).
+- Cada prueba crea su propia persona (un correo `…@example.com` único) y sus tareas: corren en paralelo y en
+  cualquier orden.
+- Están en TypeScript, con la estructura y las reglas de la skill de pruebas automatizadas (Page Objects,
+  fixtures, textos de la interfaz tomados de la app).
+
+Preparación (una vez): Java 21 (como para las reglas) y el navegador de Playwright:
+
+```bash
+npx playwright install chromium
+```
+
+Correrlas:
+
+```bash
+npm run test:e2e          # arranca los emuladores (9099 y 8180) y la app (puerto 8100), prueba y apaga todo
+npm run lint:acceptance   # ESLint, Prettier, tipos y nombres de la suite
+npx playwright show-report   # el reporte de la última ejecución (con capturas, video y traza si algo falló)
+```
+
+En cada Pull Request las corre el trabajo `e2e` de `ci.yml`; si falla, el reporte queda como artefacto
+`reporte-e2e` del run (7 días).
+
 ## Script administrativo (`scripts/admin/`)
 
 Herramienta local del administrador responsable (`docs/PLAN_USUARIOS.md`, 2.11). Es la **única pieza que
@@ -461,8 +493,8 @@ protegida: todo entra por Pull Request.
 3. Si cambian las reglas, publícalas **en Desarrollo** desde tu terminal y compruébalas
    (`npx firebase-tools deploy --only firestore:rules --project dev` y
    `npm run admin -- verificar-reglas --ambiente dev`). QA y PDN las publica el pipeline.
-4. Abre el Pull Request hacia `main`. Tienen que terminar en verde `rama`, `revisar` y `reglas`, y todas
-   las conversaciones resueltas. Copia la lista de `docs/VERIFICACION_MANUAL.md` que aplique.
+4. Abre el Pull Request hacia `main`. Tienen que terminar en verde `rama`, `revisar`, `reglas` y `e2e`, y
+   todas las conversaciones resueltas. Copia la lista de `docs/VERIFICACION_MANUAL.md` que aplique.
 5. Merge con **Create a merge commit**. En Actions, **Desplegar** publica en QA: reglas, verificación,
    sitio y smoke.
 6. Prueba en `https://tablero-kanban-qa.web.app/` (recarga con `Cmd + Shift + R`).
