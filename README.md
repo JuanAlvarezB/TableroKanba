@@ -1,5 +1,5 @@
 # LUCAS
-Prueba
+
 **LUCAS organiza tu día a día.** Su primera función es un tablero de tareas con tres
 columnas (Pendiente, En curso, Completada), etiquetas de prioridad, fechas límite y
 sincronización entre dispositivos con Firebase (Firestore y Authentication).
@@ -11,6 +11,8 @@ cada una ve únicamente sus propias tareas. Es un sitio estático que se constru
 El código está organizado por capas (ver `docs/PLAN_ARQUITECTURA.md`). Cada capa solo importa de las
 que tiene debajo: `domain` no depende de nada, `data` del dominio, y `presentation` de todas.
 `src/architecture.test.js` lo comprueba en cada `npm test`.
+
+Prueba JCAB
 
 | Carpeta                        | Qué contiene                                                                                            |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------- |
