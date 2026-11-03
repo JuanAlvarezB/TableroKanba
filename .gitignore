@@ -49,3 +49,8 @@ CLAUDE.md
 CLAUDE
 # Credenciales temporales de google-github-actions/auth en el CI (la acción las borra al terminar el job)
 gha-creds-*.json
+
+# Playwright: reportes, resultados de las pruebas y sesiones guardadas
+playwright-report/
+test-results/
+.auth/
