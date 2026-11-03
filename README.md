@@ -114,12 +114,12 @@ globalmente:
 
 ```bash
 npx firebase-tools login                                          # una sola vez
-npx firebase-tools deploy --only firestore:rules --project dev    # primero Desarrollo
-npx firebase-tools deploy --only firestore:rules --project pdn    # PDN, antes del merge
+npx firebase-tools deploy --only firestore:rules --project dev    # solo Desarrollo
 ```
 
-En QA no se publican a mano: lo hace `deploy.yml` en cada merge a `main`, antes del sitio, y las
-comprueba con `verificar-reglas`.
+En QA y en PDN **no se publican a mano**: lo hace `deploy.yml` en cada merge a `main`, siempre antes del
+sitio y comprobándolas con `verificar-reglas` (en PDN, después de tu aprobación). Desde tu terminal solo se
+publican en Desarrollo.
 
 - Publica siempre con `--only firestore:rules` y con `--project`. Nunca `firebase deploy` sin `--only`.
 - Nunca `--only hosting` fuera de QA: `firebase.json` solo tiene el target de Hosting `qa`, asociado
@@ -130,7 +130,8 @@ Las reglas son la única barrera real de seguridad: lo publicado tiene que ser s
 
 ### Publicar reglas paso a paso
 
-En cada ambiente, primero Desarrollo y después PDN:
+En Desarrollo, desde tu terminal (en QA y PDN el pipeline hace los pasos 2 y 3 y crea la etiqueta del paso 5;
+las menciones a PDN de esta sección sirven para una emergencia o para leer el historial):
 
 1. **Antes de publicar**, abre la consola de Firebase del proyecto → Firestore → **Reglas** y anota
    la fecha y hora de la versión vigente (la primera del historial, a la izquierda). Es la versión
@@ -142,24 +143,24 @@ En cada ambiente, primero Desarrollo y después PDN:
    compara a mano el texto de la consola con `firestore.rules`.
 4. Anota en la descripción del Pull Request el ambiente, la hora de la versión anterior y la de la
    nueva, y el resultado de la comprobación.
-5. Después de publicar en PDN, etiqueta el commit cuyo `firestore.rules` publicaste, con la hora de
-   la versión anterior en el mensaje:
-
-   ```bash
-   git tag -a pdn-reglas-AAAA-MM-DD -m "Reglas en PDN. Versión anterior: AAAA-MM-DD HH:MM"
-   git push origin pdn-reglas-AAAA-MM-DD
-   ```
+5. En PDN, la etiqueta `pdn-reglas-<fecha>-<run>` la crea el pipeline (job `etiquetar`) sobre el commit
+   publicado, con la versión anterior en el mensaje. Si ese job fallara, el resumen del run da los
+   comandos `git tag` para crearla a mano.
 
 ### Volver a las reglas anteriores
 
-- **Desde la consola** (lo más rápido): Firestore → Reglas → en el historial abre la versión que
-  anotaste antes de publicar; la consola la compara con la actual y permite publicarla de nuevo.
-- **Desde git**, con la etiqueta de una publicación anterior:
+- **Lo normal en QA y PDN:** **Revert** del Pull Request por el pipeline (ver "Cómo hacer un cambio",
+  "Reversión por ambiente"); el piso de reglas impide que la reversión baje de lo que exigen los datos.
+- **Urgente en PDN, desde la consola:** Firestore → Reglas → en el historial abre la versión anterior (la
+  que nombra el resumen del run o el mensaje de la etiqueta `pdn-reglas-…`), **comprueba el piso** (los `grep`
+  de abajo, en el texto de esa versión) y publícala. Después haz igual el Revert por el pipeline, para que el
+  archivo y lo publicado vuelvan a coincidir.
+- **Desde git** (Desarrollo, o para leer una versión anterior), con la etiqueta de una publicación:
 
   ```bash
   git show pdn-reglas-AAAA-MM-DD:firestore.rules > firestore.rules
-  npx firebase-tools deploy --only firestore:rules --project pdn
-  npm run admin -- verificar-reglas --ambiente pdn   # compara con el archivo restaurado
+  npx firebase-tools deploy --only firestore:rules --project dev
+  npm run admin -- verificar-reglas --ambiente dev   # compara con el archivo restaurado
   git checkout -- firestore.rules                    # vuelve el archivo a la versión de la rama
   ```
 
@@ -207,7 +208,7 @@ Desde las subtareas (`docs/PLAN_SUBTAREAS.md`, parte 2) los documentos de `tasks
 `subtasks` y `openSubtasks`, y las reglas exigen que una tarea completada no tenga subtareas pendientes.
 Pasa lo mismo que con `history` (caso S-17 de `rules-tests/subtasks.rules.test.js`; alarma AT-5):
 
-- **Al publicar**, las reglas con `subtasks` van en Desarrollo y en PDN **antes** del merge del código que
+- **Al publicar**, las reglas con `subtasks` van **antes** que el código que
   los escribe: con las reglas anteriores, `hasOnly` rechazaría cualquier escritura de una tarea con
   subtareas.
 - **No vuelvas a una versión de las reglas anterior a las subtareas**: rechazaría **cualquier** edición de
@@ -232,7 +233,7 @@ Desde la gestión de usuarios (`docs/PLAN_USUARIOS.md`, 2.6) crear o borrar una 
 su documento de `taskIndex` en el mismo lote. Unas reglas sin `match /taskIndex/` rechazan el lote
 **entero**: nadie podría crear ni borrar tareas. Por eso:
 
-- Las reglas con `taskIndex` se publican en Desarrollo y en PDN **antes** del merge del código que lo
+- Las reglas con `taskIndex` se publican **antes** que el código que lo
   escribe (orden estricto, ver más abajo).
 - **Para revertir el índice**, primero se revierte el código (`git revert -m 1 <hash-del-merge>`) y se
   espera a que el sitio publicado ya no lo escriba; solo después, si hace falta, se vuelve a las reglas
@@ -284,26 +285,23 @@ final de línea, lo indica y cuenta como coincidencia.
 Usa tus credenciales de Google, nunca archivos de llave; la preparación (una sola vez) está en
 [Script administrativo](#script-administrativo-scriptsadmin).
 
-### Pull Requests que cambian las reglas: orden y borrador
+### Pull Requests que cambian las reglas: orden
 
-Las reglas se publican en PDN **antes** del merge. Hay cambios en los que el orden es estricto: si
-el código nuevo escribe campos o colecciones que las reglas anteriores rechazan (por ejemplo, un
-campo nuevo en la lista de `isValidTask`), fusionar antes de publicar haría que PDN rechace las
-escrituras. Para que el orden no dependa de la memoria:
+El pipeline publica las reglas **antes** que el sitio en QA y en PDN. Según el cambio:
 
-1. Abre el Pull Request como **borrador** (**Create draft pull request**): GitHub no deja fusionar
-   un borrador.
-2. Pon en la descripción esta lista y complétala al publicar:
+- **"Reglas antes que el código"** (el código nuevo escribe algo que las reglas actuales rechazan, por
+  ejemplo un campo nuevo en `hasOnly`): basta un Pull Request. Entre los dos pasos el sitio anterior convive
+  con las reglas nuevas, así que las reglas nuevas tienen que aceptar también al código anterior.
+- **"Código antes que las reglas"** (las reglas nuevas rechazan algo que el código actual todavía hace, como
+  las reglas estrictas del índice): **dos Pull Requests**, el del código primero; el de las reglas solo
+  después de comprobar en QA y en PDN lo que haga falta (con el script).
+- En la descripción del Pull Request queda una sola casilla, la de Desarrollo:
 
-   ```markdown
-   - [ ] Reglas en Desarrollo: versión anterior HH:MM → nueva HH:MM · verificar-reglas ✔
-   - [ ] Reglas en PDN: versión anterior HH:MM → nueva HH:MM · verificar-reglas ✔
-   ```
+  ```markdown
+  - [ ] Reglas en Desarrollo: versión anterior HH:MM → nueva HH:MM · verificar-reglas ✔
+  ```
 
-3. Marca el Pull Request **Ready for review** solo cuando las dos casillas estén marcadas; entonces
-   ya se puede fusionar.
-
-Si dudas de si un cambio es de orden estricto, trátalo como si lo fuera.
+Si dudas del orden, trátalo como "código antes que las reglas".
 
 ### Probar las reglas en local
 
@@ -453,28 +451,46 @@ consola. El resultado de la prueba en Desarrollo se anota en `docs/PLAN_USUARIOS
 
 ## Cómo hacer un cambio
 
-Cada merge a `main` se publica primero en QA y, si QA pasó, en PDN (`.github/workflows/deploy.yml`;
-ver [Despliegue](#despliegue-y-variables-de-firebase)). `main` está protegida, así que todo cambio entra
-por Pull Request.
+`main` se publica sola en **QA** en cada merge y llega a **PDN** cuando apruebas el environment `pdn` en
+GitHub (`.github/workflows/deploy.yml`; ver [Despliegue](#despliegue-y-variables-de-firebase)). `main` está
+protegida: todo entra por Pull Request.
 
-1. `git checkout main && git pull`, y crea una rama: `feature/…`, `fix/…`, `docs/…` o
-   `chore/…`.
-2. Desarrolla y prueba en local, contra Desarrollo, con commits pequeños.
-3. Si cambian las reglas, publícalas en `dev`, compruébalas y prueba (ver "Publicar reglas paso a
-   paso").
-4. Abre un Pull Request hacia `main` (**como borrador** si cambia las reglas) y revisa "Files
-   changed". `ci.yml` revisa formato, lint, pruebas y build (`revisar`) y las reglas en el emulador
-   (`reglas`); los dos tienen que terminar en verde.
-5. Si cambiaron las reglas, publícalas en `pdn` y compruébalas **antes** del merge; después marca el
-   Pull Request **Ready for review**. En QA las publica el pipeline.
-6. Haz merge con **Create a merge commit**. Actions → **Desplegar** publica QA (reglas, verificación,
-   sitio y smoke) y después PDN. Si falla algo de QA, PDN no cambia. Cuando termine en verde, verifica
-   `https://tablero-kanban-qa.web.app/` y PDN (recarga con `Cmd + Shift + R`).
-7. Etiqueta la versión (`git tag -a pdn-AAAA-MM-DD`; si se publicaron reglas, también
-   `pdn-reglas-AAAA-MM-DD`) y borra la rama.
+1. `git checkout main && git pull` y crea una rama con un prefijo permitido: `feature/…`, `fix/…`,
+   `docs/…`, `chore/…`, `ambientes-…` o `<número de PBI>-…` (el job `rama` lo comprueba).
+2. Desarrolla y prueba en local, contra **Desarrollo**, con commits pequeños.
+3. Si cambian las reglas, publícalas **en Desarrollo** desde tu terminal y compruébalas
+   (`npx firebase-tools deploy --only firestore:rules --project dev` y
+   `npm run admin -- verificar-reglas --ambiente dev`). QA y PDN las publica el pipeline.
+4. Abre el Pull Request hacia `main`. Tienen que terminar en verde `rama`, `revisar` y `reglas`, y todas
+   las conversaciones resueltas. Copia la lista de `docs/VERIFICACION_MANUAL.md` que aplique.
+5. Merge con **Create a merge commit**. En Actions, **Desplegar** publica en QA: reglas, verificación,
+   sitio y smoke.
+6. Prueba en `https://tablero-kanban-qa.web.app/` (recarga con `Cmd + Shift + R`).
+7. En el run, **Review deployments** → `pdn` → **Approve and deploy**. El pipeline publica las reglas de
+   PDN, las verifica, publica el sitio, lo comprueba y crea las etiquetas. Si no está bien, **Reject**:
+   PDN no cambia.
+8. Borra la rama.
 
-Si algo falla en PDN, se revierte el merge con el botón **Revert** del Pull Request (o
-`git revert -m 1 <hash-del-merge>`). Nunca `git reset` ni `push --force` sobre `main`.
+Si llega otro merge antes de aprobar, rechaza el run viejo y aprueba el nuevo: solo el último commit de
+`main` puede llegar a PDN (aprobar uno viejo termina en rojo sin tocar nada). Una aprobación vale 7 días;
+después, **Re-run all jobs** si sigue siendo el último commit.
+
+### Reversión por ambiente
+
+| Qué falló                        | Ambiente   | Cómo se revierte                                                                                                                                                                        |
+| -------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cualquier cosa, antes de aprobar | QA         | **Revert** del Pull Request fusionado (o `git revert -m 1 <merge>`) en un Pull Request como cualquier otro; rechaza el run pendiente del cambio malo. PDN nunca tuvo el cambio          |
+| El sitio, ya en PDN              | QA y PDN   | **Revert** → merge → QA → apruebas → PDN. No se vuelve a ejecutar un despliegue anterior: un run viejo se niega, y publicaría también sus reglas, que pueden ser anteriores a los datos |
+| Las reglas, urgente              | PDN        | Consola de PDN → Firestore → Reglas → historial, **comprobando antes el piso** ("Volver a las reglas anteriores"); después, el Revert por el pipeline                                   |
+| Las reglas                       | QA         | El Revert por el pipeline (o la consola de QA, como en PDN)                                                                                                                             |
+| Cualquier cosa                   | Desarrollo | Desde tu terminal                                                                                                                                                                       |
+
+**Reglas mínimas.** Una reversión nunca puede publicar reglas por debajo de lo que exigen los datos que ya
+existen (`history`, subtareas, índice estricto, permisos): `scripts/admin/rules-floor.test.js` hace fallar
+`npm test` antes de publicar nada (ver "Piso de reglas" en "Volver a las reglas anteriores").
+
+Nunca `git reset` ni `push --force` sobre `main` (el ruleset "Proteger main" lo impide), y las etiquetas
+`pdn-*` no se mueven ni se borran (ruleset "Etiquetas de PDN").
 
 ## Archivos nuevos
 
@@ -491,24 +507,28 @@ Si algo falla en PDN, se revierte el merge con el botón **Revert** del Pull Req
 
 `deploy.yml` corre en cada push a `main` (`docs/PLAN_AMBIENTES.md`, bloque D):
 
-| Job       | Qué hace                                                                                                                                                                                                                                                                                                                                    |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `guardas` | Se niega si el run no es de `main` o si `main` ya avanzó (entonces publica el run del commit más nuevo)                                                                                                                                                                                                                                     |
-| `test`    | `npm test`, incluido el piso de reglas                                                                                                                                                                                                                                                                                                      |
-| `build`   | **Un solo build** con las tres configuraciones; comprueba las páginas, los tres `projectId` y que no haya nada del emulador; guarda las huellas SHA-256 y sube el mismo `dist/` para QA y para Pages (7 días)                                                                                                                               |
-| `qa`      | Environment `qa`. Comprueba alias, proyecto, cuenta y dirección; entra en Google con Workload Identity (sin claves); publica las reglas en QA, las verifica con `verificar-reglas`, publica Hosting de QA y corre el smoke (`scripts/ci/smoke.sh`: las cuatro páginas, la huella de cada archivo servido, el `projectId` de QA y `noindex`) |
-| `pages`   | Solo si `qa` pasó: publica en GitHub Pages el mismo build                                                                                                                                                                                                                                                                                   |
+| Job         | Qué hace                                                                                                                                                                                                                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `guardas`   | Se niega si el run no es de `main` o si `main` ya avanzó (entonces publica el run del commit más nuevo)                                                                                                                                                                                                                                     |
+| `test`      | `npm test`, incluido el piso de reglas                                                                                                                                                                                                                                                                                                      |
+| `build`     | **Un solo build** con las tres configuraciones; comprueba las páginas, los tres `projectId` y que no haya nada del emulador; guarda las huellas SHA-256 y sube el mismo `dist/` para QA y para Pages (7 días)                                                                                                                               |
+| `qa`        | Environment `qa`. Comprueba alias, proyecto, cuenta y dirección; entra en Google con Workload Identity (sin claves); publica las reglas en QA, las verifica con `verificar-reglas`, publica Hosting de QA y corre el smoke (`scripts/ci/smoke.sh`: las cuatro páginas, la huella de cada archivo servido, el `projectId` de QA y `noindex`) |
+| `pdn`       | Environment `pdn`: **espera tu aprobación**. Se niega si `main` avanzó o si el sitio del run venció (7 días); comprueba alias, proyecto, cuenta y dirección; entra con Workload Identity; anota la versión vigente de las reglas, publica `firestore.rules` en PDN y la verifica                                                            |
+| `pages`     | Solo después de `pdn`: publica en GitHub Pages el mismo build que pasó por QA                                                                                                                                                                                                                                                               |
+| `smoke-pdn` | Espera (hasta 10 minutos) a que GitHub Pages sirva ese build y comprueba la huella de cada archivo y el `projectId` de PDN                                                                                                                                                                                                                  |
+| `etiquetar` | Crea `pdn-<fecha>-<run>` y, si las reglas cambiaron, `pdn-reglas-<fecha>-<run>` con la versión anterior en el mensaje                                                                                                                                                                                                                       |
 
-- Un fallo en cualquier paso de QA deja PDN sin cambios. Ningún run se cancela a mitad de una
-  publicación: si llegan varios merges, cada job deja el suyo en espera.
-- Las credenciales de QA solo se obtienen desde `main` y desde el environment `qa`: la condición del
-  proveedor de Workload Identity exige este repositorio, `environment:qa` y `refs/heads/main`, y el
-  environment solo admite `main`. Lanzar **Desplegar** a mano desde otra rama termina en `guardas`.
-- Las reglas de PDN se siguen publicando a mano antes del merge; la aprobación de PDN y sus reglas por el
-  pipeline llegan en el PR 3 del plan.
-- El environment `qa` (Settings → Environments) tiene cuatro variables, ninguna secreta:
-  `GCP_WIF_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `FIREBASE_PROJECT_ID` y `SITE_URL`. No hay secretos ni
-  claves JSON en el repositorio ni en los environments.
+- Nada llega a PDN sin pasar por QA en el mismo run y sin tu aprobación. Un fallo en QA, un rechazo o una
+  aprobación que vence dejan PDN como estaba. Ningún run se cancela a mitad de una publicación: si llegan
+  varios merges, cada job deja el suyo en espera.
+- Las credenciales de cada ambiente solo se obtienen desde `main` y desde su environment: la condición del
+  proveedor de Workload Identity exige este repositorio, `environment:qa` (o `pdn`) y `refs/heads/main`, y
+  los environments solo admiten `main`. Lanzar **Desplegar** a mano desde otra rama termina en `guardas`.
+  La cuenta de PDN solo tiene roles de reglas (PDN está en GitHub Pages, sin Hosting).
+- Los environments `qa` y `pdn` (Settings → Environments) tienen cuatro variables, ninguna secreta:
+  `GCP_WIF_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `FIREBASE_PROJECT_ID` y `SITE_URL`. `pdn` tiene revisor
+  obligatorio y no admite saltarse la aprobación. No hay secretos ni claves JSON en el repositorio ni en los
+  environments.
 
 La configuración de Firebase del build sale de las **variables del repositorio** en GitHub (Settings →
 Secrets and variables → Actions → Variables), con los mismos nombres que `.env.example`.
