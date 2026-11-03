@@ -36,7 +36,10 @@ Publicado en <https://juanalvarezb.github.io/TableroKanba/>.
 | Desarrollo | Construir funciones nuevas                   | Cualquier otra dirección: `localhost`…                                               | `tablero-kanban-dev`   | `tareas-dev-<uid>`, `tareas-migradas-dev-<uid>` |
 
 Los tres proyectos no comparten nada: ni datos, ni usuarios, ni reglas, ni claves de API. QA se
-publica solo, con sus reglas, en cada merge a `main` (ver [Despliegue](#despliegue-y-variables-de-firebase)).
+publica solo, con sus reglas, en cada merge a `main`, y PDN después de tu aprobación (ver
+[Despliegue](#despliegue-y-variables-de-firebase)). QA solo tiene datos ficticios: los de ejemplo se siembran
+con `sembrar-qa` (ver «Datos de prueba en QA»). Las pruebas end-to-end usan un cuarto "ambiente" que no es un
+proyecto: los emuladores locales con `demo-lucas` (ver «Pruebas end-to-end»).
 
 Las claves llevan el `uid` de la persona, para que nadie vea la copia local de otra en el
 mismo navegador; al cerrar sesión se borran. Las claves sin `uid` (`tareas`, `tareas-dev`…)
@@ -97,7 +100,11 @@ nunca se copian allí datos ni cuentas de PDN.
    correo **en minúsculas**, con el campo `name` (texto) que LUCAS mostrará.
 2. Correo y contraseña: Authentication → Usuarios → Agregar usuario, con una contraseña
    temporal que no se comparte; la persona crea la suya con **¿Olvidaste tu contraseña?**
-   y verifica su correo desde el login. Con Google no hay que crear nada: basta el paso 1.
+   y verifica su correo desde el login. Con Google, la cuenta se crea en su primer acceso **si**
+   Authentication → Configuración → Acciones del usuario tiene marcada "Habilitar la creación (registro)".
+   En QA está desmarcada (sin registro público): márcala unos minutos para ese primer acceso, desmárcala
+   enseguida y comprueba en Authentication → Usuarios que no se coló ninguna cuenta ajena. Si no, el login
+   muestra "No se pudo completar la operación" (`auth/admin-restricted-operation`).
 
 Un documento con solo `name` es un **miembro activo**. Campos opcionales: `role` (`admin` da el rol
 de administrador; cualquier otro valor es miembro) y `active` (`false` desactiva la cuenta sin borrar
@@ -399,7 +406,7 @@ npm run admin    # sin argumentos: la ayuda con cada comando y sus opciones
 - **Nunca imprime contenido de tareas:** solo cantidades e identificadores. Los correos de otras personas
   salen enmascarados (`pe***@e***.com`).
 - **Cada ejecución que escribe deja su entrada** en `adminLog` (`backup`, `backfill-index`,
-  `purge-leftovers`, `purge-log`, `clean-auth`, `restore`), con `uid` y nunca correos. Si falla a mitad,
+  `purge-leftovers`, `purge-log`, `clean-auth`, `restore`, `seed-qa`), con `uid` y nunca correos. Si falla a mitad,
   deja otra con `completed: false`. La app no puede editar ni borrar el registro; el script y la consola
   sí (el Admin SDK se salta las reglas, alarma A-20).
 - La frase de cifrado y la confirmación de QA y PDN se teclean en la terminal: no se aceptan por argumento ni
@@ -419,9 +426,31 @@ npm run admin    # sin argumentos: la ayuda con cada comando y sus opciones
 | `purgar-registro`                                            | Borra las entradas de `adminLog` de más de 12 meses                                                                                                                                                                                                                                                | Sí                        |
 | `limpiar-respaldos`                                          | Borra de tu equipo los respaldos del ambiente de más de 30 días (no se conecta a Firebase ni usa `--admin`)                                                                                                                                                                                        | Sí, solo archivos locales |
 | `restaurar --correo <correo> --archivo <ruta> [--uid <uid>]` | Vuelve a crear a una persona eliminada desde un respaldo (ver más abajo)                                                                                                                                                                                                                           | Sí                        |
+| `sembrar-qa --correo <correo>` (solo `--ambiente qa`)        | Deja 12 tareas de ejemplo en el tablero de esa persona de QA (ver "Datos de prueba en QA")                                                                                                                                                                                                         | Sí, solo en QA            |
 
 Los plazos de 12 meses y 30 días son propuestas pendientes de la revisión legal (PBI-2.13); se cambian en
 `scripts/admin/retention.js`.
+
+### Datos de prueba en QA (`sembrar-qa`)
+
+Para verificar cada despliegue en QA antes de aprobar PDN (`docs/VERIFICACION_MANUAL.md`, sección 11) sin crear
+casos a mano. Deja en el tablero de una persona de QA 12 tareas "Ejemplo: …": las tres prioridades y sin
+etiqueta; vencida, que vence hoy y próxima a vencer; detenidas en Pendiente y en En curso; una completada; con
+subtareas pendientes y todas terminadas; todas con historial. Las fechas son relativas al momento de sembrar.
+
+```bash
+npm run admin -- sembrar-qa --ambiente qa --admin <tu correo de LUCAS> --correo <persona de QA>             # simula
+npm run admin -- sembrar-qa --ambiente qa --admin <tu correo de LUCAS> --correo <persona de QA> --aplicar   # escribe
+```
+
+- **Solo QA:** con `--ambiente dev` o `pdn` se niega antes de conectarse, y además exige que el proyecto sea
+  exactamente `tablero-kanban-qa`. Con `--aplicar` pide teclear ese identificador.
+- La persona de `--correo` tiene que estar autorizada en QA y haber entrado una vez (con `uid`).
+- **Repetible:** los identificadores salen de su `uid` (`qa-ejemplo-<uid corto>-01` … `-12`). Volver a sembrar
+  devuelve esas 12 tareas a su estado inicial, sin duplicarlas y sin tocar ninguna otra tarea.
+- Las tareas se arman con las funciones del dominio y se guardan como las guarda la app, con su índice en el
+  mismo lote, y dejan la entrada `seed-qa` en `adminLog`. QA solo tiene datos ficticios: nunca se copian datos
+  de PDN.
 
 ### El respaldo cifrado
 
