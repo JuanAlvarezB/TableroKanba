@@ -15,8 +15,8 @@ lo muestra como error, pero no es un error de LUCAS. No cuenta como falla si el 
 
 - [ ] En local, las cuatro páginas muestran la insignia **DESARROLLO** (ámbar), el título empieza por
       `[DEV]` y las peticiones de la pestaña Red van a `tablero-kanban-dev`.
-- [ ] En `tablero-kanban-qa.web.app` y en `tablero-kanban-qa.firebaseapp.com` (desde que exista el sitio de
-      QA): insignia **QA** violeta, título que empieza por `[QA]` y peticiones a `tablero-kanban-qa`.
+- [ ] En `tablero-kanban-qa.web.app` y en `tablero-kanban-qa.firebaseapp.com`: insignia **QA** violeta,
+      título que empieza por `[QA]` y peticiones a `tablero-kanban-qa`.
 - [ ] En `juanalvarezb.github.io`: sin insignia, sin prefijo y peticiones a `tablero-kanban-76c61`.
 - [ ] Una cuenta de PDN no entra en QA (no está en su `allowedUsers`), ni al revés.
 - [ ] Las tareas de un ambiente nunca aparecen en otro.
@@ -75,7 +75,12 @@ Sincronización:
 
 ## 6. Despliegue
 
-- [ ] El workflow de GitHub Actions termina en verde.
+- [ ] En el Pull Request, `rama`, `revisar` y `reglas` terminan en verde.
+- [ ] Después del merge, "Desplegar" publica QA (`qa` en verde: reglas "Coinciden" y smoke) y se detiene en
+      `pdn` esperando la aprobación.
+- [ ] Antes de aprobar, QA funciona con el cambio (recarga con `Cmd + Shift + R`).
+- [ ] Al aprobar, `pdn`, `pages`, `smoke-pdn` y `etiquetar` terminan en verde y aparece la etiqueta
+      `pdn-<fecha>-<run>` (y `pdn-reglas-…` si cambiaron las reglas).
 - [ ] En PDN, después de recargar, el navegador usa la versión nueva (Safari incluido).
 - [ ] No hay errores 404 en la pestaña Red.
 
