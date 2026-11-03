@@ -1,9 +1,14 @@
 // Comandos del script contra un almacén y una terminal simulados en memoria: sin Firebase, sin red y sin
 // datos reales. Los respaldos se escriben en una carpeta temporal.
+import { readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { taskFromData } from '../../src/domain/entities/Task.js';
+import { dueStatus } from '../../src/domain/rules/dueDates.js';
+import { stalledDays } from '../../src/domain/rules/stalledTasks.js';
+import { UsageError, parseCommand } from './cli.js';
 import { BackupError, decryptBackup, parseBackup } from './backup.js';
 import { completeIndex } from './completar-indice.js';
 import { Refusal, confirmWrite } from './context.js';
@@ -13,6 +18,7 @@ import { purgeUser } from './limpiar-usuario.js';
 import { purgeLog } from './purgar-registro.js';
 import { backup, backupEnvironment, backupUser } from './respaldar.js';
 import { restoreUser } from './restaurar.js';
+import { QA_PROJECT_ID, SEED_SPECS, buildSeedTasks, seedId, seedQa } from './sembrar-qa.js';
 import { fingerprint } from './rules.js';
 import { verifyIndex } from './verificar-indice.js';
 
@@ -676,5 +682,154 @@ describe('restaurar', () => {
     await expect(restoreUser(restore({ data, archivo, answers: ['frase incorrecta larga'] }).context)).rejects.toThrow(
       BackupError,
     );
+  });
+});
+
+describe('sembrar-qa (docs/PLAN_AMBIENTES.md, E.4)', () => {
+  const TARGET = 'activa@ejemplo.test';
+  const TARGET_UID = 'u2';
+  const seedSetup = ({ projectId = QA_PROJECT_ID, ...options } = {}) => {
+    const run = setup({ ambiente: 'qa', correo: TARGET, answers: [projectId], ...options });
+    run.context.projectId = projectId;
+    return run;
+  };
+  const tasksOf = (store, uid) => Object.entries(store.docs('tasks')).filter(([, doc]) => doc.ownerId === uid);
+
+  it('el script no acepta otro ambiente que qa: se niega antes de conectarse', () => {
+    const commands = { 'sembrar-qa': { required: ['admin', 'correo'], writes: true, only: ['qa'] } };
+    ['dev', 'pdn'].forEach((ambiente) => {
+      const argv = ['sembrar-qa', '--ambiente', ambiente, '--admin', ADMIN, '--correo', TARGET];
+      expect(() => parseCommand(argv, commands)).toThrow(UsageError);
+      expect(() => parseCommand(argv, commands)).toThrow('solo funciona con --ambiente qa');
+    });
+    const argv = ['sembrar-qa', '--ambiente', 'qa', '--admin', ADMIN, '--correo', TARGET];
+    expect(parseCommand(argv, commands)).toMatchObject({ command: 'sembrar-qa', ambiente: 'qa' });
+  });
+
+  it.each([
+    ['en Desarrollo', { ambiente: 'dev', projectId: 'tablero-kanban-dev' }],
+    ['en PDN', { ambiente: 'pdn', projectId: 'tablero-kanban-76c61' }],
+    ['si el alias qa apunta a otro proyecto', { ambiente: 'qa', projectId: 'tablero-kanban-76c61' }],
+  ])('se niega %s sin leer ni escribir nada', async (_, options) => {
+    const { context, store } = seedSetup({ aplicar: true, ...options });
+    await expect(seedQa(context)).rejects.toThrow('solo escribe en QA');
+    expect(store.commits).toEqual([]);
+    expect(context.terminal.questions).toEqual([]);
+  });
+
+  it.each([
+    ['no está autorizada', 'nadie@ejemplo.test', 'no está en allowedUsers'],
+    ['está desactivada', PERSONA, 'está desactivada'],
+  ])('se niega si la persona %s', async (_, correo, message) => {
+    const { context, store } = seedSetup({ aplicar: true, correo });
+    await expect(seedQa(context)).rejects.toThrow(message);
+    expect(store.commits).toEqual([]);
+  });
+
+  it('se niega si la persona nunca entró en QA (sin uid)', async () => {
+    const data = seed();
+    delete data.allowedUsers[TARGET].uid;
+    await expect(seedQa(seedSetup({ data }).context)).rejects.toThrow('no tiene uid');
+  });
+
+  it('simula por defecto: dice qué escribiría y no escribe', async () => {
+    const { context, store, output } = seedSetup();
+    expect(await seedQa(context)).toBe(0);
+    expect(output()).toContain('Por escribir: crear 12 · devolver a su estado inicial 0.');
+    expect(output()).toContain('Simulación: no se escribió nada.');
+    expect(output()).not.toContain(TARGET);
+    expect(store.commits).toEqual([]);
+  });
+
+  it('con --aplicar pide el identificador y escribe tareas, índices y su entrada en un lote', async () => {
+    const { context, store } = seedSetup({ aplicar: true });
+    expect(await seedQa(context)).toBe(0);
+    expect(context.terminal.questions[0]).toContain(QA_PROJECT_ID);
+    expect(store.commits).toHaveLength(1);
+    expect(store.commits[0]).toHaveLength(25);
+    expect(lastEntry(store)).toEqual({
+      action: 'seed-qa',
+      actorUid: 'admin-uid',
+      targetUid: TARGET_UID,
+      detail: { tasks: 12 },
+    });
+    const ids = SEED_SPECS.map((_, index) => seedId(TARGET_UID, index + 1));
+    ids.forEach((id) => {
+      expect(store.doc('tasks', id).ownerId).toBe(TARGET_UID);
+      expect(store.doc('taskIndex', id)).toEqual({ ownerId: TARGET_UID });
+    });
+  });
+
+  it('no toca las demás tareas: ni las de la persona ni las de otras', async () => {
+    const { context, store } = seedSetup({ aplicar: true });
+    const before = seed().tasks;
+    await seedQa(context);
+    ['t1', 't2', 't3'].forEach((id) => expect(store.doc('tasks', id)).toEqual(before[id]));
+    expect(tasksOf(store, TARGET_UID)).toHaveLength(13);
+  });
+
+  it('repetirlo devuelve las tareas a su estado inicial sin duplicarlas', async () => {
+    const first = seedSetup({ aplicar: true });
+    await seedQa(first.context);
+    const once = structuredClone(first.store.docs('tasks'));
+    first.store.doc('tasks', seedId(TARGET_UID, 1)).status = 'completed';
+
+    const again = seedSetup({ aplicar: true, answers: [QA_PROJECT_ID] });
+    again.context.store = first.store;
+    await seedQa(again.context);
+    expect(first.store.docs('tasks')).toEqual(once);
+    expect(tasksOf(first.store, TARGET_UID)).toHaveLength(13);
+
+    const simulation = seedSetup();
+    simulation.context.store = first.store;
+    await seedQa(simulation.context);
+    expect(simulation.output()).toContain('crear 0 · devolver a su estado inicial 12.');
+  });
+
+  it('se niega si una tarea de ejemplo ya existe con otro dueño', async () => {
+    const data = seed();
+    data.tasks[seedId(TARGET_UID, 3)] = { text: 'Ajena', status: 'pending', order: 1, ownerId: 'u1' };
+    const { context, store } = seedSetup({ data, aplicar: true });
+    await expect(seedQa(context)).rejects.toThrow('otro dueño');
+    expect(store.commits).toEqual([]);
+  });
+
+  describe('el conjunto sembrado', () => {
+    const now = new Date(NOW);
+    const tasks = buildSeedTasks(TARGET_UID, NOW);
+    const rules = readFileSync(resolve(import.meta.dirname, '..', '..', 'firestore.rules'), 'utf-8');
+    const allowedFields = rules
+      .match(/data\.keys\(\)\.hasOnly\(\[('text'[^\]]*)\]\)/)[1]
+      .split(',')
+      .map((field) => field.trim().replace(/'/g, ''));
+
+    it('son documentos válidos: los lee igual el dominio y solo tienen campos que las reglas aceptan', async () => {
+      const { context, store } = seedSetup({ aplicar: true });
+      await seedQa(context);
+      tasks.forEach((task) => {
+        const document = store.doc('tasks', task.id);
+        expect(Object.keys(document).every((field) => allowedFields.includes(field))).toBe(true);
+        expect(taskFromData(task.id, document)).toEqual(task);
+      });
+    });
+
+    it('cubre prioridades, vencimientos, detenidas, completadas, subtareas e historial', () => {
+      expect(new Set(tasks.map((task) => task.priority))).toEqual(new Set(['urgent', 'high', 'low', null]));
+      const dueKinds = tasks.map((task) => dueStatus(task, now)?.kind).filter(Boolean);
+      expect(dueKinds).toEqual(expect.arrayContaining(['overdue', 'soon']));
+      expect(tasks.some((task) => dueStatus(task, now)?.days === 0)).toBe(true);
+      const stalled = tasks.filter((task) => stalledDays(task, now) !== null).map((task) => task.status);
+      expect(stalled).toEqual(expect.arrayContaining(['pending', 'in-progress']));
+      expect(tasks.filter((task) => task.status === 'completed')).toHaveLength(1);
+      expect(tasks.some((task) => task.openSubtasks > 0)).toBe(true);
+      expect(
+        tasks.some((task) => task.status === 'in-progress' && task.subtasks.length > 0 && task.openSubtasks === 0),
+      ).toBe(true);
+      tasks.forEach((task) => expect(task.history.length).toBeGreaterThan(0));
+    });
+
+    it('la completada tiene todas sus subtareas terminadas (las reglas lo exigen)', () => {
+      tasks.filter((task) => task.status === 'completed').forEach((task) => expect(task.openSubtasks).toBe(0));
+    });
   });
 });

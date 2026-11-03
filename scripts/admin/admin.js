@@ -15,6 +15,7 @@
 //   purgar-registro    Borra las entradas de adminLog de más de 12 meses.
 //   limpiar-respaldos  Borra los respaldos locales de más de 30 días.
 //   restaurar          Vuelve a crear a una persona eliminada desde un respaldo.
+//   sembrar-qa         Solo QA: tareas de ejemplo en el tablero de una persona (repetible, sin duplicar).
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -30,6 +31,7 @@ import { purgeUser } from './limpiar-usuario.js';
 import { purgeLog } from './purgar-registro.js';
 import { backup } from './respaldar.js';
 import { restoreUser } from './restaurar.js';
+import { seedQa } from './sembrar-qa.js';
 import { RulesApiError, createRulesApi } from './rules-api.js';
 import { createStore } from './store.js';
 import { createTerminal } from './terminal.js';
@@ -52,6 +54,7 @@ const COMMANDS = {
   'purgar-registro': { required: ['admin'], writes: true, run: purgeLog },
   'limpiar-respaldos': { writes: true, local: true, run: purgeBackups },
   restaurar: { required: ['admin', 'correo', 'archivo'], optional: ['uid'], writes: true, run: restoreUser },
+  'sembrar-qa': { required: ['admin', 'correo'], writes: true, only: ['qa'], run: seedQa },
 };
 
 async function main(argv) {
