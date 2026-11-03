@@ -1,5 +1,5 @@
-# Revisa cada Pull Request hacia main antes del merge: formato, lint, pruebas y build (revisar),
-# y las reglas de Firestore en el emulador (reglas).
+# Revisa cada Pull Request hacia main antes del merge: el nombre de la rama (rama), formato, lint, pruebas
+# y build (revisar), y las reglas de Firestore en el emulador (reglas).
 # No despliega nada; el despliegue lo hace deploy.yml al hacer merge en main.
 name: Revisar el código
 
@@ -17,14 +17,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  rama:
+    # Prefijos permitidos (docs/PLAN_AMBIENTES.md, C.3 y P-3). Los rulesets de GitHub no validan nombres de
+    # rama fuera de Enterprise. El nombre lo controla quien abre el PR: llega por variable de entorno y se
+    # compara en bash, nunca interpolado en el script. No necesita el código ni permisos.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Nombre de la rama
+        env:
+          RAMA: ${{ github.head_ref }}
+        run: |
+          PERMITIDA='^(feature|fix|docs|chore)/[a-z0-9][a-z0-9.-]*$|^ambientes-[a-z0-9][a-z0-9-]*$|^[0-9]+-[a-z0-9][a-z0-9-]*$|^revert-[0-9]+-.+$'
+          if [[ "$RAMA" =~ $PERMITIDA ]]; then
+            echo "✔ La rama '${RAMA}' tiene un prefijo permitido."
+            exit 0
+          fi
+          echo "::error::La rama '${RAMA}' no tiene un prefijo permitido."
+          echo "Usa minúsculas, guiones y uno de estos prefijos: feature/, fix/, docs/, chore/, ambientes-,"
+          echo "<número de PBI>- (por ejemplo 226-panel-permisos) o revert-<n>- (el botón Revert de GitHub)."
+          echo "Para renombrarla: git branch -m <nuevo-nombre>, git push -u origin <nuevo-nombre> y abre el PR de nuevo."
+          exit 1
+
   revisar:
     runs-on: ubuntu-latest
     steps:
       - name: Descargar el código
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Instalar Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
@@ -73,12 +98,12 @@ jobs:
       contents: read
     steps:
       - name: Descargar el código
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Instalar Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
