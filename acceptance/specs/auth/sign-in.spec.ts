@@ -12,6 +12,6 @@ test.describe('Sign in', { tag: ['@smoke', '@auth'] }, () => {
     await loginPage.signIn(member.email, member.password);
 
     await expect(homePage.greeting).toContainText(member.name);
-    await expect(page).toHaveURL(/index\.html$/);
+    await expect(page).toHaveURL(/tablero\.html$/);
   });
 });
