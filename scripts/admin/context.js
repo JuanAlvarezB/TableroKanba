@@ -8,7 +8,8 @@ import { maskEmail } from './accounts.js';
 /**
  * Acciones que escribe el script en adminLog (2.7). La app escribe las suyas (AdminLog.js); las reglas
  * no aplican al Admin SDK, así que estas no necesitan estar en firestore.rules.
- * @typedef {'backup' | 'backfill-index' | 'purge-leftovers' | 'purge-log' | 'clean-auth' | 'restore'} ScriptAction
+ * @typedef {'backup' | 'backfill-index' | 'purge-leftovers' | 'purge-log' | 'clean-auth' | 'restore' | 'seed-qa'}
+ *   ScriptAction
  */
 
 /**

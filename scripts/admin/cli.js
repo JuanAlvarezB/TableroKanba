@@ -15,6 +15,7 @@ export class UsageError extends Error {}
  * @property {string[]} [required] Opciones con valor obligatorias.
  * @property {string[]} [optional] Opciones con valor permitidas.
  * @property {boolean} [writes] Escribe datos: admite --aplicar (sin él, solo simula).
+ * @property {Array<'dev' | 'qa' | 'pdn'>} [only] Ambientes en los que puede correr (por defecto, los tres).
  */
 
 /**
@@ -39,7 +40,10 @@ export function parseCommand(argv, commands) {
   const { ambiente, aplicar = false, ...values } = parsed.values;
   if (!ENVIRONMENTS.includes(ambiente)) throw new UsageError('Indica el ambiente: --ambiente dev, qa o pdn.');
 
-  const { required = [], optional = [], writes = false } = commands[command];
+  const { required = [], optional = [], writes = false, only = ENVIRONMENTS } = commands[command];
+  if (!only.includes(ambiente)) {
+    throw new UsageError(`${command} solo funciona con --ambiente ${only.join(' o ')}: no se conectó a nada.`);
+  }
   if (aplicar && !writes) throw new UsageError(`${command} no escribe nada: no admite --aplicar.`);
   const result = { command, ambiente, aplicar };
   for (const [name, value] of Object.entries(values)) {
