@@ -1,7 +1,8 @@
 # Verificación manual de LUCAS
 
 Lista de flujos críticos que se repasa al cerrar cada fase de `PLAN_ARQUITECTURA.md`, primero en
-Desarrollo (local) y después en PDN. Copia la lista en la descripción del PR y marca cada punto.
+Desarrollo (local), después en QA (antes de aprobar PDN, sección 11) y al final en PDN. Copia la lista en la
+descripción del PR y marca cada punto.
 
 Antes de empezar: abre la consola del navegador y confirma que no aparece ningún error en rojo
 al cargar cada página.
@@ -75,11 +76,12 @@ Sincronización:
 
 ## 6. Despliegue
 
-- [ ] En el Pull Request, `rama`, `revisar` y `reglas` terminan en verde.
-- [ ] Después del merge, "Desplegar" publica QA (`qa` en verde: reglas "Coinciden" y smoke) y se detiene en
-      `pdn` esperando la aprobación.
+- [ ] En el Pull Request, `rama`, `revisar`, `reglas` y `e2e` terminan en verde.
+- [ ] Después del merge, "Desplegar" publica QA (`qa` en verde: `verificar-reglas` "Coinciden" y smoke) y se
+      detiene en `pdn` esperando la aprobación.
 - [ ] Antes de aprobar, QA funciona con el cambio (recarga con `Cmd + Shift + R`).
-- [ ] Al aprobar, `pdn`, `pages`, `smoke-pdn` y `etiquetar` terminan en verde y aparece la etiqueta
+- [ ] Al aprobar, `pdn`, `pages`, `smoke-pdn` y `etiquetar` terminan en verde: en `pdn`, `verificar-reglas`
+      "Coinciden" y el resumen del run muestra la versión anterior de las reglas de PDN; aparece la etiqueta
       `pdn-<fecha>-<run>` (y `pdn-reglas-…` si cambiaron las reglas).
 - [ ] En PDN, después de recargar, el navegador usa la versión nueva (Safari incluido).
 - [ ] No hay errores 404 en la pestaña Red.
@@ -716,3 +718,24 @@ Dos dispositivos, sin conexión y accesibilidad:
 - [ ] Móvil (iPhone real): el diálogo cabe, cada fila en dos líneas, el pie con Cerrar y Completar tarea
       siempre visible, el teclado no tapa "Nueva subtarea", y la confirmación encima funciona (AT-13).
 
+## 11. QA: antes de aprobar PDN
+
+Se repasa en **cada** despliegue, en `https://tablero-kanban-qa.web.app/`, con el run de "Desplegar" esperando
+en `pdn`. QA solo tiene datos ficticios: nunca se copian datos de PDN a QA.
+
+- [ ] El run de `main` está en verde hasta `qa` y su commit es el que esperas (el resumen del run lo muestra).
+- [ ] Recargando con `Cmd + Shift + R`: insignia **QA** violeta, pestaña `[QA]` y ningún error en rojo en la
+      consola; en la pestaña Red, las peticiones van a `tablero-kanban-qa`.
+- [ ] Datos de ejemplo frescos si hace falta (README, "Datos de prueba en QA"):
+      `npm run admin -- sembrar-qa --ambiente qa --admin <tu correo> --correo <persona de QA> --aplicar`.
+      Las 12 tareas "Ejemplo: …" vuelven a su estado inicial; las demás no cambian.
+- [ ] Siempre: iniciar sesión, crear una tarea, moverla, editarla, borrarla (con su confirmación) y cerrar
+      sesión.
+- [ ] Lo que toque el cambio, con las tareas de ejemplo: etiquetas y filtros (sección 5), vencimientos
+      ("Ejemplo: vencida", "vence hoy", "próxima a vencer"), alertas de detenidas, subtareas y completado
+      (sección 10), historial (sección 8), gestión de usuarios (sección 7).
+- [ ] Si el cambio tocó las reglas: una acción que deben negar sigue negada en QA (por ejemplo, un miembro con
+      el tablero apagado no abre `tablero.html`).
+- [ ] Si el cambio es visual: Safari en iPhone, en QA.
+- [ ] Anota en el Pull Request (o en el comentario de la aprobación) qué probaste; después **Review
+      deployments** → `pdn` → **Approve and deploy**. Si algo falla, **Reject**: PDN no cambia.
