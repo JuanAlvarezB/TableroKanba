@@ -1,10 +1,8 @@
 # Despliega cada merge a main (docs/PLAN_AMBIENTES.md, bloque D): un solo build se publica primero en QA
-# (reglas → verificar-reglas → Hosting → smoke) y, solo si QA pasó, ese mismo build en GitHub Pages (PDN).
-# Desarrollo no lo toca nunca.
-#
-# PR 3 (pendiente): inserta entre qa y pages el job pdn (environment pdn, espera la aprobación del
-# responsable, publica y verifica las reglas de PDN), y agrega smoke-pdn y etiquetar. Mientras tanto PDN se
-# publica sin aprobación, como antes, pero después de QA, y sus reglas se siguen publicando a mano.
+# (reglas → verificar-reglas → Hosting → smoke) y, después de la aprobación del responsable en el environment
+# pdn, ese mismo build llega a PDN (reglas → verificar-reglas → GitHub Pages → smoke → etiquetas).
+# Nada llega a PDN sin pasar por QA en este mismo run, y las reglas de PDN siempre se publican y verifican
+# antes que el sitio. Desarrollo no lo toca nunca.
 name: Desplegar
 
 on:
@@ -250,9 +248,120 @@ jobs:
           SITE_URL: ${{ vars.SITE_URL }}
         run: bash scripts/ci/smoke.sh "$SITE_URL" "$PROYECTO" --noindex
 
-  pages:
-    # PR 3 cambia needs: qa por needs: pdn (aprobación del responsable y reglas de PDN antes del sitio).
+  pdn:
+    # Espera la aprobación del responsable (environment pdn: revisor obligatorio, solo main). Aprobar o
+    # rechazar se hace en el run: Review deployments. Una aprobación vale 7 días (el artefacto github-pages;
+    # P-4). Si main avanzó mientras esperaba, se niega: solo el último commit de main llega a PDN (D.6).
     needs: qa
+    runs-on: ubuntu-latest
+    environment:
+      name: pdn
+      url: ${{ vars.SITE_URL }}
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+    concurrency:
+      group: despliegue-pdn
+      cancel-in-progress: false
+    env:
+      PROYECTO: tablero-kanban-76c61
+    outputs:
+      reglas_cambiaron: ${{ steps.previo.outputs.reglas_cambiaron }}
+      version_anterior: ${{ steps.previo.outputs.version_anterior }}
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Instalar Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Guardas (rama, punta de main, alias, proyecto, cuenta y dirección)
+        env:
+          REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          PROYECTO_VARIABLE: ${{ vars.FIREBASE_PROJECT_ID }}
+          CUENTA: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          [ "$REF" = "refs/heads/main" ] || { echo "::error::Solo se despliega desde main."; exit 1; }
+          PUNTA=$(git ls-remote "https://github.com/${REPO}.git" refs/heads/main | cut -f1)
+          if [ "$PUNTA" != "$SHA" ]; then
+            echo "::error::Hay un commit más nuevo en main (${PUNTA}); aprueba su ejecución. PDN no cambió."
+            exit 1
+          fi
+          ALIAS=$(node -p "JSON.parse(require('fs').readFileSync('.firebaserc', 'utf8')).projects.pdn")
+          [ "$ALIAS" = "$PROYECTO" ] || { echo "::error::El alias pdn de .firebaserc es ${ALIAS}, no ${PROYECTO}."; exit 1; }
+          [ "$PROYECTO_VARIABLE" = "$PROYECTO" ] \
+            || { echo "::error::FIREBASE_PROJECT_ID del environment pdn es '${PROYECTO_VARIABLE}', no ${PROYECTO}."; exit 1; }
+          [[ "$CUENTA" == *"@${PROYECTO}.iam.gserviceaccount.com" ]] \
+            || { echo "::error::GCP_SERVICE_ACCOUNT del environment pdn no es una cuenta de ${PROYECTO}."; exit 1; }
+          [ "$SITE_URL" = "https://juanalvarezb.github.io/TableroKanba/" ] \
+            || { echo "::error::SITE_URL del environment pdn es '${SITE_URL}', no la de GitHub Pages."; exit 1; }
+
+      - name: El sitio de este run sigue disponible
+        # Si el artefacto venció (7 días), pages fallaría después de publicar las reglas: mejor no empezar.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          VIGENTES=$(gh api "repos/${REPO}/actions/runs/${RUN_ID}/artifacts?name=github-pages" \
+            --jq '[.artifacts[] | select(.expired == false)] | length')
+          if [ "$VIGENTES" = "0" ]; then
+            echo "::error::El sitio de este run venció (7 días). Vuelve a ejecutar el run completo (Re-run all jobs). PDN no cambió."
+            exit 1
+          fi
+
+      - name: Autenticarse en Google (Workload Identity, sin claves)
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          create_credentials_file: true
+
+      - name: Estado previo de las reglas de PDN
+        # Antes de publicar: qué versión está vigente (va al resumen y a la etiqueta) y si firestore.rules la
+        # cambia (código 1) o no (0). Un 2 (no se pudo comprobar) detiene el job sin publicar nada.
+        id: previo
+        env:
+          LUCAS_REGLAS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set +e
+          npm run --silent admin -- verificar-reglas --ambiente pdn | tee previo.txt
+          CODIGO=${PIPESTATUS[0]}
+          set -e
+          case "$CODIGO" in
+            0) echo "reglas_cambiaron=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "reglas_cambiaron=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::No se pudo leer el estado de las reglas de PDN. No se publicó nada."; exit 1 ;;
+          esac
+          VERSION=$(sed -n 's/^Reglas publicadas: //p' previo.txt)
+          echo "version_anterior=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Reglas de PDN antes de publicar: ${VERSION} (cambian: $([ "$CODIGO" = 1 ] && echo sí || echo no))" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publicar las reglas en PDN
+        run: npx firebase-tools deploy --only firestore:rules --project pdn --non-interactive
+
+      - name: Verificar las reglas publicadas
+        env:
+          LUCAS_REGLAS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: npm run admin -- verificar-reglas --ambiente pdn
+
+  pages:
+    # Solo después de que las reglas de PDN están publicadas y verificadas, el mismo build que pasó por QA.
+    needs: pdn
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -276,3 +385,70 @@ jobs:
         # El artefacto github-pages de este mismo run: el build que ya pasó por QA.
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  smoke-pdn:
+    # GitHub Pages sirve exactamente el build de este run (mismas huellas que QA) con el proyecto de PDN.
+    needs: pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Descargar las huellas de este run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sitio
+          path: .
+
+      - name: Smoke de PDN
+        env:
+          SMOKE_INTENTOS: 60
+        run: bash scripts/ci/smoke.sh "https://juanalvarezb.github.io/TableroKanba/" tablero-kanban-76c61
+
+  etiquetar:
+    # Etiquetas anotadas sobre el commit publicado (P-2); el ruleset "Etiquetas de PDN" impide moverlas o
+    # borrarlas. pdn-reglas-… solo si las reglas de PDN cambiaron en este despliegue.
+    needs: [pdn, smoke-pdn]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      SHA: ${{ github.sha }}
+      RUN: ${{ github.run_number }}
+      REGLAS_CAMBIARON: ${{ needs.pdn.outputs.reglas_cambiaron }}
+      VERSION_ANTERIOR: ${{ needs.pdn.outputs.version_anterior }}
+    steps:
+      - name: Crear las etiquetas
+        run: |
+          FECHA=$(date -u +%Y-%m-%d)
+          etiquetar() {
+            local OBJETO
+            OBJETO=$(gh api "repos/${REPO}/git/tags" -f tag="$1" -f message="$2" -f object="$SHA" -f type=commit --jq .sha)
+            gh api "repos/${REPO}/git/refs" -f ref="refs/tags/$1" -f sha="$OBJETO" > /dev/null
+            echo "Etiqueta $1 creada sobre ${SHA}." | tee -a "$GITHUB_STEP_SUMMARY"
+          }
+          etiquetar "pdn-${FECHA}-${RUN}" "PDN: run ${RUN}, commit ${SHA}"
+          if [ "$REGLAS_CAMBIARON" = "true" ]; then
+            etiquetar "pdn-reglas-${FECHA}-${RUN}" "Reglas en PDN. Versión anterior: ${VERSION_ANTERIOR}"
+          fi
+
+      - name: Si falló, cómo crearlas a mano
+        if: failure()
+        run: |
+          FECHA=$(date -u +%Y-%m-%d)
+          {
+            echo "PDN ya está publicado; solo faltan las etiquetas. Desde tu terminal:"
+            echo '```bash'
+            echo "git fetch origin && git tag -a pdn-${FECHA}-${RUN} -m \"PDN: run ${RUN}, commit ${SHA}\" ${SHA}"
+            if [ "$REGLAS_CAMBIARON" = "true" ]; then
+              echo "git tag -a pdn-reglas-${FECHA}-${RUN} -m \"Reglas en PDN. Versión anterior: ${VERSION_ANTERIOR}\" ${SHA}"
+            fi
+            echo "git push origin --tags"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -6,6 +6,8 @@
 #   - los .js servidos contienen el projectId del ambiente;
 #   - con --noindex, la respuesta trae X-Robots-Tag: noindex (solo QA; GitHub Pages no admite cabeceras).
 # Uso: scripts/ci/smoke.sh <url-del-sitio/> <projectId> [--noindex]   (desde la raíz, con huellas.txt)
+# SMOKE_INTENTOS: cuántas veces (cada 10 s) se espera a que index.html sea el de este build; 12 por defecto
+# (2 minutos, Hosting de QA). GitHub Pages tarda más: PDN usa 60 (10 minutos).
 set -euo pipefail
 
 SITE_URL="${1:?Falta la URL del sitio}"
@@ -13,10 +15,10 @@ PROJECT_ID="${2:?Falta el projectId esperado}"
 NOINDEX="${3:-}"
 SITE_URL="${SITE_URL%/}/"
 
-# La CDN puede tardar unos segundos en servir la versión nueva: index.html se reintenta hasta que tenga la
-# huella del build (máximo 2 minutos).
+# La CDN puede tardar en servir la versión nueva: index.html se reintenta hasta que tenga la huella del build.
+INTENTOS="${SMOKE_INTENTOS:-12}"
 esperada=$(awk '$2 == "dist/index.html" { print $1 }' huellas.txt)
-for intento in $(seq 1 12); do
+for intento in $(seq 1 "$INTENTOS"); do
   servida=$(curl -fsS --compressed "${SITE_URL}index.html" | sha256sum | cut -d' ' -f1 || true)
   [ "$servida" = "$esperada" ] && break
   echo "Intento ${intento}: index.html aún no es el de este build; espero 10 s."
