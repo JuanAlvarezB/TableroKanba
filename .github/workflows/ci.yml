@@ -1,5 +1,6 @@
 # Revisa cada Pull Request hacia main antes del merge: el nombre de la rama (rama), formato, lint, pruebas
-# y build (revisar), y las reglas de Firestore en el emulador (reglas).
+# y build (revisar), las reglas de Firestore en el emulador (reglas) y la ruta crítica de punta a punta con
+# Playwright contra los emuladores (e2e).
 # No despliega nada; el despliegue lo hace deploy.yml al hacer merge en main.
 name: Revisar el código
 
@@ -120,3 +121,52 @@ jobs:
 
       - name: Pruebas de reglas (emulador de Firestore)
         run: npm run test:rules
+
+  e2e:
+    # Ruta crítica con Playwright contra los emuladores de Auth y Firestore, con el proyecto ficticio
+    # demo-lucas (docs/PLAN_AMBIENTES.md, E.3): sin variables, secretos ni credenciales, igual en PR de ramas
+    # sin acceso a secretos. Después de revisar: primero lo barato.
+    needs: revisar
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Instalar Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar Java (los emuladores piden JDK 21 o superior)
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Instalar Chromium para Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Lint de las pruebas (ESLint, Prettier, tipos y nombres)
+        run: npm run lint:acceptance
+
+      - name: Pruebas end-to-end (Playwright y emuladores)
+        run: npm run test:e2e
+
+      - name: Subir el reporte si falló
+        # Capturas, video y traza de cada prueba fallida. Solo contienen datos ficticios del emulador.
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reporte-e2e
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
